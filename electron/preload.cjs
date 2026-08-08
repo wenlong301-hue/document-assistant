@@ -18,4 +18,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   settingsRead: () => ipcRenderer.invoke('settings-read'),
   settingsWrite: (settings) => ipcRenderer.invoke('settings-write', settings),
   onNewDoc: (callback) => ipcRenderer.on('new-doc', callback),
+  onViewportChange: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('viewport-change', handler);
+    return () => ipcRenderer.removeListener('viewport-change', handler);
+  },
 });

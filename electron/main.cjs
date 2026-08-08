@@ -483,6 +483,17 @@ function createWindow() {
     mainWindow.setMenu(null);
   }
   mainWindow.once('ready-to-show', () => mainWindow.show());
+
+  // macOS 系统全屏/最大化时通知渲染进程，清理浮动工具条坐标，避免盖住编辑器工具栏
+  const notifyViewportChange = (reason) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send('viewport-change', { reason, platform: process.platform });
+  };
+  mainWindow.on('enter-full-screen', () => notifyViewportChange('enter-full-screen'));
+  mainWindow.on('leave-full-screen', () => notifyViewportChange('leave-full-screen'));
+  mainWindow.on('maximize', () => notifyViewportChange('maximize'));
+  mainWindow.on('unmaximize', () => notifyViewportChange('unmaximize'));
+  mainWindow.on('resize', () => notifyViewportChange('resize'));
 }
 
 app.whenReady().then(() => {
