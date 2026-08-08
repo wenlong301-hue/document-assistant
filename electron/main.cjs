@@ -471,7 +471,12 @@ function createWindow() {
   const isDev = process.argv.includes('--dev');
   if (isDev) {
     const devUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
-    mainWindow.loadURL(devUrl);
+    const loadDevUrl = (attempt = 0) => {
+      mainWindow.loadURL(devUrl).catch(() => {
+        if (attempt < 40) setTimeout(() => loadDevUrl(attempt + 1), 500);
+      });
+    };
+    loadDevUrl();
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
