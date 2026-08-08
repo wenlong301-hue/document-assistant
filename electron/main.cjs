@@ -1,0 +1,616 @@
+const { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const http = require('http');
+const os = require('os');
+const htmlToDocx = require('html-to-docx');
+const TurndownService = require('turndown');
+
+let mainWindow;
+let shareServer = null;
+let activeShareDocId = null;
+const DOCS_DIR = path.join(app.getPath('documents'), 'DocAssistant');
+const RECENT_FILE = path.join(DOCS_DIR, 'recent.json');
+const SETTINGS_FILE = path.join(DOCS_DIR, 'settings.json');
+
+function ensureDir(dir) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+function sanitizeFileName(name) {
+  return String(name || '文档').replace(/[\\/:*?"<>|]/g, '_').trim() || '文档';
+}
+
+function normalizeExportPayload(payloadOrContent, defaultName) {
+  if (payloadOrContent && typeof payloadOrContent === 'object' && !Buffer.isBuffer(payloadOrContent)) {
+    const title = payloadOrContent.title || path.basename(payloadOrContent.defaultName || defaultName || 'document', path.extname(payloadOrContent.defaultName || defaultName || ''));
+    return {
+      title,
+      content: payloadOrContent.content || '',
+      defaultName: payloadOrContent.defaultName || defaultName || title,
+      options: payloadOrContent.options || {},
+    };
+  }
+  const title = path.basename(defaultName || 'document', path.extname(defaultName || ''));
+  return { title, content: payloadOrContent || '', defaultName: defaultName || title, options: {} };
+}
+
+function exportResultFromError(error) {
+  return { canceled: false, error: error instanceof Error ? error.message : '导出失败' };
+}
+
+function markdownImageExtension(mime) {
+  const normalized = String(mime || '').toLowerCase();
+  if (normalized === 'image/jpeg') return 'jpg';
+  if (normalized === 'image/svg+xml') return 'svg';
+  const match = normalized.match(/^image\/([a-z0-9.+-]+)$/);
+  return match ? match[1].replace(/\+xml$/, '') : 'png';
+}
+
+function createMarkdownImageWriter(mdPath) {
+  const base = path.basename(mdPath, path.extname(mdPath));
+  const folder = `${base}_assets`;
+  const dir = path.join(path.dirname(mdPath), folder);
+  let index = 1;
+  return (src) => {
+    const match = String(src || '').match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    if (!match) return null;
+    const fileName = `image-${index++}.${markdownImageExtension(match[1])}`;
+    ensureDir(dir);
+    fs.writeFileSync(path.join(dir, fileName), Buffer.from(match[2], 'base64'));
+    return encodeURI(`${folder}/${fileName}`);
+  };
+}
+
+function contentHtmlToMarkdown(content, imageWriter) {
+  const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
+  turndown.keep(['table', 'thead', 'tbody', 'tr', 'th', 'td', 'video']);
+  turndown.addRule('safeImage', {
+    filter: 'img',
+    replacement: (_content, node) => {
+      const src = node.getAttribute('src') || '';
+      const alt = String(node.getAttribute('alt') || '图片').replace(/[\r\n\]]/g, ' ');
+      if (src.startsWith('data:')) {
+        const relative = imageWriter ? imageWriter(src) : null;
+        return relative ? `\n\n![${alt}](${relative})\n\n` : `\n\n![${alt}](${src})\n\n`;
+      }
+      return `\n\n![${alt}](${src})\n\n`;
+    },
+  });
+  return turndown.turndown(content || '').trim() + '\n';
+}
+
+function cleanExportHtml(content) {
+  return String(content || '')
+    .replace(/<p>(\s*<br\s*\/?>\s*)+<\/p>/gi, '')
+    .replace(/<p>(&nbsp;|\s)*<\/p>/gi, '')
+    .replace(/<p><\/p>/gi, '');
+}
+
+function headingsToWordParagraphs(html) {
+  const sizes = { 1: 22, 2: 18, 3: 15, 4: 14, 5: 14, 6: 14 };
+  return String(html || '')
+    .replace(/<h([1-6])(\s[^>]*)?>/gi, (_full, level) => `<p style="font-size:${sizes[level] || 14}px;font-weight:700;margin-top:6px!important;margin-bottom:3px!important;line-height:1.3">`)
+    .replace(/<\/h[1-6]>/gi, '</p>');
+}
+
+function prepareImageTagsForWord(html) {
+  return String(html || '').replace(/<img\b([^>]*)>/gi, (full, attrs) => {
+    const hasStyle = /\sstyle=/i.test(attrs);
+    const hasWidth = /\swidth=/i.test(attrs);
+    const srcMatch = attrs.match(/\ssrc=("[^"]*"|'[^']*')/i);
+    let widthAttr = '';
+    if (!hasWidth) {
+      const src = srcMatch ? srcMatch[1].slice(1, -1) : '';
+      let width = 560;
+      if (src.startsWith('data:image/')) {
+        try {
+          const size = nativeImage.createFromDataURL(src).getSize();
+          if (size.width) width = Math.min(size.width, 560);
+        } catch {}
+      }
+      widthAttr = ` width="${width}"`;
+    }
+    const style = 'max-width:560px;width:auto;height:auto;display:block;margin:4px auto;';
+    if (hasStyle) return full.replace(/\sstyle=("[^"]*"|'[^']*')/i, (styleAttr) => styleAttr.replace(/(["'])$/, `;${style}$1`)).replace(/>$/, `${widthAttr}>`);
+    return `<img${attrs}${widthAttr} style="${style}">`;
+  });
+}
+
+function wordHtmlDocument(title, content, options = {}) {
+  const clean = prepareImageTagsForWord(cleanExportHtml(content));
+  const body = options.skipTitle ? clean : `<h1>${escapeHtml(title || '未命名文档')}</h1>${clean}`;
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><style>body{font-family:'PingFang SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;color:#1F2329}.word-page{width:100%}p{margin:0 0 4px}ul,ol{margin:2px 0 4px;padding-left:22px}li{margin:0}img{max-width:560px;width:auto;height:auto;display:block;margin:4px auto}table{border-collapse:collapse;width:100%;margin:4px 0}th,td{border:1px solid #DDE1E6;padding:4px 8px;text-align:left;vertical-align:top;font-size:13px}th{background:#F5F7FA;font-weight:700}blockquote{border-left:3px solid #005EFF;padding:3px 10px;margin:4px 0;background:#F0F5FF;color:#4E5969}pre{background:#F5F7FA;padding:5px 10px;margin:4px 0;white-space:pre-wrap}code{background:#F2F3F5;padding:1px 3px}hr{border:none;border-top:1px solid #DDE1E6;margin:6px 0}</style></head><body><div class="word-page">${headingsToWordParagraphs(body)}</div></body></html>`;
+}
+
+function pdfHtmlDocument(title, content, options = {}) {
+  const clean = cleanExportHtml(content);
+  const body = options.skipTitle ? clean : `<h1 class="pdf-title">${escapeHtml(title || '未命名文档')}</h1>${clean}`;
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>${escapeHtml(title || 'PDF')}</title><style>
+@page{size:A4;margin:16mm 14mm}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#fff}
+body{font-family:'PingFang SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;line-height:1.8;color:#131212;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.pdf-page{width:100%;max-width:100%;margin:0;padding:0;word-wrap:break-word;overflow-wrap:anywhere}
+.pdf-title{font-size:24px;font-weight:600;line-height:1.35;margin:0 0 16px;padding:0 0 12px;border-bottom:1px solid #ebecf0;color:#131212}
+h1{font-size:22px;font-weight:600;margin:20px 0 12px;line-height:1.4;color:#131212}
+h2{font-size:18px;font-weight:600;margin:18px 0 10px;line-height:1.45;color:#131212}
+h3{font-size:16px;font-weight:600;margin:16px 0 8px;line-height:1.5;color:#131212}
+h4,h5,h6{font-size:15px;font-weight:600;margin:14px 0 8px;line-height:1.5;color:#131212}
+p{margin:0 0 12px}
+ul,ol{margin:0 0 12px;padding-left:24px}
+li{margin:4px 0}
+img,.doc-image{max-width:100%!important;width:auto!important;max-height:220mm;height:auto!important;display:block;margin:12px 0;border-radius:8px;object-fit:contain;page-break-inside:avoid;break-inside:avoid}
+video,.doc-video{display:none!important}
+table{width:100%;border-collapse:collapse;margin:12px 0;page-break-inside:avoid}
+th,td{border:1px solid #ebecf0;padding:8px 12px;text-align:left;vertical-align:top;font-size:14px}
+th{background:#f7f8fa;font-weight:600}
+blockquote{border-left:3px solid #134CFF;padding:12px 20px;margin:12px 0;background:#f7f8fa;color:#606266;border-radius:0 8px 8px 0}
+pre{background:#f7f8fa;padding:12px 16px;margin:12px 0;white-space:pre-wrap;border-radius:8px;font-size:13px}
+code{background:#f2f3f5;padding:1px 4px;border-radius:4px;font-size:0.92em}
+hr{border:none;border-top:1px solid #ebecf0;margin:20px 0}
+a{color:#134CFF;text-decoration:underline}
+.doc-attachment{display:inline-flex;align-items:center;background:#f7f8fa;border:1px solid #ebecf0;border-radius:8px;color:#303133;font-size:13px;margin:12px 0;padding:10px 12px;text-decoration:none}
+</style></head><body><main class="pdf-page">${body}</main></body></html>`;
+}
+
+function getLocalIP() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) return iface.address;
+    }
+  }
+  return 'localhost';
+}
+
+function getAllDocs() {
+  ensureDir(DOCS_DIR);
+  const files = fs.readdirSync(DOCS_DIR).filter(f => f.endsWith('.mdoc'));
+  return files.map(f => {
+    const fp = path.join(DOCS_DIR, f);
+    try {
+      const data = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+      return { id: f.replace('.mdoc', ''), name: data.name || data.title || f.replace('.mdoc', ''), filePath: fp, updatedAt: data.updatedAt };
+    } catch {
+      return { id: f.replace('.mdoc', ''), name: f.replace('.mdoc', ''), filePath: fp, updatedAt: null };
+    }
+  });
+}
+
+function getDocContent(docId) {
+  const fp = path.join(DOCS_DIR, `${docId}.mdoc`);
+  if (!fs.existsSync(fp)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(fp, 'utf-8'));
+  } catch { return null; }
+}
+
+function saveDoc(docId, data) {
+  ensureDir(DOCS_DIR);
+  const fp = path.join(DOCS_DIR, `${docId}.mdoc`);
+  data.updatedAt = new Date().toISOString();
+  fs.writeFileSync(fp, JSON.stringify(data, null, 2), 'utf-8');
+  return fp;
+}
+
+async function saveDocToFolder(docId, data) {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: '选择文档保存位置',
+    properties: ['openDirectory', 'createDirectory']
+  });
+  if (result.canceled || !result.filePaths?.[0]) return { canceled: true };
+  const targetDir = result.filePaths[0];
+  const safeName = String(docId || data?.name || '未命名文档').replace(/[\\/:*?"<>|]/g, '_');
+  const filePath = path.join(targetDir, `${safeName}.mdoc`);
+  const payload = { ...data, name: data?.name || docId, updatedAt: new Date().toISOString() };
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
+  return { canceled: false, filePath };
+}
+
+function deleteDoc(docId) {
+  const fp = path.join(DOCS_DIR, `${docId}.mdoc`);
+  if (fs.existsSync(fp)) fs.unlinkSync(fp);
+}
+
+function buildSharePage(docs) {
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>文档助手 - 分享</title><style>
+:root{--primary:#134CFF;--gray-50:#F3F5FA;--gray-100:#EEF0F5;--gray-200:#DFE0E6;--gray-400:#9FA0A6;--gray-500:#707277}*{box-sizing:border-box}body{margin:0;font-family:'PingFang SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f8fa;color:#131212;line-height:1.6}.header{background:#fff;border-bottom:1px solid #ebecf0;height:56px;display:flex;align-items:center}.header-inner{max-width:920px;width:100%;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:12px}.brand{font-size:15px;font-weight:600;color:#131212}.status{font-size:12px;color:#8d8e99;padding-left:12px;border-left:1px solid #ebecf0}.wrap{max-width:920px;margin:0 auto;padding:40px 24px}.page-title{font-size:22px;font-weight:600;margin:0 0 24px;color:#131212}.doc-list{display:flex;flex-direction:column;gap:8px}.doc{display:flex;align-items:center;justify-content:space-between;border:1px solid #ebecf0;border-radius:10px;padding:18px 20px;background:#fff;cursor:pointer;transition:border-color .2s,box-shadow .2s;text-decoration:none}.doc:hover{border-color:#dfe1e8;box-shadow:0 2px 8px rgba(0,0,0,.04)}.doc-info{min-width:0}.doc-name{font-size:15px;font-weight:500;color:#131212;margin:0 0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.doc-meta{font-size:13px;color:#8d8e99;margin:0}.doc-arrow{color:#c0c4cc;font-size:20px;flex-shrink:0;margin-left:12px}.footer{color:#8d8e99;font-size:13px;margin-top:28px;padding:16px 0 0;border-top:1px solid #ebecf0}@media(max-width:640px){.wrap{padding:24px 16px}.doc{padding:14px 16px}}
+</style></head><body><header class="header"><div class="header-inner"><span class="brand">文档助手</span><span class="status">分享</span></div></header><main class="wrap"><h1 class="page-title">分享列表</h1><div class="doc-list">${docs.map(d => `<a href="/view/${encodeURIComponent(d.id)}" class="doc"><div class="doc-info"><p class="doc-name">${escapeHtml(d.name)}</p><p class="doc-meta">更新于 ${d.updatedAt ? new Date(d.updatedAt).toLocaleString() : '未知'}</p></div><span class="doc-arrow">&#8250;</span></a>`).join('')}</div><p class="footer">当前共 ${docs.length} 个文档</p></main></body></html>`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function escapeScriptJson(value) {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
+const OUTLINE_EXPANDED_ICON_PATH = 'M8.47261 5.89815C8.72718 5.68601 8.76157 5.30768 8.54943 5.05311C8.3373 4.79854 7.95896 4.76415 7.70439 4.97629L8.0885 5.43722L8.47261 5.89815ZM6.09975 7.09451L5.71564 7.55545C5.93815 7.74087 6.26135 7.74087 6.48386 7.55545L6.09975 7.09451ZM4.49511 4.97629C4.24054 4.76415 3.8622 4.79854 3.65006 5.05311C3.43793 5.30767 3.47232 5.68601 3.72689 5.89815L4.111 5.43722L4.49511 4.97629ZM8.0885 5.43722L7.70439 4.97629L5.71564 6.63358L6.09975 7.09451L6.48386 7.55545L8.47261 5.89815L8.0885 5.43722ZM6.09975 7.09451L6.48386 6.63358L4.49511 4.97629L4.111 5.43722L3.72689 5.89815L5.71564 7.55545L6.09975 7.09451ZM10.5 6H9.9C9.9 8.15391 8.15391 9.9 6 9.9V10.5V11.1C8.81665 11.1 11.1 8.81665 11.1 6H10.5ZM6 10.5V9.9C3.84609 9.9 2.1 8.15391 2.1 6H1.5H0.9C0.9 8.81665 3.18335 11.1 6 11.1V10.5ZM1.5 6H2.1C2.1 3.84609 3.84609 2.1 6 2.1V1.5V0.9C3.18335 0.9 0.9 3.18335 0.9 6H1.5ZM6 1.5V2.1C8.15391 2.1 9.9 3.84609 9.9 6H10.5H11.1C11.1 3.18335 8.81665 0.9 6 0.9V1.5Z';
+const OUTLINE_COLLAPSED_ICON_PATH = 'M5.89815 3.52739C5.68601 3.27282 5.30768 3.23843 5.05311 3.45057C4.79854 3.6627 4.76415 4.04104 4.97629 4.29561L5.43722 3.9115L5.89815 3.52739ZM7.09451 5.90025L7.55545 6.28436C7.74087 6.06185 7.74087 5.73865 7.55545 5.51614L7.09451 5.90025ZM4.97629 7.50489C4.76415 7.75946 4.79854 8.1378 5.05311 8.34994C5.30767 8.56207 5.68601 8.52768 5.89815 8.27311L5.43722 7.889L4.97629 7.50489ZM5.43722 3.9115L4.97629 4.29561L6.63358 6.28436L7.09451 5.90025L7.55545 5.51614L5.89815 3.52739L5.43722 3.9115ZM7.09451 5.90025L6.63358 5.51614L4.97629 7.50489L5.43722 7.889L5.89815 8.27311L7.55545 6.28436L7.09451 5.90025ZM6 1.5V2.1C8.15391 2.1 9.9 3.84609 9.9 6H10.5H11.1C11.1 3.18335 8.81665 0.9 6 0.9V1.5ZM10.5 6H9.9C9.9 8.15391 8.15391 9.9 6 9.9V10.5V11.1C8.81665 11.1 11.1 8.81665 11.1 6H10.5ZM6 10.5V9.9C3.84609 9.9 2.1 8.15391 2.1 6H1.5H0.9C0.9 8.81665 3.18335 11.1 6 11.1V10.5ZM1.5 6H2.1C2.1 3.84609 3.84609 2.1 6 2.1V1.5V0.9C3.18335 0.9 0.9 3.18335 0.9 6H1.5Z';
+
+function flattenNodes(nodes) {
+  if (!Array.isArray(nodes)) return [];
+  return nodes.flatMap(node => [node, ...flattenNodes(node.children)]);
+}
+
+function isHtmlContentEmpty(html) {
+  return !String(html || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+}
+
+function isNodePreviewable(node, contentMap) {
+  return node && node.includeInPreview !== false && !isHtmlContentEmpty(contentMap?.[node.id]);
+}
+
+function getFirstPreviewableNode(nodes, contentMap) {
+  if (!Array.isArray(nodes)) return null;
+  for (const node of nodes) {
+    if (isNodePreviewable(node, contentMap)) return node;
+    const found = getFirstPreviewableNode(node.children || [], contentMap);
+    if (found) return found;
+  }
+  return null;
+}
+
+function findOutlineNode(nodes, id) {
+  if (!Array.isArray(nodes)) return null;
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    const found = findOutlineNode(n.children || [], id);
+    if (found) return found;
+  }
+  return null;
+}
+
+function resolvePreviewNodeId(nodes, nodeId, contentMap) {
+  if (!nodeId) return getFirstPreviewableNode(nodes, contentMap)?.id || nodes?.[0]?.id || 'root';
+  const node = findOutlineNode(nodes, nodeId);
+  if (!node) return getFirstPreviewableNode(nodes, contentMap)?.id || nodeId;
+  if (isNodePreviewable(node, contentMap)) return node.id;
+  const inSubtree = getFirstPreviewableNode(node.children || [], contentMap);
+  if (inSubtree) return inSubtree.id;
+  return getFirstPreviewableNode(nodes, contentMap)?.id || node.id;
+}
+
+function buildStoredDocHtml(doc) {
+  if (doc.html) return doc.html;
+  if (typeof doc.content === 'string') return doc.content;
+  if (Array.isArray(doc.children) && doc.content && typeof doc.content === 'object') {
+    const parts = flattenNodes(doc.children)
+      .filter(node => isNodePreviewable(node, doc.content))
+      .map(node => {
+        const body = doc.content[node.id] || '<p><br></p>';
+        return `<h1>${escapeHtml(node.name || '未命名文件')}</h1>${body}`;
+      });
+    return parts.join('\n<hr style="border:none;border-top:1px solid #ebecf0;margin:24px 0"/>\n');
+  }
+  return `<h1>${escapeHtml(doc.name || doc.title || '未命名文档')}</h1>`;
+}
+
+function buildDocSections(doc) {
+  if (!Array.isArray(doc.children) || !doc.content || typeof doc.content !== 'object') {
+    return [{ id: 'root', name: doc.name || doc.title || '未命名文档', html: buildStoredDocHtml(doc) }];
+  }
+  return flattenNodes(doc.children)
+    .filter(node => isNodePreviewable(node, doc.content))
+    .map(node => {
+      const html = doc.content[node.id] || '<p><br></p>';
+      return {
+        id: node.id,
+        name: node.name || '未命名文件',
+        html: String(html).trim().startsWith('<h1') ? html : `<h1>${escapeHtml(node.name || '未命名文件')}</h1>${html}`,
+      };
+    });
+}
+
+function buildDocViewPage(doc) {
+  const title = doc.name || doc.title || '文档助手';
+  const sections = buildDocSections(doc);
+  const sectionMap = sections.reduce((acc, section) => {
+    acc[section.id] = section;
+    return acc;
+  }, {});
+  const initialNodeId = resolvePreviewNodeId(doc.children || [], sections[0]?.id, doc.content);
+  const fallbackHtml = sectionMap[initialNodeId]?.html || sections[0]?.html || `<h1>${escapeHtml(title)}</h1><p>暂无内容</p>`;
+
+  const buildTreeHtml = (nodes, depth = 0) => {
+    if (!Array.isArray(nodes)) return '';
+    return nodes.map(n => {
+      const indent = depth * 16;
+      const hasChildren = n.children && n.children.length > 0;
+      const childrenHtml = hasChildren ? `<div class="tree-children">${buildTreeHtml(n.children, depth + 1)}</div>` : '';
+      const toggleIcon = hasChildren ? `<svg class="tree-toggle-icon" fill="none" viewBox="0 0 12 12"><path class="tree-toggle-path" d="${OUTLINE_COLLAPSED_ICON_PATH}" fill="currentColor"></path></svg>` : '';
+      const previewable = isNodePreviewable(n, doc.content) ? '1' : '0';
+      return `<div class="tree-node" data-node-id="${escapeHtml(n.id)}" data-previewable="${previewable}"><div class="tree-item" data-node-id="${escapeHtml(n.id)}" data-previewable="${previewable}" style="padding-left:${indent + 12}px"><button class="tree-toggle" type="button" aria-label="展开或收起" data-expanded-path="${OUTLINE_EXPANDED_ICON_PATH}" data-collapsed-path="${OUTLINE_COLLAPSED_ICON_PATH}" ${hasChildren ? '' : 'disabled'}>${toggleIcon}</button><span class="tree-name">${escapeHtml(n.name || '未命名')}</span></div>${childrenHtml}</div>`;
+    }).join('');
+  };
+  const docTreeHtml = doc.children && doc.children.length > 0
+    ? `<aside class="sidebar-left"><div class="doc-tree"><div class="tree-header">${escapeHtml(title)}</div>${buildTreeHtml(doc.children)}</div></aside>`
+    : '';
+
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} - 文档助手</title><style>
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{font-family:'PingFang SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;color:#131212;line-height:1.6;min-height:100vh;overflow-y:auto}
+body::-webkit-scrollbar{width:6px}body::-webkit-scrollbar-thumb{background:#d0d1d6;border-radius:3px}body::-webkit-scrollbar-track{background:transparent}
+.shell{display:grid;grid-template-columns:${docTreeHtml ? '260px ' : ''}minmax(0,760px) 220px;column-gap:48px;min-height:100vh;max-width:1320px;margin:0 auto}
+.sidebar-left{overflow-y:auto;padding:20px 24px 20px 0;position:sticky;top:0;height:100vh;border-right:1px solid #ebecf0}
+.sidebar-left::-webkit-scrollbar{width:4px}.sidebar-left::-webkit-scrollbar-thumb{background:#d0d1d6;border-radius:2px}.sidebar-left::-webkit-scrollbar-track{background:transparent}
+.doc-tree{}.tree-header{font-size:15px;font-weight:600;color:#131212;padding:0 12px 12px;border-bottom:1px solid #ebecf0;margin-bottom:8px}.tree-item{display:flex;align-items:center;gap:6px;padding:7px 12px;cursor:pointer;font-size:13px;color:#303133;transition:background .15s;border-radius:8px}.tree-item:hover{background:#f5f6f8}.tree-item.active{background:#eef0f5;color:#131212;font-weight:500}.tree-toggle{width:20px;height:20px;border:none;border-radius:4px;background:transparent;color:#8d8e99;padding:0;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}.tree-toggle-icon{width:12px;height:12px;display:block}.tree-toggle:disabled{cursor:default}.tree-item.active .tree-toggle:not(:disabled){background:#dadbdf;color:#131212}.tree-children{display:none}.tree-node.expanded>.tree-children{display:block}.tree-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.content{overflow:visible;padding:32px 0 80px;height:auto;max-width:none;min-width:0}
+.content::-webkit-scrollbar{width:4px}.content::-webkit-scrollbar-thumb{background:#d0d1d6;border-radius:2px}.content::-webkit-scrollbar-track{background:transparent}
+.content h1{font-size:28px;line-height:1.35;font-weight:600;margin:0 0 24px;color:#131212;letter-spacing:-.01em}
+.content h2{font-size:22px;line-height:1.4;font-weight:600;margin:36px 0 16px;color:#131212}
+.content h3{font-size:18px;line-height:1.5;font-weight:600;margin:28px 0 12px;color:#131212}
+.content h4,.content h5,.content h6{font-size:16px;line-height:1.55;font-weight:600;margin:24px 0 10px;color:#131212}
+.content p{font-size:15px;line-height:1.85;margin:12px 0;color:#303133}
+.content a{color:#134CFF;text-decoration:underline;text-underline-offset:2px}
+.content ul,.content ol{padding-left:24px;margin:12px 0}.content li{font-size:15px;line-height:1.8;margin:4px 0}
+.content ul[data-type="taskList"],.content ul.doc-task-list{list-style:none;padding-left:0;margin:12px 0}
+.content li[data-type="taskItem"],.content li.doc-task-item{list-style:none;display:flex;gap:8px;align-items:flex-start;margin:4px 0;padding-left:0}
+.content li[data-type="taskItem"]>label,.content li.doc-task-item>label{margin-top:2px;flex-shrink:0}
+.content li[data-type="taskItem"]>div,.content li.doc-task-item>div{flex:1;min-width:0}
+.content li[data-type="taskItem"]>div>p,.content li.doc-task-item>div>p{margin:0}
+.content [data-task-item="true"]{display:flex;align-items:flex-start;gap:8px;margin:4px 0;list-style:none}
+.content table{border-collapse:collapse;width:100%;margin:16px 0}.content td,.content th{border:1px solid #eef0f5;padding:8px 12px;text-align:left;font-size:14px}.content tr:nth-child(odd) td,.content tr:nth-child(odd) th{background:rgba(238,240,245,.502)}
+.content img{max-width:100%;border-radius:8px;border:1px solid #ebecf0}.content blockquote{border-left:3px solid #134CFF;background:#f7f8fa;margin:16px 0;padding:12px 20px;color:#606266;border-radius:0 8px 8px 0}
+.content pre{background:#f5f6f8;border:1px solid #ebecf0;border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;line-height:1.7;position:relative;margin:16px 0}.content pre code{font-family:'SF Mono',Menlo,Monaco,Consolas,monospace;font-size:13px;line-height:1.7}.content hr{border:none;border-top:1px solid #ebecf0;margin:24px 0}
+.copy-btn{position:absolute;top:8px;right:8px;z-index:2;height:26px;padding:0 10px;border:none;border-radius:6px;background:rgba(255,255,255,.85);backdrop-filter:blur(4px);color:#707277;font-size:12px;cursor:pointer;display:none;align-items:center;font-family:inherit;transition:color .15s}.content pre:hover .copy-btn{display:flex}.copy-btn:hover{color:#131212;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.sidebar-right{overflow-y:auto;padding:32px 0 0;position:sticky;top:24px;align-self:start;max-height:calc(100vh - 48px)}.sidebar-right::-webkit-scrollbar{width:4px}.sidebar-right::-webkit-scrollbar-thumb{background:#d0d1d6;border-radius:2px}.sidebar-right::-webkit-scrollbar-track{background:transparent}
+.toc-header{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#131212;padding:0 12px 12px}.toc-hamburger{font-size:14px;color:#8d8e99}.toc-item{display:block;line-height:1.8;text-decoration:none;padding:4px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:color .15s}.toc-item:hover{color:#131212!important}.toc-item.active{color:#134CFF!important;font-weight:600!important}
+@media(max-width:860px){.sidebar-left,.sidebar-right{display:none}.shell{grid-template-columns:1fr;max-width:none}.content{padding:24px 20px}}
+</style></head><body><div class="shell">${docTreeHtml}<main class="content">${fallbackHtml}</main><aside class="sidebar-right"><div class="toc-header"><span class="toc-hamburger">≡</span>在本页</div><div id="toc-list"></div></aside></div><script>
+window.__DOC_SECTIONS__=${escapeScriptJson(sectionMap)};
+window.__DOC_INITIAL__=${escapeScriptJson(initialNodeId)};
+(function(){
+var sections=window.__DOC_SECTIONS__||{};
+var content=document.querySelector('.content');
+var tocList=document.getElementById('toc-list');
+function escapeText(s){return String(s||'').replace(/[&<>\"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]})}
+function slug(s){return (s||'heading').replace(/[^a-zA-Z\u4e00-\u9fff0-9]/g,'-').replace(/^-+|-+$/g,'').toLowerCase()||'heading'}
+function updateActiveToc(){if(!content||!tocList)return;var headings=Array.prototype.slice.call(content.querySelectorAll('h1,h2,h3,h4,h5,h6'));var active=headings[0];var top=window.scrollY+48;headings.forEach(function(h){if(h.getBoundingClientRect().top+window.scrollY<=top)active=h});tocList.querySelectorAll('.toc-item').forEach(function(a){a.classList.toggle('active',active&&a.getAttribute('href')==='#'+active.id)})}
+function buildToc(){if(!content||!tocList)return;var ids={};var items=[];content.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(function(h){var text=(h.textContent||'').trim();if(!text)return;var key=slug(text);var count=ids[key]||0;ids[key]=count+1;var id=count>0?key+'-'+count:key;h.id=id;items.push({level:Number(h.tagName.slice(1)),text:text,id:id})});tocList.innerHTML=items.map(function(i){var indent=(i.level-1)*12;var size=i.level===1?'14px':'13px';var weight=i.level===1?'600':'400';var color=i.level===1?'#131212':'#8d8e99';return '<a href="#'+i.id+'" class="toc-item" style="padding-left:'+(indent+12)+'px;font-size:'+size+';font-weight:'+weight+';color:'+color+'">'+escapeText(i.text)+'</a>'}).join('');updateActiveToc()}
+function bindCopy(){content.querySelectorAll('pre').forEach(function(p){if(p.querySelector('.copy-btn'))return;var b=document.createElement('button');b.className='copy-btn';b.textContent='复制';b.addEventListener('click',function(){var c=(p.querySelector('code')||{}).textContent||p.textContent||'';navigator.clipboard.writeText(c).then(function(){b.textContent='已复制';setTimeout(function(){b.textContent='复制'},2000)})});p.appendChild(b)})}
+function updateTreeIcon(node){var btn=node&&node.querySelector('.tree-toggle:not(:disabled)');var path=btn&&btn.querySelector('.tree-toggle-path');if(path)path.setAttribute('d',node.classList.contains('expanded')?btn.getAttribute('data-expanded-path'):btn.getAttribute('data-collapsed-path'))}
+function resolveId(id){if(sections[id])return id;var start=document.querySelector('.tree-node[data-node-id="'+CSS.escape(id||'')+'"]');function firstIn(node){if(!node)return null;if(node.getAttribute('data-previewable')==='1'&&sections[node.getAttribute('data-node-id')])return node.getAttribute('data-node-id');var kids=node.querySelectorAll(':scope > .tree-children > .tree-node');for(var i=0;i<kids.length;i++){var f=firstIn(kids[i]);if(f)return f}return null}var from=firstIn(start);if(from)return from;for(var k in sections){if(Object.prototype.hasOwnProperty.call(sections,k))return k}return id}
+function selectNode(id){var real=resolveId(id);var s=sections[real];if(!s)return;if(content)content.innerHTML=s.html||'<h1>'+escapeText(s.name)+'</h1><p>暂无内容</p>';document.querySelectorAll('.tree-item').forEach(function(el){el.classList.toggle('active',el.getAttribute('data-node-id')===real)});var node=document.querySelector('.tree-node[data-node-id="'+CSS.escape(real)+'"]');while(node){node.classList.add('expanded');updateTreeIcon(node);node=node.parentElement&&node.parentElement.closest('.tree-node')}buildToc();bindCopy();window.scrollTo({top:0})}
+document.querySelectorAll('.tree-item').forEach(function(item){item.addEventListener('click',function(e){var target=e.target;var toggle=target&&target.closest&&target.closest('.tree-toggle');if(toggle){var node=item.closest('.tree-node');if(node&&toggle.disabled!==true){node.classList.toggle('expanded');updateTreeIcon(node)}return}selectNode(item.getAttribute('data-node-id'))})});
+window.addEventListener('scroll',updateActiveToc);
+selectNode(window.__DOC_INITIAL__);
+})();
+</script></body></html>`;
+}
+
+function respondWithDoc(res, docId) {
+  const doc = getDocContent(docId);
+  if (doc) {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.end(buildDocViewPage(doc));
+    return true;
+  }
+  res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end('<h1>文档未找到</h1>');
+  return false;
+}
+
+function startShareServer(port = 6535, docId = null) {
+  if (docId) activeShareDocId = docId;
+  if (shareServer?.listening) return Promise.resolve(shareServer);
+  shareServer = http.createServer((req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    const url = new URL(req.url, `http://localhost:${port}`);
+    const viewMatch = url.pathname.match(/^\/view\/(.+)$/);
+    if (viewMatch) {
+      respondWithDoc(res, decodeURIComponent(viewMatch[1]));
+      return;
+    }
+    if (url.pathname === '/' || url.pathname === '') {
+      if (activeShareDocId) {
+        respondWithDoc(res, activeShareDocId);
+        return;
+      }
+      const docs = getAllDocs();
+      if (docs.length === 1) {
+        respondWithDoc(res, docs[0].id);
+        return;
+      }
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.end(buildSharePage(docs));
+      return;
+    }
+    res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end('<h1>页面未找到</h1>');
+  });
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      shareServer?.off('listening', onListening);
+      shareServer?.off('error', onError);
+    };
+    const onListening = () => {
+      cleanup();
+      resolve(shareServer);
+    };
+    const onError = (error) => {
+      cleanup();
+      try { shareServer?.close(); } catch {}
+      shareServer = null;
+      reject(error);
+    };
+    shareServer.once('listening', onListening);
+    shareServer.once('error', onError);
+    shareServer.listen(port, '0.0.0.0');
+  });
+}
+
+function stopShareServer() {
+  if (shareServer) { try { shareServer.close(); } catch {} shareServer = null; }
+  activeShareDocId = null;
+}
+
+function createWindow() {
+  const appIconPath = path.join(__dirname, '..', 'build', 'icon.png');
+  mainWindow = new BrowserWindow({
+    width: 1400, height: 900, minWidth: 900, minHeight: 600,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+    title: '文档助手',
+    icon: fs.existsSync(appIconPath) ? appIconPath : undefined,
+    show: false,
+  });
+  const isDev = process.argv.includes('--dev');
+  if (isDev) {
+    const devUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
+    mainWindow.loadURL(devUrl);
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+    mainWindow.setMenu(null);
+  }
+  mainWindow.once('ready-to-show', () => mainWindow.show());
+}
+
+app.whenReady().then(() => {
+  createWindow();
+  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+});
+app.on('window-all-closed', () => { stopShareServer(); if (process.platform !== 'darwin') app.quit(); });
+
+ipcMain.handle('get-docs', () => getAllDocs());
+ipcMain.handle('get-doc', (_e, id) => getDocContent(id));
+ipcMain.handle('save-doc', (_e, id, data) => saveDoc(id, data));
+ipcMain.handle('save-doc-to-folder', (_e, id, data) => saveDocToFolder(id, data));
+ipcMain.handle('delete-doc', (_e, id) => deleteDoc(id));
+ipcMain.handle('start-share', async (_e, port, docId) => {
+  const sharePort = port || 6535;
+  await startShareServer(sharePort, docId || null);
+  // 根路径已按 activeShareDocId 直达当前文档详情，链接保持简洁
+  return `http://${getLocalIP()}:${sharePort}`;
+});
+ipcMain.handle('stop-share', () => { stopShareServer(); });
+ipcMain.handle('get-platform', () => process.platform);
+ipcMain.handle('get-version', () => app.getVersion());
+ipcMain.handle('export-html', async (_e, content, defaultName) => {
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: defaultName || 'document.html',
+    filters: [{ name: 'HTML', extensions: ['html'] }]
+  });
+  if (!result.canceled && result.filePath) {
+    fs.writeFileSync(result.filePath, content, 'utf-8');
+    return true;
+  }
+  return false;
+});
+
+ipcMain.handle('export-markdown', async (_e, payload) => {
+  try {
+    const { title, content, defaultName } = normalizeExportPayload(payload);
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: `${sanitizeFileName(defaultName || title || 'document').replace(/\.md$/i, '')}.md`,
+      filters: [{ name: 'Markdown', extensions: ['md'] }]
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    const markdown = contentHtmlToMarkdown(content, createMarkdownImageWriter(result.filePath));
+    fs.writeFileSync(result.filePath, markdown, 'utf-8');
+    return { canceled: false, filePath: result.filePath };
+  } catch (error) {
+    return exportResultFromError(error);
+  }
+});
+
+ipcMain.handle('export-docx', async (_e, payloadOrContent, defaultName) => {
+  try {
+    const { title, content, defaultName: payloadDefaultName, options } = normalizeExportPayload(payloadOrContent, defaultName);
+    const fullHtml = wordHtmlDocument(title, content, options);
+    const buffer = await htmlToDocx(fullHtml, null, { orientation: 'portrait', margins: { top: 720, right: 720, bottom: 720, left: 720 } });
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: `${sanitizeFileName(payloadDefaultName || title || 'document').replace(/\.docx$/i, '')}.docx`,
+      filters: [{ name: 'Word', extensions: ['docx'] }]
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    fs.writeFileSync(result.filePath, buffer);
+    return { canceled: false, filePath: result.filePath };
+  } catch (error) { return exportResultFromError(error); }
+});
+
+ipcMain.handle('export-pdf', async (_e, payloadOrContent, defaultName) => {
+  let pdfWin = null;
+  let tempPath = null;
+  try {
+    const { title, content, defaultName: payloadDefaultName, options } = normalizeExportPayload(payloadOrContent, defaultName);
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: `${sanitizeFileName(payloadDefaultName || title || 'document').replace(/\.pdf$/i, '')}.pdf`,
+      filters: [{ name: 'PDF', extensions: ['pdf'] }]
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    const fullHtml = pdfHtmlDocument(title, content, options);
+    tempPath = path.join(os.tmpdir(), `doc-assistant-pdf-${Date.now()}-${Math.random().toString(36).slice(2)}.html`);
+    fs.writeFileSync(tempPath, fullHtml, 'utf-8');
+    pdfWin = new BrowserWindow({
+      show: false,
+      width: 1024,
+      height: 768,
+      webPreferences: { offscreen: true },
+    });
+    await pdfWin.loadFile(tempPath);
+    await pdfWin.webContents.executeJavaScript(`(async()=>{
+      try{if(document.fonts&&document.fonts.ready)await document.fonts.ready}catch(e){}
+      const imgs=Array.from(document.images||[]);
+      await Promise.all(imgs.map((img)=>new Promise((resolve)=>{
+        const done=()=>resolve();
+        if(img.complete&&img.naturalWidth>0)return resolve();
+        img.addEventListener('load',done,{once:true});
+        img.addEventListener('error',done,{once:true});
+        if(typeof img.decode==='function')img.decode().then(done).catch(done);
+        setTimeout(done,20000);
+      })));
+      await new Promise((r)=>setTimeout(r,120));
+      return true;
+    })()`);
+    const pdfData = await pdfWin.webContents.printToPDF({
+      printBackground: true,
+      pageSize: 'A4',
+      marginsType: 0,
+      margins: { top: 0.55, right: 0.5, bottom: 0.55, left: 0.5 },
+    });
+    fs.writeFileSync(result.filePath, pdfData);
+    return { canceled: false, filePath: result.filePath };
+  } catch (error) { return exportResultFromError(error); }
+  finally {
+    if (pdfWin && !pdfWin.isDestroyed()) pdfWin.close();
+    if (tempPath) {
+      try { fs.unlinkSync(tempPath); } catch {}
+    }
+  }
+});
+
+ipcMain.handle('settings-read', () => {
+  ensureDir(DOCS_DIR);
+  if (!fs.existsSync(SETTINGS_FILE)) {
+    return { fontSize: '15px', lineHeight: '1.8', theme: 'light' };
+  }
+  try { return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8')); }
+  catch { return { fontSize: '15px', lineHeight: '1.8', theme: 'light' }; }
+});
+
+ipcMain.handle('settings-write', (_e, settings) => {
+  ensureDir(DOCS_DIR);
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf-8');
+  return true;
+});
+
+ipcMain.handle('get-doc-html', (_e, docName) => {
+  const doc = getDocContent(docName);
+  if (!doc) return null;
+  return { name: doc.name, html: doc.html || doc.content || '', updatedAt: doc.updatedAt };
+});

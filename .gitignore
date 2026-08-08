@@ -1,0 +1,62 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build / output
+dist/
+build/release/
+out/
+*.local
+
+# Electron builder
+安装包/
+开发包/
+release/
+*.dmg
+*.exe
+*.blockmap
+*.AppImage
+*.deb
+*.rpm
+*.snap
+
+# Logs & cache
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm
+.cache/
+.vite/
+.turbo/
+.eslintcache
+*.tsbuildinfo
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+*~
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# Temporary
+tmp/
+temp/
+*.tmp
+*.temp
