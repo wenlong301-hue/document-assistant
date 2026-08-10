@@ -45,6 +45,7 @@ import { emptyParagraph, escapeHtml, getPlainTextFromHtml, sanitizeHtml } from "
 import { Toast } from "../editor/ui/Toast";
 import { EditorWorkspace } from "../document/EditorWorkspace";
 import { DeleteConfirmModal } from "../document/DeleteConfirmModal";
+import { HelpModal } from "../document/HelpModal";
 import { NewDocModal } from "../document/NewDocModal";
 
 const turndownService = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
@@ -238,7 +239,25 @@ function FrameSave() {
   );
 }
 
-function Frame11({ onOpenShare, onOpenExport, onDelete, onImport, onSave }: { onOpenShare: () => void; onOpenExport: () => void; onDelete: () => void; onImport: () => void; onSave: () => void }) {
+function FrameHelp() {
+  return (
+    <div className="bg-white content-stretch flex flex-col h-[34px] items-start px-[12px] py-[6px] relative rounded-[6px] shrink-0">
+      <div aria-hidden className="absolute border-[#ececec] border-[0.6px] border-solid inset-0 pointer-events-none rounded-[6px]" />
+      <div className="content-stretch flex gap-[8px] items-center relative shrink-0">
+        <div className="relative shrink-0 size-[16px]">
+          <svg className="absolute block inset-0 size-full" fill="none" viewBox="0 0 16 16">
+            <circle cx="8" cy="8" r="6.2" stroke="black" strokeWidth="1.2" />
+            <path d="M6.6 6.2c0-1 .8-1.8 1.8-1.8s1.8.7 1.8 1.7c0 .9-.6 1.3-1.2 1.7-.4.2-.6.4-.6.8v.4" stroke="black" strokeLinecap="round" strokeWidth="1.2" />
+            <circle cx="8" cy="11.4" r="0.7" fill="black" />
+          </svg>
+        </div>
+        <p className="[word-break:break-word] font-['PingFang_SC:Regular',sans-serif] leading-[normal] not-italic relative shrink-0 text-[14px] text-black whitespace-nowrap">帮助</p>
+      </div>
+    </div>
+  );
+}
+
+function Frame11({ onOpenShare, onOpenExport, onDelete, onImport, onSave, onOpenHelp }: { onOpenShare: () => void; onOpenExport: () => void; onDelete: () => void; onImport: () => void; onSave: () => void; onOpenHelp: () => void }) {
   return (
     <div className="absolute content-stretch flex h-[66px] items-center justify-between left-0 right-0 pl-[20px] pr-[8px] py-[16px] top-0">
       <Frame5 />
@@ -253,6 +272,7 @@ function Frame11({ onOpenShare, onOpenExport, onDelete, onImport, onSave }: { on
           <Frame12 />
         </div>
         <div className="cursor-pointer transition-all duration-150 hover:bg-[#EBECF0] active:bg-[#dddee3] active:scale-95 rounded-[6px]" onClick={onDelete}><Frame14 /></div>
+        <div className="cursor-pointer transition-all duration-150 hover:bg-[#EBECF0] active:bg-[#dddee3] active:scale-95 rounded-[6px]" onClick={onOpenHelp}><FrameHelp /></div>
       </div>
     </div>
   );
@@ -1216,6 +1236,7 @@ export default function DocumentAssistant() {
   const [docDeleteConfirm, setDocDeleteConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [shared, setShared] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
   const [shareBusy, setShareBusy] = useState(false);
   const [shareError, setShareError] = useState("");
   const [showExportModal, setShowExportModal] = useState(false);
@@ -1750,7 +1771,7 @@ export default function DocumentAssistant() {
     <div className="bg-[#f7f8fa] relative size-full" data-name="首页-文档模式">
       <EditorWorkspace docName={selectedDoc} mode={mode} selectedNode={selectedNode} nodeDepth={selectedNodeDepth} nodeContent={selectedNode ? getNodeContent(selectedDoc, selectedNode.id) : emptyParagraph} onTitleChange={handleTitleChange} theme={theme} fontSize={fontSize} lineHeight={lineHeight} sidebarWidth={276}
         onContentChange={handleNodeContentChange} />
-      <Frame11 onOpenShare={() => setShowShareModal(true)} onOpenExport={() => setShowExportModal(true)} onDelete={handleTopBarDelete} onImport={() => importInputRef.current?.click()} onSave={handleSaveToFolder} />
+      <Frame11 onOpenShare={() => setShowShareModal(true)} onOpenExport={() => setShowExportModal(true)} onDelete={handleTopBarDelete} onImport={() => importInputRef.current?.click()} onSave={handleSaveToFolder} onOpenHelp={() => setShowHelpModal(true)} />
       <input ref={importInputRef} type="file" accept=".mdoc,.md,.txt,.docx" className="hidden" onChange={handleImport} />
       <Group1 value={searchQuery} onChange={setSearchQuery} mode={mode} />
       {mode === "document" ? (
@@ -1791,6 +1812,7 @@ export default function DocumentAssistant() {
           onClose={() => setShowShareModal(false)}
         />
       )}
+      {showHelpModal && <HelpModal onClose={() => setShowHelpModal(false)} />}
       {modal?.type === "new" && (
         <NewDocModal
           title="新建文档"

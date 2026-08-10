@@ -1,0 +1,247 @@
+import { useEffect, useState, type ReactNode } from "react";
+
+type HelpSection = {
+  id: string;
+  title: string;
+  body: ReactNode;
+};
+
+const SECTIONS: HelpSection[] = [
+  {
+    id: "intro",
+    title: "产品简介",
+    body: (
+      <>
+        <p>文档助手是一款多级文档写作工具：左侧管理文档与大纲树，右侧富文本编辑，支持局域网分享预览，以及 HTML / Markdown / Word / PDF 导出。</p>
+        <p>原生格式为 <code>.mdoc</code>（JSON）。适合产品说明、会议纪要、技术方案、分层知识库等场景。</p>
+      </>
+    ),
+  },
+  {
+    id: "quickstart",
+    title: "快速开始",
+    body: (
+      <ol>
+        <li>左侧点 <strong>新建文档</strong>，输入名称并确定。</li>
+        <li>进入 <strong>大纲</strong> 模式，默认带有同名根节点。</li>
+        <li>用 <strong>新建文件 / 添加子文档</strong> 搭好章节结构。</li>
+        <li>选中节点后在右侧编辑器写作（工具栏、斜杠命令 <code>/</code>、Markdown 快捷输入）。</li>
+        <li>内容会自动保存；可用顶栏 <strong>保存 / 分享 / 导出</strong>。</li>
+      </ol>
+    ),
+  },
+  {
+    id: "layout",
+    title: "界面说明",
+    body: (
+      <ul>
+        <li><strong>顶栏</strong>：保存、导入、导出、分享、删除、帮助</li>
+        <li><strong>左侧</strong>：搜索、文档/大纲切换、文档列表或大纲树、分享状态</li>
+        <li><strong>右侧</strong>：标题 + 富文本编辑器（大纲模式）</li>
+        <li><strong>底栏</strong>：保存状态、字数统计、页内大纲</li>
+      </ul>
+    ),
+  },
+  {
+    id: "docs",
+    title: "文档管理",
+    body: (
+      <ul>
+        <li><strong>文档模式</strong>：管理文档列表；<strong>大纲模式</strong>：编辑结构与正文。</li>
+        <li><strong>导入</strong>：支持 <code>.mdoc</code> / <code>.md</code> / <code>.txt</code> / <code>.docx</code>。</li>
+        <li><strong>保存</strong>：桌面端可选文件夹另存 <code>.mdoc</code>；Web 端下载文件。</li>
+        <li>桌面端默认目录：用户「文档」下的 <code>DocAssistant</code> 文件夹。</li>
+        <li>删除不可撤销，请谨慎操作。</li>
+      </ul>
+    ),
+  },
+  {
+    id: "outline",
+    title: "大纲结构",
+    body: (
+      <ul>
+        <li>节点菜单：添加子文档、重命名、克隆、删除、导出 HTML（含子文档）。</li>
+        <li><strong>预览时隐藏/显示本层</strong>：控制分享与导出 HTML 是否收录该节点。</li>
+        <li>支持拖拽排序；根节点不能拖到非根下。</li>
+        <li>层级约最多 6 层；空节点或隐藏节点通常不出现在预览章节中。</li>
+      </ul>
+    ),
+  },
+  {
+    id: "editor",
+    title: "编辑写作",
+    body: (
+      <ul>
+        <li>工具栏：标题、字体字号、加粗斜体、颜色、列表、对齐、引用/代码块、链接、图片/视频/附件、表格等。</li>
+        <li>空行输入 <code>/</code> 打开斜杠命令；支持 Markdown 行首快捷（如 <code>#</code>、<code>-</code>、<code>&gt;</code>）。</li>
+        <li>链接：<code>Ctrl/Cmd + K</code>。表格行 1–20、列 1–10。</li>
+        <li>图片：PNG/JPEG/WebP/GIF（不支持 SVG）；源文件建议 ≤20MB。</li>
+        <li>视频 ≤20MB；附件 ≤10MB。PDF 导出不含视频。</li>
+      </ul>
+    ),
+  },
+  {
+    id: "share",
+    title: "局域网分享",
+    body: (
+      <ul>
+        <li>桌面端开启分享后，同一 Wi-Fi 可用浏览器访问（端口 <strong>6535</strong>）。</li>
+        <li>电脑与文档助手需保持开启；关闭分享或退出后链接失效。</li>
+        <li>预览页含多级大纲与「在本页」目录；手机可用顶栏抽屉切换章节。</li>
+        <li>Web 端仅能生成本机预览/下载 HTML，不能提供真局域网服务。</li>
+      </ul>
+    ),
+  },
+  {
+    id: "export",
+    title: "导出",
+    body: (
+      <ul>
+        <li>范围：<strong>当前页</strong>（当前节点及子集）或 <strong>整个文档</strong>。</li>
+        <li>格式：HTML（带导航预览页）、Markdown、Word（.docx）、PDF。</li>
+        <li>列表/大纲菜单可快捷「导出 HTML」。</li>
+      </ul>
+    ),
+  },
+  {
+    id: "shortcuts",
+    title: "常用快捷键",
+    body: (
+      <ul>
+        <li><code>Ctrl/Cmd + S</code>：保存状态提示</li>
+        <li><code>Ctrl/Cmd + K</code>：插入链接</li>
+        <li><code>/</code>（行首）：斜杠命令</li>
+        <li>Markdown 行首 + 空格：标题/列表/引用/代码块</li>
+        <li><code>Esc</code> 或 <code>Ctrl/Cmd + Enter</code>：退出代码块</li>
+      </ul>
+    ),
+  },
+  {
+    id: "faq",
+    title: "常见问题",
+    body: (
+      <ul>
+        <li><strong>macOS/Windows 提示未知开发者？</strong> 当前安装包未签名，请右键打开或允许仍要运行。</li>
+        <li><strong>手机打不开分享链接？</strong> 确认桌面端已开启分享、同一 Wi-Fi、防火墙放行 6535、链接为局域网 IP。</li>
+        <li><strong>预览缺章节？</strong> 节点可能为空或设置了「预览时隐藏本层」；请重新分享/导出。</li>
+        <li><strong>浏览器存储失败？</strong> 媒体过大，请减少图片视频或改用桌面端并导出备份。</li>
+      </ul>
+    ),
+  },
+];
+
+export function HelpModal({ onClose }: { onClose: () => void }) {
+  const [version, setVersion] = useState("0.1.1");
+  const [activeId, setActiveId] = useState(SECTIONS[0].id);
+
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    if (api?.getVersion) {
+      api.getVersion().then((v: string) => v && setVersion(v)).catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const active = SECTIONS.find((s) => s.id === activeId) ?? SECTIONS[0];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/20" />
+      <div
+        className="relative bg-white rounded-[16px] w-[min(920px,94vw)] h-[min(720px,88vh)] shadow-[0px_16px_32px_-8px_rgba(36,36,36,0.12)] border border-[#e0e0e0] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-[24px] h-[56px] shrink-0 border-b border-[#ebecf0]">
+          <div className="flex items-center gap-[10px] min-w-0">
+            <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[16px] font-medium leading-[normal]">使用帮助</p>
+            <span className="text-[12px] text-[#8d8e99] font-['PingFang_SC:Regular',sans-serif] shrink-0">v{version}</span>
+          </div>
+          <button
+            className="size-[28px] flex items-center justify-center rounded-[6px] text-[#131212] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors cursor-pointer"
+            onClick={onClose}
+            aria-label="关闭"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M13.3333 2.66667L2.66667 13.3333M13.3333 13.3333L2.66667 2.66667" stroke="currentColor" strokeLinecap="round" strokeWidth="1.2" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex flex-1 min-h-0">
+          <aside className="w-[200px] shrink-0 border-r border-[#ebecf0] overflow-y-auto py-[12px] px-[10px] bg-[#fafbfc]">
+            {SECTIONS.map((section) => {
+              const selected = section.id === activeId;
+              return (
+                <button
+                  key={section.id}
+                  type="button"
+                  onClick={() => setActiveId(section.id)}
+                  className={`w-full text-left rounded-[8px] px-[12px] py-[9px] text-[13px] mb-[2px] transition-colors cursor-pointer font-['PingFang_SC:Regular',sans-serif] ${
+                    selected
+                      ? "bg-[#eef0f5] text-[#131212] font-medium"
+                      : "text-[#606266] hover:bg-[#f0f1f5]"
+                  }`}
+                >
+                  {section.title}
+                </button>
+              );
+            })}
+          </aside>
+
+          <main className="flex-1 min-w-0 overflow-y-auto px-[28px] py-[20px]">
+            <h2 className="font-['PingFang_SC:Medium',sans-serif] text-[18px] text-[#131212] font-medium mb-[14px] leading-[1.4]">
+              {active.title}
+            </h2>
+            <div className="help-body font-['PingFang_SC:Regular',sans-serif] text-[14px] text-[#303133] leading-[1.75]">
+              {active.body}
+            </div>
+            <div className="mt-[28px] pt-[16px] border-t border-[#ebecf0] text-[12px] text-[#8d8e99] font-['PingFang_SC:Regular',sans-serif] leading-[1.6]">
+              完整手册见仓库内 <code className="text-[#606266]">使用手册.md</code>
+              {" · "}
+              <a
+                className="text-[#134CFF] hover:underline"
+                href="https://github.com/wenlong301-hue/document-assistant/releases"
+                target="_blank"
+                rel="noreferrer"
+              >
+                下载安装包
+              </a>
+              {" · "}
+              <a
+                className="text-[#134CFF] hover:underline"
+                href="https://github.com/wenlong301-hue/document-assistant/issues"
+                target="_blank"
+                rel="noreferrer"
+              >
+                问题反馈
+              </a>
+            </div>
+          </main>
+        </div>
+
+        <style>{`
+          .help-body p { margin: 0 0 10px; }
+          .help-body ul, .help-body ol { margin: 0 0 10px; padding-left: 20px; }
+          .help-body li { margin: 4px 0; }
+          .help-body code {
+            font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+            font-size: 12.5px;
+            background: #f5f6f8;
+            border: 1px solid #ebecf0;
+            border-radius: 4px;
+            padding: 0 5px;
+            color: #303133;
+          }
+          .help-body strong { font-weight: 600; color: #131212; }
+        `}</style>
+      </div>
+    </div>
+  );
+}
