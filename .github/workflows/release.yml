@@ -75,18 +75,114 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p publish
-          find release-assets -type f \( \
-            -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o \
-            -name '*.blockmap' -o -name '*.yml' -o -name '*.yaml' \
-          \) -print0 | while IFS= read -r -d '' f; do
-            cp -f "$f" "publish/$(basename "$f")"
-          done
+
+          # 仅发布用户安装包 + electron-updater 元数据（Win + Mac）
+          # 排除 electron-builder 内部辅助文件（default.exe / elevate.exe 等）
+          while IFS= read -r -d '' f; do
+            base="$(basename "$f")"
+            case "$base" in
+              DocAssistant-*-win-*.exe|\
+              DocAssistant-*-mac-*.dmg|\
+              DocAssistant-*-mac-*.zip|\
+              DocAssistant-*-win-*.exe.blockmap|\
+              DocAssistant-*-mac-*.dmg.blockmap|\
+              DocAssistant-*-mac-*.zip.blockmap|\
+              latest.yml|latest-mac.yml|app-update.yml)
+                cp -f "$f" "publish/$base"
+                ;;
+            esac
+          done < <(find release-assets -type f -print0)
+
+          echo "=== publish contents ==="
           ls -la publish
-          count=$(find publish -type f | wc -l | tr -d ' ')
-          if [ "$count" = "0" ]; then
+
+          win_count=$(find publish -type f -name 'DocAssistant-*-win-*.exe' | wc -l | tr -d ' ')
+          mac_count=$(find publish -type f \( -name 'DocAssistant-*-mac-*.dmg' -o -name 'DocAssistant-*-mac-*.zip' \) | wc -l | tr -d ' ')
+          total=$(find publish -type f | wc -l | tr -d ' ')
+
+          if [ "$total" = "0" ]; then
             echo "No release files found"
             exit 1
           fi
+          if [ "$win_count" = "0" ]; then
+            echo "Missing Windows installer (DocAssistant-*-win-*.exe)"
+            exit 1
+          fi
+          if [ "$mac_count" = "0" ]; then
+            echo "Missing macOS installer (DocAssistant-*-mac-*.dmg or .zip)"
+            exit 1
+          fi
+
+          echo "win_count=$win_count" >> "$GITHUB_OUTPUT"
+          echo "mac_count=$mac_count" >> "$GITHUB_OUTPUT"
+
+      - name: Extract CHANGELOG for this version
+        id: changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          CHANGELOG_FILE="CHANGELOG.md"
+          OUT="release-notes.md"
+
+          if [ ! -f "$CHANGELOG_FILE" ]; then
+            echo "CHANGELOG.md not found, using fallback notes" >&2
+            {
+              echo "## 文档助手 ${TAG}"
+              echo ""
+              echo "详见仓库提交记录。"
+            } > "$OUT"
+            echo "path=$OUT" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 截取 ## [x.y.z] 小节（到下一个 ## [ 或文件末尾）
+          awk -v ver="$VERSION" '
+            BEGIN { capturing = 0 }
+            /^## \[/ {
+              if ($0 ~ "^## \\[" ver "\\]") {
+                capturing = 1
+                print
+                next
+              }
+              if (capturing) exit
+            }
+            capturing { print }
+          ' "$CHANGELOG_FILE" > "$OUT.tmp"
+
+          if [ ! -s "$OUT.tmp" ]; then
+            echo "No CHANGELOG section for ${VERSION}, using header fallback" >&2
+            {
+              echo "## 文档助手 ${TAG}"
+              echo ""
+              echo "未在 CHANGELOG.md 中找到 \`${VERSION}\` 小节，请补充后再发版。"
+              echo ""
+              echo "完整变更见仓库 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${TAG}/CHANGELOG.md)。"
+            } > "$OUT"
+          else
+            {
+              echo "## 文档助手 ${TAG}"
+              echo ""
+              cat "$OUT.tmp"
+              echo ""
+              echo "---"
+              echo ""
+              echo "### 下载说明"
+              echo ""
+              echo "| 平台 | 文件 |"
+              echo "|------|------|"
+              echo "| Windows | \`DocAssistant-${VERSION}-win-x64.exe\` |"
+              echo "| macOS (Apple 芯片) | \`DocAssistant-${VERSION}-mac-arm64.dmg\` / \`.zip\` |"
+              echo ""
+              echo "完整历史：[CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${TAG}/CHANGELOG.md)"
+            } > "$OUT"
+          fi
+
+          rm -f "$OUT.tmp"
+          echo "=== release notes ==="
+          cat "$OUT"
+          echo "path=$OUT" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -95,7 +191,8 @@ jobs:
           name: 文档助手 ${{ github.ref_name }}
           draft: false
           prerelease: false
-          generate_release_notes: true
+          generate_release_notes: false
+          body_path: ${{ steps.changelog.outputs.path }}
           files: publish/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

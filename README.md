@@ -148,20 +148,26 @@ document-assistant/
 
 ## 发布流程（CI）
 
-推送符合 `v*` 的 tag（如 `v0.1.4`）会触发 GitHub Actions：
+推送符合 `v*` 的 tag（如 `v0.1.5`）会触发 GitHub Actions：
 
 1. 在 `windows-latest` / `macos-latest` 分别 `npm ci` → 构建 → `electron-builder`
-2. 将安装包与 `latest.yml` / `latest-mac.yml` 上传到 GitHub Release「文档助手 {tag}」
-3. 已安装的桌面端会通过 **electron-updater** 读取上述 yml 提示更新
+2. **必须同时产出** Windows 安装包与 macOS 安装包，否则 Release 失败
+3. 从 [CHANGELOG.md](./CHANGELOG.md) 截取当前版本小节，写入 GitHub Release 说明
+4. 上传：
+   - Windows：`DocAssistant-{version}-win-x64.exe` + `latest.yml`
+   - macOS：`DocAssistant-{version}-mac-arm64.dmg` / `.zip` + `latest-mac.yml`
+5. 已安装的桌面端通过 **electron-updater** 读取 yml 提示更新
 
 Workflow：`.github/workflows/release.yml`
 
 本地发版示例：
 
 ```bash
-# 先改 package.json version，再提交
-git tag -a v0.1.4 -m "v0.1.4"
-git push origin v0.1.4
+# 1. 更新 package.json version
+# 2. 在 CHANGELOG.md 顶部新增 ## [x.y.z] - 日期 小节
+# 3. 提交后打 tag 并推送
+git tag -a v0.1.5 -m "v0.1.5"
+git push origin v0.1.5
 ```
 
 ---
@@ -183,6 +189,7 @@ git push origin v0.1.4
 |------|------|
 | [使用手册.md](./使用手册.md) | 面向最终用户的完整操作说明 |
 | 应用内 **帮助** | 顶栏入口，快速查阅功能与 FAQ |
+| [CHANGELOG.md](./CHANGELOG.md) | 版本变更记录 |
 | [Releases](https://github.com/wenlong301-hue/document-assistant/releases) | 安装包下载 |
 | [Issues](https://github.com/wenlong301-hue/document-assistant/issues) | 问题反馈 |
 
