@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import TurndownService from "turndown";
 import mammoth from "mammoth";
@@ -52,6 +52,25 @@ import { UpdateModal, type UpdateInfo, type UpdateProgress } from "../document/U
 const turndownService = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
 turndownService.keep(["table", "thead", "tbody", "tr", "th", "td", "video"]);
 
+function useAutoHideScrollbar(ref: React.RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.classList.add("scroll-auto-hide");
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onScroll = () => {
+      el.classList.add("sb-scrolling");
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => el.classList.remove("sb-scrolling"), 700);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      if (timer) clearTimeout(timer);
+      el.removeEventListener("scroll", onScroll);
+    };
+  }, [ref]);
+}
+
 function Search() {
   return (
     <div className="absolute left-[28px] size-[16px] top-[86px]" data-name="search-01">
@@ -64,13 +83,8 @@ function Search() {
   );
 }
 
-function Group1({ value, onChange, mode }: { value: string; onChange: (v: string) => void; mode: "document" | "outline" }) {
+function Group1({ value, onChange, mode, onEnter }: { value: string; onChange: (v: string) => void; mode: "document" | "outline"; onEnter?: () => void }) {
   const [focused, setFocused] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
-  const handleChange = (v: string) => {
-    clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => onChange(v), 200);
-  };
   return (
     <div className="absolute left-[20px] top-[78px] w-[276px] h-[32px]">
       <div
@@ -87,7 +101,13 @@ function Group1({ value, onChange, mode }: { value: string; onChange: (v: string
           type="text"
           placeholder={mode === "outline" ? "搜索大纲..." : "搜索文档..."}
           value={value}
-          onChange={(e) => handleChange(e.target.value)}
+          autoComplete="off"
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+            e.preventDefault();
+            onEnter?.();
+          }}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           className="absolute inset-0 w-full h-full bg-transparent rounded-[8px] pl-[32px] pr-[8px] text-[14px] text-[#131212] outline-none"
@@ -145,7 +165,7 @@ function Download() {
 
 function Frame8() {
   return (
-    <div className="bg-black content-stretch flex flex-col h-[34px] items-start px-[12px] py-[6px] relative rounded-[6px] shrink-0">
+    <div className="bg-black content-stretch flex flex-col h-[32px] items-center px-[12px] py-[6px] relative rounded-[6px] shrink-0">
       <div className="content-stretch flex gap-[8px] items-center relative shrink-0">
         <Download />
         <p className="[word-break:break-word] font-['PingFang_SC:Regular',sans-serif] leading-[normal] not-italic relative shrink-0 text-[14px] text-white whitespace-nowrap">导入</p>
@@ -168,7 +188,7 @@ function Upload() {
 
 function Frame7() {
   return (
-    <div className="bg-black content-stretch flex flex-col h-[34px] items-start px-[12px] py-[6px] relative rounded-[6px] shrink-0">
+    <div className="bg-black content-stretch flex flex-col h-[32px] items-center px-[12px] py-[6px] relative rounded-[6px] shrink-0">
       <div className="content-stretch flex gap-[8px] items-center relative shrink-0">
         <Upload />
         <p className="[word-break:break-word] font-['PingFang_SC:Regular',sans-serif] leading-[normal] not-italic relative shrink-0 text-[14px] text-white whitespace-nowrap">导出</p>
@@ -191,7 +211,7 @@ function Share() {
 
 function Frame12() {
   return (
-    <div className="bg-white content-stretch flex flex-col h-[34px] items-start px-[12px] py-[6px] relative rounded-[6px] shrink-0">
+    <div className="bg-white content-stretch flex flex-col h-[32px] items-center px-[12px] py-[6px] relative rounded-[6px] shrink-0 cursor-pointer transition-colors hover:bg-[#EBECF0] active:bg-[#dddee3]">
       <div aria-hidden className="absolute border-[#ececec] border-[0.6px] border-solid inset-0 pointer-events-none rounded-[6px]" />
       <div className="content-stretch flex gap-[8px] items-center relative shrink-0">
         <Share />
@@ -215,7 +235,7 @@ function Trash() {
 
 function Frame14() {
   return (
-    <div className="bg-white content-stretch flex flex-col h-[34px] items-start px-[12px] py-[6px] relative rounded-[6px] shrink-0">
+    <div className="bg-white content-stretch flex flex-col h-[32px] items-center px-[12px] py-[6px] relative rounded-[6px] shrink-0 cursor-pointer transition-colors hover:bg-[#EBECF0] active:bg-[#dddee3]">
       <div aria-hidden className="absolute border-[#ececec] border-[0.6px] border-solid inset-0 pointer-events-none rounded-[6px]" />
       <div className="content-stretch flex gap-[8px] items-center relative shrink-0">
         <Trash />
@@ -227,7 +247,7 @@ function Frame14() {
 
 function FrameSave() {
   return (
-    <div className="bg-black content-stretch flex flex-col h-[34px] items-start px-[12px] py-[6px] relative rounded-[6px] shrink-0">
+    <div className="bg-black content-stretch flex flex-col h-[32px] items-center px-[12px] py-[6px] relative rounded-[6px] shrink-0">
       <div className="content-stretch flex gap-[8px] items-center relative shrink-0">
         <div className="relative shrink-0 size-[16px]" data-name="save">
           <svg className="absolute block inset-0 size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 16 16">
@@ -242,7 +262,7 @@ function FrameSave() {
 
 function FrameHelp() {
   return (
-    <div className="bg-white content-stretch flex flex-col h-[34px] items-start px-[12px] py-[6px] relative rounded-[6px] shrink-0">
+    <div className="bg-white content-stretch flex flex-col h-[32px] items-center px-[12px] py-[6px] relative rounded-[6px] shrink-0 cursor-pointer transition-colors hover:bg-[#EBECF0] active:bg-[#dddee3]">
       <div aria-hidden className="absolute border-[#ececec] border-[0.6px] border-solid inset-0 pointer-events-none rounded-[6px]" />
       <div className="content-stretch flex gap-[8px] items-center relative shrink-0">
         <div className="relative shrink-0 size-[16px]">
@@ -445,9 +465,12 @@ function Frame16({ docs, selected, onSelect, onRename, onDelete, onExport, onEnt
   onExport: (name: string) => void;
   onEnterOutline: () => void;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useAutoHideScrollbar(scrollRef);
   return (
     <>
-      <div className="absolute content-stretch flex flex-col gap-[4px] items-start left-[20px] top-[210px] w-[276px]"
+      <div className="scroll-auto-hide absolute content-stretch flex flex-col gap-[4px] items-start left-[20px] top-[210px] w-[276px]"
+        ref={scrollRef}
         style={{ maxHeight: "calc(100% - 250px)", overflowY: "auto" }}>
         {docs.map((name) => (
           <DocItem
@@ -508,6 +531,20 @@ function insertNodeAfter(nodes: OutlineNode[], node: OutlineNode, targetId: stri
   return insert(nodes)[0];
 }
 
+function filterOutlineNodes(nodes: OutlineNode[], query: string): OutlineNode[] {
+  const q = query.toLowerCase();
+  const walk = (arr: OutlineNode[]): OutlineNode[] => {
+    const out: OutlineNode[] = [];
+    for (const n of arr) {
+      const self = n.name.toLowerCase().includes(q);
+      const children = walk(n.children);
+      if (self || children.length > 0) out.push({ ...n, children });
+    }
+    return out;
+  };
+  return walk(nodes);
+}
+
 type DragState = { sourceId: string; isRootSource: boolean; overId: string } | null;
 
 type OutlineMenuHandlers = {
@@ -523,16 +560,16 @@ type OutlineMenuHandlers = {
   getIncludeInPreview: (id: string) => boolean;
 };
 
-function OutlineTreeNode({ node, depth, selectedId, expandedIds, dragState, onSelect, onToggle, onDragStart, onDragOver, onDrop, onDragEnd, menuHandlers }: {
+function OutlineTreeNode({ node, depth, selectedId, expandedIds, dragState, onSelect, onToggle, onDragStart, onDragOver, onDrop, onDragEnd, menuHandlers, allExpanded }: {
   node: OutlineNode; depth: number; selectedId: string; expandedIds: Set<string>; dragState: DragState;
   onSelect: (id: string) => void; onToggle: (id: string) => void;
   onDragStart: (id: string, isRoot: boolean) => void; onDragOver: (id: string) => void;
   onDrop: (targetId: string, targetIsRoot: boolean) => void; onDragEnd: () => void;
-  menuHandlers: OutlineMenuHandlers;
+  menuHandlers: OutlineMenuHandlers; allExpanded?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const isSelected = node.id === selectedId;
-  const isExpanded = expandedIds.has(node.id);
+  const isExpanded = allExpanded || expandedIds.has(node.id);
   const hasChildren = node.children.length > 0;
   const isRoot = depth === 0;
   const isDragOver = dragState?.overId === node.id && dragState?.sourceId !== node.id;
@@ -623,7 +660,7 @@ function OutlineTreeNode({ node, depth, selectedId, expandedIds, dragState, onSe
         <OutlineTreeNode key={child.id} node={child} depth={depth + 1} selectedId={selectedId}
           expandedIds={expandedIds} dragState={dragState} onSelect={onSelect} onToggle={onToggle}
           onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={onDragEnd}
-          menuHandlers={menuHandlers} />
+          menuHandlers={menuHandlers} allExpanded={allExpanded} />
       ))}
     </>
   );
@@ -700,21 +737,30 @@ function OutlineNodeMenu({ nodeId, includeInPreview, position, onClose, onAddChi
   );
 }
 
-function OutlineTree({ nodes, selectedId, contentMap, onSelect, onUpdateNodes }: {
+function OutlineTree({ nodes, selectedId, contentMap, onSelect, onUpdateNodes, filter = "", enterTick = 0 }: {
   nodes: OutlineNode[]; selectedId: string; contentMap?: DocContentMap;
   onSelect: (id: string) => void; onUpdateNodes: (nodes: OutlineNode[]) => void;
+  filter?: string; enterTick?: number;
 }) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(["root", "1.1", "1.1.1", "1.1.1.1"]));
   const [dragState, setDragState] = useState<DragState>(null);
   const [menuState, setMenuState] = useState<{ id: string; rect: { x: number; y: number } } | null>(null);
   const [renameState, setRenameState] = useState<{ id: string; currentName: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useAutoHideScrollbar(scrollRef);
+  const filtering = filter.trim().length > 0;
+  const filteredNodes = useMemo(() => (filtering ? filterOutlineNodes(nodes, filter.trim()) : nodes), [nodes, filter, filtering]);
+
+  useEffect(() => {
+    if (filtering && enterTick > 0 && filteredNodes.length > 0) onSelect(filteredNodes[0].id);
+  }, [enterTick, filtering, filteredNodes, onSelect]);
 
   const toggle = (id: string) => setExpandedIds((prev) => {
     const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next;
   });
 
-  const handleDragStart = (id: string, isRoot: boolean) => setDragState({ sourceId: id, isRootSource: isRoot, overId: id });
+  const handleDragStart = (id: string, isRoot: boolean) => { if (filtering) return; setDragState({ sourceId: id, isRootSource: isRoot, overId: id }); };
   const handleDragOver = (id: string) => { if (dragState) setDragState({ ...dragState, overId: id }); };
   const handleDrop = (targetId: string, targetIsRoot: boolean) => {
     if (!dragState || dragState.sourceId === targetId) { setDragState(null); return; }
@@ -812,14 +858,18 @@ function OutlineTree({ nodes, selectedId, contentMap, onSelect, onUpdateNodes }:
   return (
     <>
       <div
-        className="absolute content-stretch flex flex-col gap-[4px] items-start left-[20px] top-[210px] w-[276px]"
+        className="scroll-auto-hide absolute content-stretch flex flex-col gap-[4px] items-start left-[20px] top-[210px] w-[276px]"
+        ref={scrollRef}
         style={{ maxHeight: "calc(100% - 250px)", overflowY: "auto" }}
       >
-        {nodes.map((node) => (
+        {filtering && filteredNodes.length === 0 && (
+          <div className="px-[8px] py-[24px] self-stretch text-center text-[13px] text-[#8d8e99] select-none">无匹配结果</div>
+        )}
+        {filteredNodes.map((node) => (
           <OutlineTreeNode key={node.id} node={node} depth={0} selectedId={selectedId}
             expandedIds={expandedIds} dragState={dragState} onSelect={onSelect} onToggle={toggle}
             onDragStart={handleDragStart} onDragOver={handleDragOver} onDrop={handleDrop} onDragEnd={handleDragEnd}
-            menuHandlers={menuHandlers} />
+            menuHandlers={menuHandlers} allExpanded={filtering} />
         ))}
       </div>
       {renameState && (
@@ -1249,6 +1299,7 @@ export default function DocumentAssistant() {
   const [shareError, setShareError] = useState("");
   const [showExportModal, setShowExportModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [outlineSearchEnter, setOutlineSearchEnter] = useState(0);
   const [folderName] = useState("默认文件夹");
   const [mode, setMode] = useState<"document" | "outline">("document");
   const fontSize = "15px";
@@ -1892,6 +1943,17 @@ export default function DocumentAssistant() {
     }
   };
 
+  const handleSearchEnter = () => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return;
+    if (mode === "document") {
+      const matches = docs.filter(d => d.toLowerCase().includes(q));
+      if (matches.length === 1) handleSelectDoc(matches[0]);
+    } else {
+      setOutlineSearchEnter(t => t + 1);
+    }
+  };
+
   const selectedNode = mode === "outline" ? findNode(outlineNodes, selectedNodeId) : null;
   const selectedNodeDepth = mode === "outline" ? findNodeDepth(outlineNodes, selectedNodeId) : 0;
 
@@ -1921,10 +1983,10 @@ export default function DocumentAssistant() {
         onContentChange={handleNodeContentChange} />
       <Frame11 onOpenShare={() => setShowShareModal(true)} onOpenExport={() => setShowExportModal(true)} onDelete={handleTopBarDelete} onImport={() => importInputRef.current?.click()} onSave={handleSaveToFolder} onOpenHelp={() => setShowHelpModal(true)} />
       <input ref={importInputRef} type="file" accept=".mdoc,.md,.txt,.docx" className="hidden" onChange={handleImport} />
-      <Group1 value={searchQuery} onChange={setSearchQuery} mode={mode} />
+      <Group1 value={searchQuery} onChange={setSearchQuery} mode={mode} onEnter={handleSearchEnter} />
       {mode === "document" ? (
         <Frame16
-          docs={searchQuery.trim() ? docs.filter(d => d.includes(searchQuery.trim())) : docs}
+          docs={searchQuery.trim() ? docs.filter(d => d.toLowerCase().includes(searchQuery.trim().toLowerCase())) : docs}
           selected={selectedDoc}
           onSelect={handleSelectDoc}
           onRename={(name) => setModal({ type: "rename", target: name })}
@@ -1933,7 +1995,7 @@ export default function DocumentAssistant() {
           onEnterOutline={handleEnterOutline}
         />
       ) : (
-        <OutlineTree nodes={outlineNodes} selectedId={selectedNodeId} contentMap={docStore[selectedDoc]?.content ?? {}} onSelect={setSelectedNodeId} onUpdateNodes={(nodes) => updateOutlineTree(selectedDoc, nodes)} />
+        <OutlineTree nodes={outlineNodes} selectedId={selectedNodeId} contentMap={docStore[selectedDoc]?.content ?? {}} onSelect={setSelectedNodeId} onUpdateNodes={(nodes) => updateOutlineTree(selectedDoc, nodes)} filter={searchQuery} enterTick={outlineSearchEnter} />
       )}
       <Frame27 onNewDoc={() => setModal({ type: "new" })} onNewFile={() => setModal({ type: "new-file" })} mode={mode} onSwitchMode={handleSwitchMode} />
       <Frame4 folderName={mode === "outline" ? (selectedDoc || folderName) : folderName} />
