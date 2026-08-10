@@ -88,7 +88,7 @@ const SECTIONS: HelpSection[] = [
         <li>桌面端启动后会<strong>自动检查</strong> GitHub Releases 是否有新安装包。</li>
         <li>本页标题旁可点 <strong>检查更新</strong> 手动检查。</li>
         <li>发现新版本可：稍后再说、打开下载页、下载更新（显示进度）。</li>
-        <li>Windows 下载完成后可立即安装并重启；macOS（未签名）会打开安装包，请手动安装。</li>
+        <li>下载完成后点 <strong>立即安装并重启</strong>：Windows / macOS 均会覆盖当前应用（macOS 不会生成第二个应用）。</li>
         <li>「稍后再说」会跳过该版本的启动提示，仍可随时手动检查。</li>
       </ul>
     ),

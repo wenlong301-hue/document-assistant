@@ -1424,7 +1424,15 @@ export default function DocumentAssistant() {
 
   const handleInstallUpdate = useCallback(async () => {
     try {
-      await (window as any).electronAPI?.installUpdate?.();
+      const result = await (window as any).electronAPI?.installUpdate?.();
+      if (result?.mode === "replace-in-place") {
+        setToast({ message: "正在安装新版本并重启…", type: "info" });
+      } else if (result?.mode === "open-installer") {
+        setToast({
+          message: "已打开安装包：请将应用拖入「应用程序」并选择替换，勿保留旧版",
+          type: "info",
+        });
+      }
     } catch (error) {
       setUpdateError(error instanceof Error ? error.message : "安装更新失败");
       setToast({ message: "安装失败，请打开下载页手动安装", type: "error" });

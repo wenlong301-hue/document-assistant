@@ -48,9 +48,7 @@ export function UpdateModal({
   const isMac = info.platform === "darwin" || (typeof navigator !== "undefined" && /Mac/i.test(navigator.platform));
   const percent = Math.max(0, Math.min(100, Math.round(progress?.percent || 0)));
   const primaryLabel = downloaded
-    ? isMac
-      ? "打开安装包"
-      : "立即安装并重启"
+    ? "立即安装并重启"
     : downloading
       ? `下载中 ${percent}%`
       : "下载更新";
@@ -82,7 +80,7 @@ export function UpdateModal({
           </p>
           <p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[13px] leading-[1.6]">
             {isMac
-              ? "macOS 未签名安装包建议下载后手动打开安装；也可前往 GitHub Release 页面获取。"
+              ? "下载完成后将覆盖当前应用并自动重启（不会生成第二个应用）。也可前往 GitHub Release 手动安装。"
               : "可直接下载并安装更新；也可前往 GitHub Release 页面获取安装包。"}
           </p>
 

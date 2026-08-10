@@ -3,9 +3,13 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const os = require('os');
+const { spawn, execFile } = require('child_process');
+const { promisify } = require('util');
 const htmlToDocx = require('html-to-docx');
 const TurndownService = require('turndown');
 const { autoUpdater } = require('electron-updater');
+
+const execFileAsync = promisify(execFile);
 
 let mainWindow;
 let shareServer = null;
@@ -16,6 +20,131 @@ const RELEASE_PAGE_URL = 'https://github.com/wenlong301-hue/document-assistant/r
 const DOCS_DIR = path.join(app.getPath('documents'), 'DocAssistant');
 const RECENT_FILE = path.join(DOCS_DIR, 'recent.json');
 const SETTINGS_FILE = path.join(DOCS_DIR, 'settings.json');
+
+function getMacAppBundlePath() {
+  // process.execPath ≈ /Applications/文档助手.app/Contents/MacOS/文档助手
+  const match = String(process.execPath || '').match(/^(.*\.app)(?=\/Contents\/MacOS\/)/);
+  return match ? match[1] : null;
+}
+
+function findAppBundleInDir(dir) {
+  if (!dir || !fs.existsSync(dir)) return null;
+  const stack = [dir];
+  while (stack.length) {
+    const current = stack.pop();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory() && entry.name.endsWith('.app')) return full;
+      if (entry.isDirectory() && !entry.name.startsWith('.')) stack.push(full);
+    }
+  }
+  return null;
+}
+
+async function clearMacQuarantine(targetPath) {
+  try {
+    await execFileAsync('xattr', ['-cr', targetPath]);
+  } catch {
+    // 未签名包常见，忽略
+  }
+}
+
+async function extractMacUpdatePackage(packagePath, destDir) {
+  ensureDir(destDir);
+  const lower = String(packagePath || '').toLowerCase();
+  if (lower.endsWith('.zip')) {
+    await execFileAsync('ditto', ['-x', '-k', packagePath, destDir]);
+    return findAppBundleInDir(destDir);
+  }
+  if (lower.endsWith('.dmg')) {
+    const mountRoot = path.join(destDir, 'mount');
+    ensureDir(mountRoot);
+    let mountPoint = null;
+    try {
+      const { stdout } = await execFileAsync('hdiutil', [
+        'attach', packagePath, '-nobrowse', '-readonly', '-mountroot', mountRoot,
+      ]);
+      const line = String(stdout || '').split('\n').map((l) => l.trim()).filter(Boolean).pop() || '';
+      const parts = line.split(/\t+/);
+      mountPoint = parts[parts.length - 1] || findAppBundleInDir(mountRoot)?.replace(/\/[^/]+\.app$/, '') || null;
+      if (!mountPoint || !fs.existsSync(mountPoint)) {
+        mountPoint = fs.readdirSync(mountRoot).map((n) => path.join(mountRoot, n)).find((p) => fs.statSync(p).isDirectory()) || null;
+      }
+      if (!mountPoint) throw new Error('无法挂载更新 DMG');
+      const appInDmg = findAppBundleInDir(mountPoint);
+      if (!appInDmg) throw new Error('DMG 中未找到应用');
+      const copied = path.join(destDir, path.basename(appInDmg));
+      await execFileAsync('ditto', [appInDmg, copied]);
+      return copied;
+    } finally {
+      if (mountPoint) {
+        try { await execFileAsync('hdiutil', ['detach', mountPoint, '-quiet']); } catch {}
+      }
+    }
+  }
+  throw new Error('不支持的更新包格式，请使用 zip 或 dmg');
+}
+
+/**
+ * macOS 原地替换当前 .app，避免「打开安装包」拖入后出现双应用（旧 0.1.3 + 新 0.1.4）。
+ * 退出后由后台脚本覆盖并重新打开。
+ */
+async function installMacUpdateInPlace(packagePath) {
+  const currentApp = getMacAppBundlePath();
+  if (!currentApp) {
+    throw new Error('无法定位当前应用安装路径，请从「应用程序」文件夹启动后再更新');
+  }
+  if (!packagePath || !fs.existsSync(packagePath)) {
+    throw new Error('更新包不存在，请重新下载');
+  }
+
+  const workDir = path.join(os.tmpdir(), `doc-assistant-update-${Date.now()}`);
+  ensureDir(workDir);
+  const newApp = await extractMacUpdatePackage(packagePath, workDir);
+  if (!newApp || !fs.existsSync(newApp)) {
+    throw new Error('更新包中未找到 .app');
+  }
+  await clearMacQuarantine(newApp);
+
+  const scriptPath = path.join(os.tmpdir(), `doc-assistant-replace-${Date.now()}.sh`);
+  const script = `#!/bin/bash
+set -e
+APP_PATH=${JSON.stringify(currentApp)}
+NEW_APP=${JSON.stringify(newApp)}
+WORK_DIR=${JSON.stringify(workDir)}
+# 等待当前进程完全退出
+for i in $(seq 1 60); do
+  if ! pgrep -f "$APP_PATH/Contents/MacOS/" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.5
+done
+# 覆盖安装到原路径（同名替换，不会生成「文档助手 2」）
+rm -rf "$APP_PATH"
+ditto "$NEW_APP" "$APP_PATH"
+xattr -cr "$APP_PATH" 2>/dev/null || true
+open "$APP_PATH"
+rm -rf "$WORK_DIR"
+rm -f ${JSON.stringify(scriptPath)}
+`;
+  fs.writeFileSync(scriptPath, script, { mode: 0o755 });
+  const child = spawn('/bin/bash', [scriptPath], {
+    detached: true,
+    stdio: 'ignore',
+    env: process.env,
+  });
+  child.unref();
+  setTimeout(() => {
+    app.quit();
+  }, 200);
+  return { ok: true, mode: 'replace-in-place', appPath: currentApp };
+}
 
 function readAppSettings() {
   ensureDir(DOCS_DIR);
@@ -727,15 +856,22 @@ ipcMain.handle('download-update', async () => {
   }
 });
 ipcMain.handle('install-update', async () => {
-  // Windows：直接安装并重启。macOS 未签名时 quitAndInstall 常失败，改为打开安装包。
+  // Windows：quitAndInstall。macOS：原地替换当前 .app，避免拖入安装产生双应用。
   if (process.platform === 'darwin') {
     if (lastDownloadedUpdatePath && fs.existsSync(lastDownloadedUpdatePath)) {
-      const opened = await shell.openPath(lastDownloadedUpdatePath);
-      if (opened) {
-        // openPath 返回非空字符串表示失败
-        await shell.showItemInFolder(lastDownloadedUpdatePath);
+      try {
+        return await installMacUpdateInPlace(lastDownloadedUpdatePath);
+      } catch (error) {
+        console.error('mac in-place install failed:', error);
+        // 回退：打开安装包，由用户手动覆盖 Applications 中同名应用
+        const opened = await shell.openPath(lastDownloadedUpdatePath);
+        if (opened) await shell.showItemInFolder(lastDownloadedUpdatePath);
+        return {
+          ok: true,
+          mode: 'open-installer',
+          message: error instanceof Error ? error.message : String(error),
+        };
       }
-      return { ok: true, mode: 'open-installer' };
     }
     await shell.openExternal(RELEASE_PAGE_URL);
     return { ok: true, mode: 'open-release' };
