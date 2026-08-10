@@ -905,7 +905,7 @@ function ShareModal({ shared, mode, loading, errorMessage, onToggle, onClose, on
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[400] flex items-center justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/20" />
       <div
         className="relative bg-white rounded-[16px] w-[520px] shadow-[0px_16px_32px_-8px_rgba(36,36,36,0.12)] border border-[#e0e0e0] overflow-hidden"
@@ -1159,7 +1159,7 @@ function ExportModal({ docName, content, contentMap, outlineNodes, selectedNodeI
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[400] flex items-center justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/20" />
       <div
         className="relative bg-white rounded-[16px] w-[600px] shadow-[0px_16px_32px_-8px_rgba(36,36,36,0.12)] border border-[#e0e0e0] p-[32px] flex flex-col gap-[24px]"

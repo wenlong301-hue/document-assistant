@@ -22,7 +22,7 @@ export function NewDocModal({ onClose, onConfirm, initialValue = "", title = "ç¼
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[400] flex items-center justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/20" />
       <div
         className="relative bg-white rounded-[12px] w-[600px] p-[24px] flex flex-col gap-[24px] shadow-lg"

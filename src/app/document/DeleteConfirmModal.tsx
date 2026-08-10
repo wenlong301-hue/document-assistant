@@ -3,7 +3,7 @@ import deleteSvg from "../../imports/删除提示确认/svg-wi3f4os8di";
 export function DeleteConfirmModal({ message, onConfirm, onClose }: { message: string; onConfirm: () => void; onClose: () => void }) {
   const lines = message.split("\n");
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[400] flex items-center justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/20" />
       <div
         className="relative bg-white rounded-[16px] w-[378px] shadow-[0px_2px_12px_0px_rgba(0,0,0,0.1)] border border-[#e0e0e0] overflow-hidden"

@@ -73,9 +73,9 @@ const SECTIONS: HelpSection[] = [
     body: (
       <ul>
         <li>工具栏：标题、字体字号、加粗斜体、颜色、列表、对齐、引用/代码块、链接、图片/视频/附件、表格等。</li>
-        <li>空行输入 <code>/</code> 打开斜杠命令；支持 Markdown 行首快捷（如 <code>#</code>、<code>-</code>、<code>&gt;</code>）。</li>
-        <li>链接：<code>Ctrl/Cmd + K</code>。表格行 1–20、列 1–10。</li>
-        <li>图片：PNG/JPEG/WebP/GIF（不支持 SVG）；源文件建议 ≤20MB。</li>
+        <li>空行输入 <code>/</code> 打开斜杠命令（标题/列表/引用/代码/链接/媒体/表格等）；<code>↑</code><code>↓</code><code>Enter</code><code>Esc</code> 导航；删除 <code>/</code> 或光标离开触发行后菜单自动关闭。</li>
+        <li>支持 Markdown 行首快捷（如 <code>#</code>、<code>-</code>、<code>&gt;</code>）。链接：<code>Ctrl/Cmd + K</code>。表格行 1–20、列 1–10。</li>
+        <li>图片：PNG/JPEG/WebP/GIF（不支持 SVG）；源文件建议 ≤20MB。选中后可调宽度百分比；打开分享/导出等弹窗时不会被操作条挡住。</li>
         <li>视频 ≤20MB；附件 ≤10MB。PDF 导出不含视频。</li>
       </ul>
     ),
@@ -153,7 +153,7 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
   const active = SECTIONS.find((s) => s.id === activeId) ?? SECTIONS[0];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[400] flex items-center justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/20" />
       <div
         className="relative bg-white rounded-[16px] w-[min(920px,94vw)] h-[min(720px,88vh)] shadow-[0px_16px_32px_-8px_rgba(36,36,36,0.12)] border border-[#e0e0e0] overflow-hidden flex flex-col"

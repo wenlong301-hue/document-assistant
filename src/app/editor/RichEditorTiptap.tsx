@@ -228,6 +228,21 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     setEditorVisibleRect(activeEditor.view.dom.getBoundingClientRect());
   }, [clearImageToolbar]);
 
+  const syncSlashMenu = useCallback((activeEditor = editorInstanceRef.current) => {
+    if (!slashMenuRef.current) return;
+    if (!activeEditor || activeEditor.isDestroyed) {
+      setSlashMenu(null);
+      return;
+    }
+    const { $from, from, empty } = activeEditor.state.selection;
+    if (!empty) {
+      setSlashMenu(null);
+      return;
+    }
+    const lineText = activeEditor.state.doc.textBetween($from.start(), from, "\n", "\n");
+    if (!/^\s*\//.test(lineText)) setSlashMenu(null);
+  }, []);
+
   const applySelectedImageWidth = useCallback((pct: number | "auto") => {
     const activeEditor = editorInstanceRef.current;
     const pos = selectedImagePosRef.current;
@@ -554,6 +569,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       refreshToc(editor);
     },
     onUpdate({ editor }) {
+      syncSlashMenu(editor);
       if (ensureHeadingAnchors(editor)) return;
       const html = sanitizeHtml(editor.getHTML());
       const text = editor.getText();
@@ -578,8 +594,9 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       setToolbarTick((tick) => tick + 1);
       updateTableToolbar(editor);
       updateImageToolbar(editor);
+      syncSlashMenu(editor);
     },
-  }, [nodeId, updateTableToolbar, updateImageToolbar, ensureHeadingAnchors]);
+  }, [nodeId, updateTableToolbar, updateImageToolbar, syncSlashMenu, ensureHeadingAnchors]);
   editorInstanceRef.current = editor;
 
   const refreshToc = useCallback((activeEditor: any) => {
@@ -1385,7 +1402,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       )}
       {showLinkModal && <LinkModal position={linkModalPos} initialText={linkModalText} initialUrl={linkModalUrl} mode={linkModalMode} triggerRef={linkBtnRef} onClose={() => setShowLinkModal(false)} onConfirm={applyLink} />}
       {showTableModal && createPortal(
-        <div className="fixed inset-0 z-[300] flex items-center justify-center" onClick={() => setShowTableModal(false)}>
+        <div className="fixed inset-0 z-[400] flex items-center justify-center" onClick={() => setShowTableModal(false)}>
           <div className="absolute inset-0 bg-black/20" />
           <div className="relative bg-white rounded-[16px] w-[360px] shadow-[0px_16px_32px_-8px_rgba(36,36,36,0.12)] border border-[#e0e0e0] p-[24px] flex flex-col gap-[20px]" onClick={(e) => e.stopPropagation()}>
             <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[16px]">插入表格</p>
