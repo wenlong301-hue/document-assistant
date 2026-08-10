@@ -132,7 +132,7 @@ const SECTIONS: HelpSection[] = [
 ];
 
 export function HelpModal({ onClose }: { onClose: () => void }) {
-  const [version, setVersion] = useState("0.1.1");
+  const [version, setVersion] = useState("0.1.2");
   const [activeId, setActiveId] = useState(SECTIONS[0].id);
 
   useEffect(() => {
