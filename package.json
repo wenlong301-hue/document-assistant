@@ -1,7 +1,7 @@
 {
   "name": "doc-assistant",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -107,7 +107,7 @@
   "build": {
     "appId": "com.doc-assistant.app",
     "productName": "文档助手",
-    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "artifactName": "DocAssistant-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "安装包"
     },
