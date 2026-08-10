@@ -122,6 +122,7 @@ const SECTIONS: HelpSection[] = [
     body: (
       <ul>
         <li><strong>macOS/Windows 提示未知开发者？</strong> 当前安装包未签名，请右键打开或允许仍要运行。</li>
+        <li><strong>macOS 提示「已损坏，无法打开」？</strong> 多为下载隔离误报，不要移到废纸篓。终端执行：<code>xattr -cr "/Applications/文档助手.app"</code> 后再打开。</li>
         <li><strong>手机打不开分享链接？</strong> 确认桌面端已开启分享、同一 Wi-Fi、防火墙放行 6535、链接为局域网 IP。</li>
         <li><strong>预览缺章节？</strong> 节点可能为空或设置了「预览时隐藏本层」；请重新分享/导出。</li>
         <li><strong>浏览器存储失败？</strong> 媒体过大，请减少图片视频或改用桌面端并导出备份。</li>

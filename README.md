@@ -41,7 +41,14 @@
 1. 从 [Releases](https://github.com/wenlong301-hue/document-assistant/releases) 下载：
    - macOS：`DocAssistant-*-mac-arm64.dmg`
    - Windows：`DocAssistant-*-win-x64.exe`
-2. 安装并打开（当前为**未签名**构建：macOS 需右键打开；Windows 可能被 SmartScreen 提示）
+2. 安装并打开（当前为**未签名**构建）：
+   - **macOS**：拖入「应用程序」后，若提示「无法验证开发者」→ **右键 → 打开**，或在「隐私与安全性」中允许
+   - **macOS 若提示「已损坏，无法打开」**：这是隔离属性误报，**不要**移到废纸篓，在终端执行：
+     ```bash
+     xattr -cr "/Applications/文档助手.app"
+     ```
+     再打开；详见 [使用手册 §2.2](./使用手册.md#22-macos-安装)
+   - **Windows**：SmartScreen 提示时选「仍要运行」
 3. **新建文档** → 切到 **大纲** → 写作 → **保存 / 分享 / 导出**
 
 更细的操作步骤、快捷键与 FAQ 见 [使用手册.md](./使用手册.md)。
@@ -160,7 +167,7 @@ git push origin v0.1.1
 - **预览收录**：空内容或「预览时隐藏本层」的节点不会进入分享/导出章节
 - **媒体限制**：图片源约 20MB / 嵌入约 4MB；视频 20MB；附件 10MB；不支持 SVG
 - **PDF**：不含视频
-- **签名**：当前 Release 默认未签名，首次打开需系统手动允许
+- **签名**：当前 Release 默认未签名。macOS 首次打开需右键打开/隐私与安全性允许；若提示「已损坏」请用 `xattr -cr "/Applications/文档助手.app"` 清除隔离标记（见使用手册）
 - **Web 存储**：大媒体易触发浏览器配额，重要数据请导出备份
 
 ---
