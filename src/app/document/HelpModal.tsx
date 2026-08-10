@@ -154,7 +154,7 @@ export function HelpModal({
   onCheckUpdate?: () => void;
   updateCheckBusy?: boolean;
 }) {
-  const [version, setVersion] = useState("0.1.3");
+  const [version, setVersion] = useState("0.1.4");
   const [activeId, setActiveId] = useState(SECTIONS[0].id);
 
   useEffect(() => {
