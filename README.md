@@ -5,7 +5,7 @@
 | 项 | 说明 |
 |----|------|
 | 产品名 | 文档助手 |
-| 版本 | 0.1.4 |
+| 版本 | 0.1.0 |
 | 原生格式 | `.mdoc`（JSON） |
 | 桌面端 | Electron（macOS / Windows） |
 | Web 端 | Vite + React（浏览器预览，功能子集） |
@@ -148,7 +148,7 @@ document-assistant/
 
 ## 发布流程（CI）
 
-推送符合 `v*` 的 tag（如 `v0.1.5`）会触发 GitHub Actions：
+推送符合 `v*` 的 tag（如 `v0.1.0`）会触发 GitHub Actions：
 
 1. 在 `windows-latest` / `macos-latest` 分别 `npm ci` → 构建 → `electron-builder`
 2. **必须同时产出** Windows 安装包与 macOS 安装包，否则 Release 失败
@@ -166,8 +166,8 @@ Workflow：`.github/workflows/release.yml`
 # 1. 更新 package.json version
 # 2. 在 CHANGELOG.md 顶部新增 ## [x.y.z] - 日期 小节
 # 3. 提交后打 tag 并推送
-git tag -a v0.1.5 -m "v0.1.5"
-git push origin v0.1.5
+git tag -a v0.1.0 -m "v0.1.0"
+git push origin v0.1.0
 ```
 
 ---

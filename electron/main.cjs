@@ -92,7 +92,7 @@ async function extractMacUpdatePackage(packagePath, destDir) {
 }
 
 /**
- * macOS 原地替换当前 .app，避免「打开安装包」拖入后出现双应用（旧 0.1.3 + 新 0.1.4）。
+ * macOS 原地替换当前 .app，避免「打开安装包」拖入后出现双应用（旧版与新版并存）。
  * 退出后由后台脚本覆盖并重新打开。
  */
 async function installMacUpdateInPlace(packagePath) {
