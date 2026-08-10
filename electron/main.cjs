@@ -5,13 +5,133 @@ const http = require('http');
 const os = require('os');
 const htmlToDocx = require('html-to-docx');
 const TurndownService = require('turndown');
+const { autoUpdater } = require('electron-updater');
 
 let mainWindow;
 let shareServer = null;
 let activeShareDocId = null;
+let updateCheckInFlight = false;
+let lastDownloadedUpdatePath = null;
+const RELEASE_PAGE_URL = 'https://github.com/wenlong301-hue/document-assistant/releases/latest';
 const DOCS_DIR = path.join(app.getPath('documents'), 'DocAssistant');
 const RECENT_FILE = path.join(DOCS_DIR, 'recent.json');
 const SETTINGS_FILE = path.join(DOCS_DIR, 'settings.json');
+
+function readAppSettings() {
+  ensureDir(DOCS_DIR);
+  if (!fs.existsSync(SETTINGS_FILE)) {
+    return { fontSize: '15px', lineHeight: '1.8', theme: 'light' };
+  }
+  try {
+    return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
+  } catch {
+    return { fontSize: '15px', lineHeight: '1.8', theme: 'light' };
+  }
+}
+
+function writeAppSettings(settings) {
+  ensureDir(DOCS_DIR);
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf-8');
+  return true;
+}
+
+function sendToRenderer(channel, payload) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send(channel, payload);
+}
+
+function setupAutoUpdater() {
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowPrerelease = false;
+  // 公开仓库的 GitHub Releases；不自动上传，仅用于检查/下载
+  try {
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: 'wenlong301-hue',
+      repo: 'document-assistant',
+    });
+  } catch (error) {
+    console.error('autoUpdater setFeedURL failed:', error);
+  }
+
+  autoUpdater.on('checking-for-update', () => {
+    sendToRenderer('update-checking', { currentVersion: app.getVersion() });
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    updateCheckInFlight = false;
+    sendToRenderer('update-available', {
+      version: info?.version || '',
+      releaseDate: info?.releaseDate || '',
+      currentVersion: app.getVersion(),
+      platform: process.platform,
+    });
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    updateCheckInFlight = false;
+    sendToRenderer('update-not-available', {
+      version: info?.version || app.getVersion(),
+      currentVersion: app.getVersion(),
+    });
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    sendToRenderer('update-download-progress', {
+      percent: Number(progress?.percent || 0),
+      transferred: Number(progress?.transferred || 0),
+      total: Number(progress?.total || 0),
+      bytesPerSecond: Number(progress?.bytesPerSecond || 0),
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    lastDownloadedUpdatePath = info?.downloadedFile || lastDownloadedUpdatePath || null;
+    sendToRenderer('update-downloaded', {
+      version: info?.version || '',
+      filePath: lastDownloadedUpdatePath,
+      platform: process.platform,
+    });
+  });
+
+  autoUpdater.on('error', (error) => {
+    updateCheckInFlight = false;
+    sendToRenderer('update-error', {
+      message: error instanceof Error ? error.message : String(error || '检查更新失败'),
+    });
+  });
+}
+
+async function checkForAppUpdates({ silent = true } = {}) {
+  if (updateCheckInFlight) {
+    return { status: 'busy', currentVersion: app.getVersion() };
+  }
+  // 开发模式不检查，避免干扰本地调试
+  if (!app.isPackaged) {
+    sendToRenderer('update-not-available', {
+      version: app.getVersion(),
+      currentVersion: app.getVersion(),
+      reason: 'dev',
+    });
+    return { status: 'dev', currentVersion: app.getVersion() };
+  }
+  updateCheckInFlight = true;
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return {
+      status: 'checking',
+      silent,
+      currentVersion: app.getVersion(),
+      updateInfo: result?.updateInfo ? { version: result.updateInfo.version } : null,
+    };
+  } catch (error) {
+    updateCheckInFlight = false;
+    const message = error instanceof Error ? error.message : String(error || '检查更新失败');
+    if (!silent) sendToRenderer('update-error', { message });
+    return { status: 'error', message, currentVersion: app.getVersion() };
+  }
+}
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -569,8 +689,15 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  setupAutoUpdater();
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  // 启动后延迟静默检查，避免抢启动焦点
+  setTimeout(() => {
+    checkForAppUpdates({ silent: true }).catch((error) => {
+      console.error('startup update check failed:', error);
+    });
+  }, 4000);
 });
 app.on('window-all-closed', () => { stopShareServer(); if (process.platform !== 'darwin') app.quit(); });
 
@@ -588,6 +715,55 @@ ipcMain.handle('start-share', async (_e, port, docId) => {
 ipcMain.handle('stop-share', () => { stopShareServer(); });
 ipcMain.handle('get-platform', () => process.platform);
 ipcMain.handle('get-version', () => app.getVersion());
+ipcMain.handle('check-for-updates', async (_e, options = {}) => checkForAppUpdates({ silent: !options?.manual }));
+ipcMain.handle('download-update', async () => {
+  try {
+    await autoUpdater.downloadUpdate();
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || '下载更新失败');
+    sendToRenderer('update-error', { message });
+    return { ok: false, message };
+  }
+});
+ipcMain.handle('install-update', async () => {
+  // Windows：直接安装并重启。macOS 未签名时 quitAndInstall 常失败，改为打开安装包。
+  if (process.platform === 'darwin') {
+    if (lastDownloadedUpdatePath && fs.existsSync(lastDownloadedUpdatePath)) {
+      const opened = await shell.openPath(lastDownloadedUpdatePath);
+      if (opened) {
+        // openPath 返回非空字符串表示失败
+        await shell.showItemInFolder(lastDownloadedUpdatePath);
+      }
+      return { ok: true, mode: 'open-installer' };
+    }
+    await shell.openExternal(RELEASE_PAGE_URL);
+    return { ok: true, mode: 'open-release' };
+  }
+  setImmediate(() => {
+    try {
+      autoUpdater.quitAndInstall(false, true);
+    } catch (error) {
+      console.error('quitAndInstall failed:', error);
+      shell.openExternal(RELEASE_PAGE_URL);
+    }
+  });
+  return { ok: true, mode: 'quit-and-install' };
+});
+ipcMain.handle('open-release-page', async () => {
+  await shell.openExternal(RELEASE_PAGE_URL);
+  return true;
+});
+ipcMain.handle('skip-update-version', (_e, version) => {
+  const settings = readAppSettings();
+  settings.skippedUpdateVersion = String(version || '');
+  writeAppSettings(settings);
+  return true;
+});
+ipcMain.handle('get-skipped-update-version', () => {
+  const settings = readAppSettings();
+  return settings.skippedUpdateVersion || '';
+});
 ipcMain.handle('export-html', async (_e, content, defaultName) => {
   const result = await dialog.showSaveDialog(mainWindow, {
     defaultPath: defaultName || 'document.html',
@@ -682,20 +858,9 @@ ipcMain.handle('export-pdf', async (_e, payloadOrContent, defaultName) => {
   }
 });
 
-ipcMain.handle('settings-read', () => {
-  ensureDir(DOCS_DIR);
-  if (!fs.existsSync(SETTINGS_FILE)) {
-    return { fontSize: '15px', lineHeight: '1.8', theme: 'light' };
-  }
-  try { return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8')); }
-  catch { return { fontSize: '15px', lineHeight: '1.8', theme: 'light' }; }
-});
+ipcMain.handle('settings-read', () => readAppSettings());
 
-ipcMain.handle('settings-write', (_e, settings) => {
-  ensureDir(DOCS_DIR);
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf-8');
-  return true;
-});
+ipcMain.handle('settings-write', (_e, settings) => writeAppSettings(settings || {}));
 
 ipcMain.handle('get-doc-html', (_e, docName) => {
   const doc = getDocContent(docName);

@@ -47,6 +47,7 @@ import { EditorWorkspace } from "../document/EditorWorkspace";
 import { DeleteConfirmModal } from "../document/DeleteConfirmModal";
 import { HelpModal } from "../document/HelpModal";
 import { NewDocModal } from "../document/NewDocModal";
+import { UpdateModal, type UpdateInfo, type UpdateProgress } from "../document/UpdateModal";
 
 const turndownService = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
 turndownService.keep(["table", "thead", "tbody", "tr", "th", "td", "video"]);
@@ -1237,6 +1238,13 @@ export default function DocumentAssistant() {
   const [shared, setShared] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateDownloading, setUpdateDownloading] = useState(false);
+  const [updateDownloaded, setUpdateDownloaded] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null);
+  const [updateError, setUpdateError] = useState("");
+  const [updateCheckBusy, setUpdateCheckBusy] = useState(false);
+  const manualUpdateCheckRef = useRef(false);
   const [shareBusy, setShareBusy] = useState(false);
   const [shareError, setShareError] = useState("");
   const [showExportModal, setShowExportModal] = useState(false);
@@ -1289,6 +1297,138 @@ export default function DocumentAssistant() {
     const handler = () => setModal({ type: "new" });
     document.addEventListener("opencode-new-doc", handler);
     return () => document.removeEventListener("opencode-new-doc", handler);
+  }, []);
+
+  useEffect(() => {
+    if (!isElectron) return;
+    const api = (window as any).electronAPI;
+    if (!api?.onUpdateAvailable) return;
+
+    const unsubAvailable = api.onUpdateAvailable?.(async (payload: UpdateInfo) => {
+      setUpdateCheckBusy(false);
+      setUpdateError("");
+      setUpdateDownloaded(false);
+      setUpdateProgress(null);
+      const isManual = manualUpdateCheckRef.current;
+      manualUpdateCheckRef.current = false;
+      const skipped = api.getSkippedUpdateVersion ? await api.getSkippedUpdateVersion() : "";
+      if (!isManual && skipped && payload?.version && skipped === payload.version) return;
+      setUpdateInfo({
+        version: payload?.version || "",
+        currentVersion: payload?.currentVersion,
+        releaseDate: payload?.releaseDate,
+        platform: payload?.platform,
+      });
+    });
+    const unsubNotAvailable = api.onUpdateNotAvailable?.((payload: { currentVersion?: string; reason?: string }) => {
+      setUpdateCheckBusy(false);
+      if (manualUpdateCheckRef.current) {
+        setToast({
+          message: payload?.reason === "dev" ? "开发模式不检查更新" : "当前已是最新版本",
+          type: "info",
+        });
+        manualUpdateCheckRef.current = false;
+      }
+    });
+    const unsubProgress = api.onUpdateProgress?.((payload: UpdateProgress) => {
+      setUpdateDownloading(true);
+      setUpdateProgress(payload);
+    });
+    const unsubDownloaded = api.onUpdateDownloaded?.((payload: { version?: string; platform?: string }) => {
+      setUpdateDownloading(false);
+      setUpdateDownloaded(true);
+      setUpdateProgress({ percent: 100 });
+      setUpdateInfo((prev) => prev ? { ...prev, version: payload?.version || prev.version, platform: payload?.platform || prev.platform } : prev);
+      setToast({ message: "更新包已下载完成", type: "success" });
+    });
+    const unsubError = api.onUpdateError?.((payload: { message?: string }) => {
+      setUpdateCheckBusy(false);
+      setUpdateDownloading(false);
+      const message = payload?.message || "检查或下载更新失败";
+      setUpdateError(message);
+      if (manualUpdateCheckRef.current) {
+        setToast({ message, type: "error" });
+      }
+      manualUpdateCheckRef.current = false;
+    });
+
+    return () => {
+      unsubAvailable?.();
+      unsubNotAvailable?.();
+      unsubProgress?.();
+      unsubDownloaded?.();
+      unsubError?.();
+    };
+  }, [isElectron]);
+
+  const handleCheckForUpdates = useCallback(async () => {
+    if (!isElectron) {
+      setToast({ message: "请在桌面应用中检查更新", type: "info" });
+      return;
+    }
+    const api = (window as any).electronAPI;
+    if (!api?.checkForUpdates) {
+      setToast({ message: "当前版本不支持检查更新", type: "error" });
+      return;
+    }
+    manualUpdateCheckRef.current = true;
+    setUpdateCheckBusy(true);
+    setUpdateError("");
+    try {
+      await api.checkForUpdates({ manual: true });
+    } catch (error) {
+      setUpdateCheckBusy(false);
+      manualUpdateCheckRef.current = false;
+      setToast({ message: error instanceof Error ? error.message : "检查更新失败", type: "error" });
+    }
+  }, [isElectron]);
+
+  const handleUpdateLater = useCallback(async () => {
+    if (updateInfo?.version && (window as any).electronAPI?.skipUpdateVersion) {
+      try { await (window as any).electronAPI.skipUpdateVersion(updateInfo.version); } catch {}
+    }
+    setUpdateInfo(null);
+    setUpdateDownloading(false);
+    setUpdateDownloaded(false);
+    setUpdateProgress(null);
+    setUpdateError("");
+  }, [updateInfo]);
+
+  const handleOpenReleasePage = useCallback(async () => {
+    try {
+      if ((window as any).electronAPI?.openReleasePage) {
+        await (window as any).electronAPI.openReleasePage();
+      } else {
+        window.open("https://github.com/wenlong301-hue/document-assistant/releases/latest", "_blank", "noopener,noreferrer");
+      }
+    } catch {
+      window.open("https://github.com/wenlong301-hue/document-assistant/releases/latest", "_blank", "noopener,noreferrer");
+    }
+  }, []);
+
+  const handleDownloadUpdate = useCallback(async () => {
+    setUpdateError("");
+    setUpdateDownloading(true);
+    setUpdateProgress({ percent: 0 });
+    try {
+      const result = await (window as any).electronAPI?.downloadUpdate?.();
+      if (result && result.ok === false) {
+        setUpdateDownloading(false);
+        setUpdateError(result.message || "下载更新失败");
+      }
+    } catch (error) {
+      setUpdateDownloading(false);
+      setUpdateError(error instanceof Error ? error.message : "下载更新失败");
+    }
+  }, []);
+
+  const handleInstallUpdate = useCallback(async () => {
+    try {
+      await (window as any).electronAPI?.installUpdate?.();
+    } catch (error) {
+      setUpdateError(error instanceof Error ? error.message : "安装更新失败");
+      setToast({ message: "安装失败，请打开下载页手动安装", type: "error" });
+    }
   }, []);
 
   useEffect(() => {
@@ -1812,7 +1952,26 @@ export default function DocumentAssistant() {
           onClose={() => setShowShareModal(false)}
         />
       )}
-      {showHelpModal && <HelpModal onClose={() => setShowHelpModal(false)} />}
+      {showHelpModal && (
+        <HelpModal
+          onClose={() => setShowHelpModal(false)}
+          onCheckUpdate={isElectron ? handleCheckForUpdates : undefined}
+          updateCheckBusy={updateCheckBusy}
+        />
+      )}
+      {updateInfo && (
+        <UpdateModal
+          info={updateInfo}
+          downloading={updateDownloading}
+          downloaded={updateDownloaded}
+          progress={updateProgress}
+          errorMessage={updateError}
+          onLater={handleUpdateLater}
+          onOpenRelease={handleOpenReleasePage}
+          onDownload={handleDownloadUpdate}
+          onInstall={handleInstallUpdate}
+        />
+      )}
       {modal?.type === "new" && (
         <NewDocModal
           title="新建文档"

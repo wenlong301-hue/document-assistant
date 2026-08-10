@@ -81,6 +81,19 @@ const SECTIONS: HelpSection[] = [
     ),
   },
   {
+    id: "update",
+    title: "检查更新",
+    body: (
+      <ul>
+        <li>桌面端启动后会<strong>自动检查</strong> GitHub Releases 是否有新安装包。</li>
+        <li>本页标题旁可点 <strong>检查更新</strong> 手动检查。</li>
+        <li>发现新版本可：稍后再说、打开下载页、下载更新（显示进度）。</li>
+        <li>Windows 下载完成后可立即安装并重启；macOS（未签名）会打开安装包，请手动安装。</li>
+        <li>「稍后再说」会跳过该版本的启动提示，仍可随时手动检查。</li>
+      </ul>
+    ),
+  },
+  {
     id: "share",
     title: "局域网分享",
     body: (
@@ -126,13 +139,22 @@ const SECTIONS: HelpSection[] = [
         <li><strong>手机打不开分享链接？</strong> 确认桌面端已开启分享、同一 Wi-Fi、防火墙放行 6535、链接为局域网 IP。</li>
         <li><strong>预览缺章节？</strong> 节点可能为空或设置了「预览时隐藏本层」；请重新分享/导出。</li>
         <li><strong>浏览器存储失败？</strong> 媒体过大，请减少图片视频或改用桌面端并导出备份。</li>
+        <li><strong>如何更新软件？</strong> 启动会自动提示；也可在帮助页点「检查更新」。安装包来自 GitHub Releases。</li>
       </ul>
     ),
   },
 ];
 
-export function HelpModal({ onClose }: { onClose: () => void }) {
-  const [version, setVersion] = useState("0.1.2");
+export function HelpModal({
+  onClose,
+  onCheckUpdate,
+  updateCheckBusy = false,
+}: {
+  onClose: () => void;
+  onCheckUpdate?: () => void;
+  updateCheckBusy?: boolean;
+}) {
+  const [version, setVersion] = useState("0.1.3");
   const [activeId, setActiveId] = useState(SECTIONS[0].id);
 
   useEffect(() => {
@@ -163,6 +185,19 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-[10px] min-w-0">
             <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[16px] font-medium leading-[normal]">使用帮助</p>
             <span className="text-[12px] text-[#8d8e99] font-['PingFang_SC:Regular',sans-serif] shrink-0">v{version}</span>
+            {onCheckUpdate && (
+              <button
+                type="button"
+                className="h-[28px] px-[10px] rounded-[6px] border border-[#ebecf0] text-[12px] text-[#131212] cursor-pointer hover:bg-[#EBECF0] active:bg-[#dddee3] disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-['PingFang_SC:Regular',sans-serif]"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCheckUpdate();
+                }}
+                disabled={updateCheckBusy}
+              >
+                {updateCheckBusy ? "检查中..." : "检查更新"}
+              </button>
+            )}
           </div>
           <button
             className="size-[28px] flex items-center justify-center rounded-[6px] text-[#131212] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors cursor-pointer"

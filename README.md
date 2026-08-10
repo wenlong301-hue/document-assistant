@@ -5,7 +5,7 @@
 | 项 | 说明 |
 |----|------|
 | 产品名 | 文档助手 |
-| 版本 | 0.1.2 |
+| 版本 | 0.1.3 |
 | 原生格式 | `.mdoc`（JSON） |
 | 桌面端 | Electron（macOS / Windows） |
 | Web 端 | Vite + React（浏览器预览，功能子集） |
@@ -23,6 +23,7 @@
 - **多格式导出**：HTML 预览页、Markdown、Word（.docx）、PDF
 - **导入**：`.mdoc` / `.md` / `.txt` / `.docx`
 - **本地存储**：桌面写入 `文档/DocAssistant/*.mdoc`；Web 使用 IndexedDB
+- **自动更新**：桌面端启动检查 GitHub Releases；帮助页可手动「检查更新」并下载安装包
 
 ---
 
@@ -140,16 +141,18 @@ document-assistant/
 | 本地 `.mdoc` 目录 | ✅ | ❌（IndexedDB） |
 | 局域网 HTTP 分享 | ✅ | ❌（仅本机预览/下载 HTML） |
 | 导出 Word/PDF/MD | 系统另存为 | 浏览器下载；PDF 走打印 |
+| 检查 / 下载更新 | ✅ GitHub Releases | ❌ |
 | 文件关联 `.mdoc` | 视系统 | 无 |
 
 ---
 
 ## 发布流程（CI）
 
-推送符合 `v*` 的 tag（如 `v0.1.2`）会触发 GitHub Actions：
+推送符合 `v*` 的 tag（如 `v0.1.3`）会触发 GitHub Actions：
 
 1. 在 `windows-latest` / `macos-latest` 分别 `npm ci` → 构建 → `electron-builder`
-2. 将安装包上传到 GitHub Release「文档助手 {tag}」
+2. 将安装包与 `latest.yml` / `latest-mac.yml` 上传到 GitHub Release「文档助手 {tag}」
+3. 已安装的桌面端会通过 **electron-updater** 读取上述 yml 提示更新
 
 Workflow：`.github/workflows/release.yml`
 
@@ -157,8 +160,8 @@ Workflow：`.github/workflows/release.yml`
 
 ```bash
 # 先改 package.json version，再提交
-git tag -a v0.1.2 -m "v0.1.2"
-git push origin v0.1.2
+git tag -a v0.1.3 -m "v0.1.3"
+git push origin v0.1.3
 ```
 
 ---
