@@ -1309,7 +1309,7 @@ function ExportModal({ docName, content, contentMap, outlineNodes, selectedNodeI
 export default function DocumentAssistant() {
   const [selectedDoc, setSelectedDoc] = useState("");
   const [docs, setDocs] = useState<string[]>([]);
-  const [modal, setModal] = useState<{ type: "new" } | { type: "new-file" } | { type: "rename"; target: string } | null>(null);
+  const [modal, setModal] = useState<{ type: "new" } | { type: "new-file" } | { type: "new-level" } | { type: "rename"; target: string } | null>(null);
   const [docDeleteConfirm, setDocDeleteConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [shared, setShared] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -1350,7 +1350,7 @@ export default function DocumentAssistant() {
   const [activeFolder, setActiveFolder] = useState<string | null>(null);
   const [folderFiles, setFolderFiles] = useState<FolderFileItem[]>([]);
   const [folderGone, setFolderGone] = useState(false);
-  const openFileInfoRef = useRef<{ docName: string; filePath: string; ext: string; sourceFilePath?: string } | null>(null);
+  const openFileInfoRef = useRef<{ docName: string; filePath: string; ext: string } | null>(null);
 
   // Project-level navigation state
   const [level, setLevel] = useState<"projects" | "project">("projects");
@@ -1363,14 +1363,17 @@ export default function DocumentAssistant() {
 
   const writeFolderDocBack = useCallback(async (docName: string, doc: StoredDoc) => {
     const info = openFileInfoRef.current;
-    if (!info || info.docName !== docName) return;
+    if (!info || info.docName !== docName) return false;
     const api = (window as any).electronAPI;
-    if (!api?.writeFolderFile) return;
+    if (!api?.writeFolderFile) return false;
     const parts = flattenOutlineNodes(doc.children || []);
     const markdownParts: Array<{ name: string; html: string; level: number }> = [];
     const collectMarkdownParts = (nodes: OutlineNode[], level: number) => {
       nodes.forEach((node) => {
-        markdownParts.push({ name: node.name, html: doc.content?.[node.id] || emptyParagraph, level });
+        const html = doc.content?.[node.id] || "";
+        if (info.ext !== "md" || !isHtmlContentEmpty(html)) {
+          markdownParts.push({ name: node.name, html: html || emptyParagraph, level });
+        }
         collectMarkdownParts(node.children || [], Math.min(6, level + 1));
       });
     };
@@ -1389,12 +1392,15 @@ export default function DocumentAssistant() {
         content: JSON.stringify({ ...doc, name: doc.name || docName, children: doc.children || [], updatedAt: new Date().toISOString() }),
       };
     } else if (info.ext === "md") {
-      payload = { ext: "md", html: markdownContentHtml || contentHtml, title: getDisplayFileName(doc.name || docName) };
+      if (!markdownContentHtml.trim()) return false;
+      payload = { ext: "md", html: markdownContentHtml, title: getDisplayFileName(doc.name || docName) };
     } else if (info.ext === "txt") {
       const text = parts.length > 0 ? parts.map((n) => getPlainTextFromHtml(doc.content?.[n.id] || "")).join("\n\n") : "";
       payload = { ext: "txt", content: text };
     } else if (info.ext === "docx") {
       payload = { ext: "docx", html: contentHtml, title: getDisplayFileName(doc.name || docName) };
+    } else if (info.ext === "html" || info.ext === "htm") {
+      payload = { ext: info.ext, content: contentHtml };
     } else {
       const sections = buildPreviewSections(doc.children || [], doc.content || {});
       const displayName = getDisplayFileName(doc.name || docName);
@@ -1408,10 +1414,13 @@ export default function DocumentAssistant() {
       const result = await api.writeFolderFile(info.filePath, payload);
       if (result && result.ok === false) {
         setToast({ message: `保存失败：${result.error || "写入错误"}`, type: "error" });
+        return false;
       }
+      return true;
     } catch (error) {
       console.error("write folder file failed:", error);
       setToast({ message: "保存失败", type: "error" });
+      return false;
     }
   }, []);
 
@@ -1883,7 +1892,7 @@ export default function DocumentAssistant() {
           try {
             const raw = JSON.parse(text);
             const doc = normalizeStoredDoc(name, raw);
-            const firstNode = flattenOutlineNodes(doc.children).find((node) => doc.content[node.id]?.replace(/<[^>]*>/g, "").trim()) ?? flattenOutlineNodes(doc.children)[0];
+            const firstNode = findDisplayNodeForFile(doc) ?? flattenOutlineNodes(doc.children)[0];
             setDocs((prev) => [...new Set([...prev, doc.name])]);
             setSelectedDoc(doc.name);
             setDocStore((prev) => ({ ...prev, [doc.name]: doc }));
@@ -1964,6 +1973,21 @@ export default function DocumentAssistant() {
   const getNodeContent = (docName: string, nodeId: string) =>
     docStore[docName]?.content?.[nodeId] ?? emptyParagraph;
 
+  const findDisplayNodeForFile = (doc: StoredDoc) => {
+    const hasContent = (node: OutlineNode) => !isHtmlContentEmpty(doc.content?.[node.id]);
+    const findInSubtree = (nodes: OutlineNode[]): OutlineNode | undefined => {
+      for (const node of nodes) {
+        if (hasContent(node)) return node;
+        const child = findInSubtree(node.children || []);
+        if (child) return child;
+      }
+      return undefined;
+    };
+    const firstLevel = doc.children?.[0];
+    if (!firstLevel) return undefined;
+    return hasContent(firstLevel) ? firstLevel : findInSubtree(firstLevel.children || []) ?? firstLevel;
+  };
+
   useEffect(() => {
     if (isElectron || !shared) return;
     revokeWebShareUrl();
@@ -2013,14 +2037,14 @@ export default function DocumentAssistant() {
     }
     const docName = file.relPath;
     const fileExt = file.ext.replace(/^\./, "").toLowerCase();
-    const apply = (doc: StoredDoc, tree: OutlineNode[], nodeId: string, enterOutline = true, writeInfo?: { filePath: string; ext: string; sourceFilePath?: string }) => {
-      openFileInfoRef.current = { docName, filePath: writeInfo?.filePath || file.path, ext: writeInfo?.ext || fileExt, sourceFilePath: writeInfo?.sourceFilePath };
+    const apply = (doc: StoredDoc, tree: OutlineNode[], nodeId: string, enterOutline = true, writeInfo?: { filePath: string; ext: string }) => {
+      openFileInfoRef.current = { docName, filePath: writeInfo?.filePath || file.path, ext: writeInfo?.ext || fileExt };
       setSelectedDoc(docName);
       setDocStore((prev) => ({ ...prev, [docName]: doc }));
       setOutlineTrees((prev) => ({ ...prev, [docName]: tree }));
       setOutlineNodes(tree);
       setSelectedNodeId(nodeId);
-      if (enterOutline) setMode("outline");
+      setMode(enterOutline ? "outline" : "document");
     };
     try {
       if (fileExt === "docx") {
@@ -2030,26 +2054,25 @@ export default function DocumentAssistant() {
         const html = result.value;
         const tree = buildOutlineTree(docName);
         const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
-        apply(createStoredDoc(docName, tree, { [leaf.id]: html || emptyParagraph }), tree, leaf.id);
+        apply(createStoredDoc(docName, tree, { [leaf.id]: html || emptyParagraph }), tree, leaf.id, false);
       } else if (fileExt === "mdoc") {
         const doc = { ...normalizeStoredDoc(docName, JSON.parse(raw.text || "{}")), name: docName };
-        const firstNode = flattenOutlineNodes(doc.children).find((node) => doc.content[node.id]?.replace(/<[^>]*>/g, "").trim()) ?? flattenOutlineNodes(doc.children)[0];
-        apply(doc, doc.children, firstNode?.id ?? "");
+        const firstNode = findDisplayNodeForFile(doc) ?? flattenOutlineNodes(doc.children)[0];
+        apply(doc, doc.children, firstNode?.id ?? "", false);
       } else if (fileExt === "md") {
         const doc = { ...importMarkdownAsStoredDoc(docName, raw.text || ""), name: docName };
         const firstNode = flattenOutlineNodes(doc.children).find((node) => doc.content[node.id]?.replace(/<[^>]*>/g, "").trim()) ?? flattenOutlineNodes(doc.children)[0];
-        const sidecarPath = api.getMarkdownSidecarPath ? await api.getMarkdownSidecarPath(file.path) : `${file.path}.mdoc`;
-        apply(doc, doc.children, firstNode?.id ?? "", true, { filePath: sidecarPath, ext: "mdoc", sourceFilePath: file.path });
+        apply(doc, doc.children, firstNode?.id ?? "", false);
       } else if (fileExt === "html" || fileExt === "htm") {
         if (!raw.text?.trim()) throw new Error("HTML 文件内容为空");
         const doc = importHtmlAsStoredDoc(docName, raw.text);
         const firstNode = flattenOutlineNodes(doc.children).find((node) => doc.content[node.id]?.replace(/<[^>]*>/g, "").trim()) ?? flattenOutlineNodes(doc.children)[0];
-        apply({ ...doc, name: docName }, doc.children, firstNode?.id ?? "");
+        apply({ ...doc, name: docName }, doc.children, firstNode?.id ?? "", false);
       } else {
         const html = textToHtml(raw.text || "");
         const tree = buildOutlineTree(docName);
         const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
-        apply(createStoredDoc(docName, tree, { [leaf.id]: html }), tree, leaf.id);
+        apply(createStoredDoc(docName, tree, { [leaf.id]: html }), tree, leaf.id, false);
       }
     } catch (error) {
       console.error("open folder file failed:", error);
@@ -2107,8 +2130,8 @@ export default function DocumentAssistant() {
     if (info && info.docName === selectedDoc) {
       clearTimeout(saveTimersRef.current[selectedDoc]);
       const doc = docStore[selectedDoc] ?? createStoredDoc(selectedDoc, getOutlineTree(selectedDoc));
-      await writeFolderDocBack(selectedDoc, doc);
-      setToast({ message: info.sourceFilePath ? "已保存为 mdoc 副本，原 md 文件未修改" : "已保存到原文件", type: "success" });
+      const ok = await writeFolderDocBack(selectedDoc, doc);
+      if (ok) setToast({ message: "已保存到原文件", type: "success" });
       return;
     }
     await handleSaveToFolder();
@@ -2474,7 +2497,7 @@ export default function DocumentAssistant() {
         mtimeMs: 0,
       };
       await openFolderFile(file);
-      setSubmode("outline");
+      setSubmode("files");
     }
   }, [folderFiles, openFolderFile]);
 
@@ -2482,11 +2505,11 @@ export default function DocumentAssistant() {
     setSubmode((prev) => (prev === "files" ? "outline" : "files"));
   }, []);
 
-  const handleNewFileInFolder = useCallback(async (folderPath: string) => {
+  const handleNewFileInFolder = useCallback(async (folderPath: string, fileName = "新建文件") => {
     const api = (window as any).electronAPI;
     if (!api?.createFileInFolder) return;
     try {
-      const result = await api.createFileInFolder(folderPath, "新建文件");
+      const result = await api.createFileInFolder(folderPath, fileName);
       if (result?.ok) {
         // Refresh folder tree
         if (selectedProject?.folderPath) {
@@ -2535,6 +2558,9 @@ export default function DocumentAssistant() {
   const selectedNode = mode === "outline" ? findNode(outlineNodes, selectedNodeId) : null;
   const selectedNodeDepth = mode === "outline" ? findNodeDepth(outlineNodes, selectedNodeId) : 0;
   const workspaceDocName = mode === "document" && selectedFileNode?.name ? selectedFileNode.name : selectedDoc;
+  const filePreviewHtml = mode === "document" && selectedDoc && selectedNodeId && !isHtmlContentEmpty(getNodeContent(selectedDoc, selectedNodeId))
+    ? getNodeContent(selectedDoc, selectedNodeId)
+    : "";
   const shareDisabled = level === "project" && (!selectedFileNode || selectedFileNode.isDirectory);
 
   const handleTitleChange = (name: string) => {
@@ -2593,7 +2619,7 @@ export default function DocumentAssistant() {
         />
       ) : (
         <>
-          <EditorWorkspace docName={workspaceDocName} mode={mode} selectedNode={selectedNode} nodeDepth={selectedNodeDepth} nodeContent={selectedNode ? getNodeContent(selectedDoc, selectedNode.id) : emptyParagraph} onTitleChange={handleTitleChange} theme={theme} fontSize={fontSize} lineHeight={lineHeight} sidebarWidth={276}
+          <EditorWorkspace docName={workspaceDocName} mode={mode} selectedNode={selectedNode} nodeDepth={selectedNodeDepth} nodeContent={selectedNode ? getNodeContent(selectedDoc, selectedNode.id) : emptyParagraph} previewHtml={filePreviewHtml} onTitleChange={handleTitleChange} theme={theme} fontSize={fontSize} lineHeight={lineHeight} sidebarWidth={276}
             onContentChange={handleNodeContentChange} />
           <Frame11
             onOpenShare={() => {
@@ -2635,13 +2661,7 @@ export default function DocumentAssistant() {
           ) : (
             <OutlineTree nodes={outlineNodes} selectedId={selectedNodeId} contentMap={docStore[selectedDoc]?.content ?? {}} onSelect={setSelectedNodeId} onUpdateNodes={(nodes) => updateOutlineTree(selectedDoc, nodes)} filter={searchQuery} enterTick={outlineSearchEnter} />
           )}
-          <Frame27 onNewDoc={() => setModal({ type: "new" })} onNewFile={() => {
-            if (mode === "document" && selectedProject?.folderPath) {
-              handleNewFileInFolder(selectedProject.folderPath);
-            } else {
-              setModal({ type: "new-file" });
-            }
-          }} mode={mode} onSwitchMode={handleSwitchMode} />
+          <Frame27 onNewDoc={() => setModal({ type: "new-file" })} onNewFile={() => setModal({ type: "new-level" })} mode={mode} onSwitchMode={handleSwitchMode} />
           <SidebarShareStatus shared={shared} onClick={() => setShowShareModal(true)} />
       {docDeleteConfirm && (
         <DeleteConfirmModal
@@ -2695,6 +2715,17 @@ export default function DocumentAssistant() {
       {modal?.type === "new-file" && (
         <NewDocModal
           title="新建文件"
+          onClose={() => setModal(null)}
+          onConfirm={(name) => {
+            if (selectedProject?.folderPath) handleNewFileInFolder(selectedProject.folderPath, name);
+            else handleNewDoc(name);
+            setModal(null);
+          }}
+        />
+      )}
+      {modal?.type === "new-level" && (
+        <NewDocModal
+          title="新建层级"
           onClose={() => setModal(null)}
           onConfirm={(name) => { handleNewRootFile(name); setModal(null); }}
         />

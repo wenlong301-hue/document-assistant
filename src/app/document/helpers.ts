@@ -139,66 +139,11 @@ export const normalizeStoredDoc = (name: string, raw: any): StoredDoc => {
   return createStoredDoc(docName, children, normalizeContentMap(raw?.content));
 };
 
-const markdownHeadingText = (value: string) => {
-  const parsed = new DOMParser().parseFromString(markdownToSimpleHtml(value), "text/html");
-  return parsed.body.textContent?.trim() || value.trim() || "未命名文件";
-};
-
-const markdownNodeId = (index: number, title: string) => {
-  const slug = title
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-  return `md-${index}${slug ? `-${slug}` : ""}`;
-};
-
 export const importMarkdownAsStoredDoc = (name: string, source: string): StoredDoc => {
-  const lines = String(source || "").replace(/^\uFEFF/, "").split(/\r?\n/);
-  const items: Array<{ id: string; level: number; title: string; body: string[] }> = [];
-  const preface: string[] = [];
-  let inFence = false;
-
-  lines.forEach((line) => {
-    if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
-    const heading = !inFence ? line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/) : null;
-    if (heading) {
-      const title = markdownHeadingText(heading[2]);
-      items.push({ id: markdownNodeId(items.length, title), level: heading[1].length, title, body: [] });
-      return;
-    }
-    if (items.length > 0) items[items.length - 1].body.push(line);
-    else preface.push(line);
-  });
-
-  if (items.length === 0) {
-    const title = name || "未命名文件";
-    const tree = buildOutlineTree(title);
-    const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
-    return createStoredDoc(title, tree, { [leaf.id]: markdownToSimpleHtml(source) });
-  }
-
-  const roots: OutlineNode[] = [];
-  const stack: Array<{ level: number; node: OutlineNode }> = [];
-  const content: DocContentMap = {};
-  const prefaceHtml = preface.join("\n").trim();
-  if (prefaceHtml) {
-    const id = markdownNodeId(-1, name || "前言");
-    roots.push({ id, name: name || "前言", children: [], includeInPreview: true });
-    content[id] = markdownToSimpleHtml(prefaceHtml);
-  }
-  items.forEach((item) => {
-    const node: OutlineNode = { id: item.id, name: item.title, children: [], includeInPreview: true };
-    const html = item.body.join("\n").trim();
-    content[item.id] = html ? markdownToSimpleHtml(html) : emptyParagraph;
-    while (stack.length > 0 && stack[stack.length - 1].level >= item.level) stack.pop();
-    if (stack.length === 0) roots.push(node);
-    else stack[stack.length - 1].node.children.push(node);
-    stack.push({ level: item.level, node });
-  });
-
-  return createStoredDoc(roots[0]?.name || name || "未命名文件", roots, content);
+  const title = name || "未命名文件";
+  const tree = buildOutlineTree(title);
+  const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
+  return createStoredDoc(title, tree, { [leaf.id]: markdownToSimpleHtml(String(source || "").replace(/^\uFEFF/, "")) });
 };
 
 export const importHtmlAsStoredDoc = (name: string, source: string): StoredDoc => {
@@ -254,58 +199,6 @@ export const importHtmlAsStoredDoc = (name: string, source: string): StoredDoc =
   contentRoot.querySelectorAll("script,style,noscript,template,.copy-btn").forEach((node) => node.remove());
   const title = contentRoot.querySelector("h1")?.textContent?.trim() || parsed.title.trim() || name;
   contentRoot.querySelectorAll(".toc-tree,.toc-empty,.toc-link,.toc-node,.help-toc,.manual-toc,.table-of-contents").forEach((node) => node.remove());
-  const headings = Array.from(contentRoot.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6"))
-    .filter((heading) => heading.textContent?.trim());
-  if (headings.length > 0) {
-    const content: DocContentMap = {};
-    const nodesById = new Map<string, OutlineNode>();
-    headings.forEach((heading, index) => {
-      const headingTitle = heading.textContent?.trim() || "未命名文件";
-      const id = heading.getAttribute("data-manual-anchor") || heading.id || `html-${index}-${Math.random().toString(36).slice(2)}`;
-      const node: OutlineNode = { id, name: headingTitle, children: [], includeInPreview: true };
-      nodesById.set(id, node);
-      const wrapper = parsed.createElement("div");
-      let current = heading.nextSibling;
-      const nextHeading = headings[index + 1];
-      while (current && current !== nextHeading) {
-        const next = current.nextSibling;
-        wrapper.appendChild(current.cloneNode(true));
-        current = next;
-      }
-      content[id] = sanitizeHtml(wrapper.innerHTML || emptyParagraph);
-    });
-    const tocLinks = Array.from(parsed.querySelectorAll<HTMLAnchorElement>(".toc-link[href^='#']"));
-    const roots: OutlineNode[] = [];
-    const stack: Array<{ level: number; node: OutlineNode }> = [];
-    const usedIds = new Set<string>();
-    tocLinks.forEach((link) => {
-      const id = decodeURIComponent((link.getAttribute("href") || "").slice(1));
-      const sourceNode = nodesById.get(id);
-      if (!sourceNode || usedIds.has(id)) return;
-      const levelClass = Array.from(link.classList).find((className) => className.startsWith("level-"));
-      const level = levelClass ? Number(levelClass.replace("level-", "")) + 1 : 1;
-      const node: OutlineNode = { ...sourceNode, children: [] };
-      usedIds.add(id);
-      while (stack.length > 0 && stack[stack.length - 1].level >= level) stack.pop();
-      if (stack.length === 0) roots.push(node);
-      else stack[stack.length - 1].node.children.push(node);
-      stack.push({ level, node });
-    });
-    if (roots.length === 0) {
-      const headingStack: Array<{ level: number; node: OutlineNode }> = [];
-      headings.forEach((heading) => {
-        const id = heading.getAttribute("data-manual-anchor") || heading.id;
-        const sourceNode = id ? nodesById.get(id) : undefined;
-        if (!sourceNode) return;
-        const level = Number(heading.tagName.slice(1)) || 1;
-        while (headingStack.length > 0 && headingStack[headingStack.length - 1].level >= level) headingStack.pop();
-        if (headingStack.length === 0) roots.push(sourceNode);
-        else headingStack[headingStack.length - 1].node.children.push(sourceNode);
-        headingStack.push({ level, node: sourceNode });
-      });
-    }
-    return createStoredDoc(title, roots, content);
-  }
   const html = sanitizeHtml(contentRoot.innerHTML || emptyParagraph);
   const tree = buildOutlineTree(title);
   return createStoredDoc(title, tree, { [tree[0].id]: html });

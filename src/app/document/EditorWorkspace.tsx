@@ -4,9 +4,9 @@ import { ErrorBoundary } from "../editor/ui/ErrorBoundary";
 import { RichEditorTiptap } from "../editor/RichEditorTiptap";
 import { IllustrationSvg, OutlineIllustration } from "./Illustrations";
 
-export function EditorWorkspace({ docName, mode, selectedNode, nodeDepth, nodeContent, onTitleChange, onContentChange, fontSize, lineHeight, theme, sidebarWidth }: {
+export function EditorWorkspace({ docName, mode, selectedNode, nodeDepth, nodeContent, previewHtml, onTitleChange, onContentChange, fontSize, lineHeight, theme, sidebarWidth }: {
   docName: string; mode: "document" | "outline"; selectedNode: OutlineNode | null; nodeDepth: number;
-  nodeContent?: string; onTitleChange?: (name: string) => void; onContentChange?: (html: string, text: string) => void;
+  nodeContent?: string; previewHtml?: string; onTitleChange?: (name: string) => void; onContentChange?: (html: string, text: string) => void;
   fontSize?: string; lineHeight?: string; theme?: string; sidebarWidth?: number;
 }) {
   const isOutlineEmpty = mode === "outline" && !selectedNode;
@@ -43,7 +43,11 @@ export function EditorWorkspace({ docName, mode, selectedNode, nodeDepth, nodeCo
         }}
       >{titleName}</p>
       <div className="absolute left-0 right-0 top-[60px] h-[0.6px] bg-[#EBECF0]" />
-      {mode === "document" ? (
+      {mode === "document" ? previewHtml ? (
+        <div className="absolute left-[68px] right-[68px] top-[84px] bottom-[32px] overflow-auto prose-preview" style={{ fontSize: fontSize || "15px", lineHeight: lineHeight || "1.8", color: "#131212" }}>
+          <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+        </div>
+      ) : (
         <div className="absolute inset-0 top-[60px] flex flex-col items-center justify-center gap-[16px]">
           <IllustrationSvg />
           <p className="font-['PingFang_SC:Regular',sans-serif] text-[#93959f] text-[14px]">{titleOnlyReason}</p>

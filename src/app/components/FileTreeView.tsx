@@ -119,6 +119,16 @@ export function FileTreeView({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: FolderTreeNode } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const getContextMenuPosition = useCallback((e: React.MouseEvent, node: FolderTreeNode) => {
+    const margin = 8;
+    const width = 160;
+    const height = (node.isDirectory && onNewFile ? 45 : 0) + (onOpenLocation ? 45 : 0) + 8;
+    return {
+      x: Math.max(margin, Math.min(e.clientX, window.innerWidth - width - margin)),
+      y: Math.max(margin, Math.min(e.clientY, window.innerHeight - height - margin)),
+    };
+  }, [onNewFile, onOpenLocation]);
+
   // Auto-expand root directories on mount
   useEffect(() => {
     // If single root directory, expand its children instead
@@ -170,8 +180,8 @@ export function FileTreeView({
   const handleContextMenu = useCallback((e: React.MouseEvent, node: FolderTreeNode) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenu({ x: e.clientX, y: e.clientY, node });
-  }, []);
+    setContextMenu({ ...getContextMenuPosition(e, node), node });
+  }, [getContextMenuPosition]);
 
   useEffect(() => {
     const handleClick = () => setContextMenu(null);
@@ -234,7 +244,7 @@ export function FileTreeView({
       {/* Context Menu */}
       {contextMenu && (
         <div
-          className="fixed z-[200] bg-white rounded-[8px] shadow-[0_4px_16px_rgba(0,0,0,0.12)] py-[4px] min-w-[140px]"
+          className="fixed z-[200] bg-white rounded-[8px] shadow-[0_4px_16px_rgba(0,0,0,0.12)] py-[4px] w-[160px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           {contextMenu.node.isDirectory && onNewFile && (

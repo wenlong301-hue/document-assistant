@@ -552,7 +552,8 @@ function readFolderFile(filePath) {
 
 async function writeFolderFile(filePath, payload) {
   try {
-    const ext = String(payload?.ext || path.extname(filePath || '') || '').toLowerCase();
+    const rawExt = String(payload?.ext || path.extname(filePath || '') || '').toLowerCase();
+    const ext = rawExt.startsWith('.') ? rawExt : `.${rawExt}`;
     ensureDir(path.dirname(filePath));
     if (ext === '.docx') {
       const fullHtml = wordHtmlDocument(payload?.title || '未命名文档', payload?.html || '', {});
@@ -568,6 +569,9 @@ async function writeFolderFile(filePath, payload) {
       fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
     } else if (ext === '.md') {
       const markdown = contentHtmlToMarkdown(payload?.html || '', createMarkdownImageWriter(filePath));
+      if (!markdown.trim() && fs.existsSync(filePath) && fs.readFileSync(filePath, 'utf-8').trim()) {
+        throw new Error('内容为空，已阻止覆盖原 Markdown 文件');
+      }
       fs.writeFileSync(filePath, markdown, 'utf-8');
     } else {
       fs.writeFileSync(filePath, String(payload?.content ?? ''), 'utf-8');

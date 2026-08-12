@@ -3,6 +3,16 @@ import type { Project } from "../document/types";
 
 const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
 
+const getDropdownPosition = (anchor: DOMRect, width = 160, height = 132) => {
+  const margin = 8;
+  const preferredLeft = anchor.right - width;
+  const preferredTop = anchor.bottom + 4;
+  return {
+    left: Math.max(margin, Math.min(preferredLeft, window.innerWidth - width - margin)),
+    top: Math.max(margin, Math.min(preferredTop, window.innerHeight - height - margin)),
+  };
+};
+
 // ===== SVG Icons (from Figma) =====
 function EmptyStateIllustration() {
   return (
@@ -96,9 +106,11 @@ function ProjectGridCard({
   onRemove: () => void;
 }) {
   const [showMenu, setShowMenu] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
   const [isHovered, setIsHovered] = useState(false);
   const [isMoreHovered, setIsMoreHovered] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -131,7 +143,13 @@ function ProjectGridCard({
               : "bg-transparent opacity-100"
             : "opacity-0 pointer-events-none"
         }`}
-        onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
+        ref={moreButtonRef}
+        onClick={(e) => {
+          e.stopPropagation();
+          const anchor = moreButtonRef.current?.getBoundingClientRect();
+          if (anchor) setMenuPosition(getDropdownPosition(anchor));
+          setShowMenu(!showMenu);
+        }}
         onMouseEnter={() => setIsMoreHovered(true)}
         onMouseLeave={() => setIsMoreHovered(false)}
       >
@@ -161,7 +179,7 @@ function ProjectGridCard({
 
       {/* Dropdown menu */}
       {showMenu && (
-        <div ref={menuRef} className="absolute top-[32px] right-[8px] z-50 w-[160px] bg-white border border-[#ebecf0] rounded-[8px] shadow-[0px_12px_16px_-4px_rgba(36,36,36,0.08)] p-[4px] flex flex-col gap-[4px]">
+        <div ref={menuRef} className="fixed z-50 w-[160px] bg-white border border-[#ebecf0] rounded-[8px] shadow-[0px_12px_16px_-4px_rgba(36,36,36,0.08)] p-[4px] flex flex-col gap-[4px]" style={menuPosition}>
           <div
             className="flex items-center gap-[8px] px-[12px] py-[6px] rounded-[4px] cursor-pointer hover:bg-[#f5f6f8] text-[#131212]"
             onClick={(e) => { e.stopPropagation(); setShowMenu(false); onNewFile(); }}
@@ -213,9 +231,11 @@ function ProjectListRow({
   onRemove: () => void;
 }) {
   const [showMenu, setShowMenu] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
   const [isHovered, setIsHovered] = useState(false);
   const [isMoreHovered, setIsMoreHovered] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -258,14 +278,20 @@ function ProjectListRow({
                 : "bg-transparent opacity-100"
               : "opacity-0 pointer-events-none"
           }`}
-          onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
+          ref={moreButtonRef}
+          onClick={(e) => {
+            e.stopPropagation();
+            const anchor = moreButtonRef.current?.getBoundingClientRect();
+            if (anchor) setMenuPosition(getDropdownPosition(anchor));
+            setShowMenu(!showMenu);
+          }}
           onMouseEnter={() => setIsMoreHovered(true)}
           onMouseLeave={() => setIsMoreHovered(false)}
         >
         {isMoreHovered ? <MoreIcon /> : <MoreIconActive />}
         </button>
         {showMenu && (
-          <div className="absolute top-[20px] right-0 z-50 w-[160px] bg-white border border-[#ebecf0] rounded-[8px] shadow-[0px_12px_16px_-4px_rgba(36,36,36,0.08)] p-[4px] flex flex-col gap-[4px]">
+          <div className="fixed z-50 w-[160px] bg-white border border-[#ebecf0] rounded-[8px] shadow-[0px_12px_16px_-4px_rgba(36,36,36,0.08)] p-[4px] flex flex-col gap-[4px]" style={menuPosition}>
             <div
               className="flex items-center gap-[8px] px-[12px] py-[6px] rounded-[4px] cursor-pointer hover:bg-[#f5f6f8] text-[#131212]"
               onClick={(e) => { e.stopPropagation(); setShowMenu(false); onNewFile(); }}
@@ -418,7 +444,7 @@ function AddProjectModal({
             }`}
             onClick={() => setTab("create")}
           >
-            新建项目
+            新建
           </button>
           <button
             className={`flex-1 py-[12px] text-[14px] font-medium transition-colors ${
@@ -426,7 +452,7 @@ function AddProjectModal({
             }`}
             onClick={() => setTab("import")}
           >
-            导入项目
+            导入
           </button>
         </div>
         <div className="p-[24px]">
@@ -490,7 +516,7 @@ function AddProjectModal({
                 </svg>
               </div>
               <p className="text-[14px] text-[#606266] mb-[4px]">
-                {isDragOver ? "松开以导入项目" : "拖拽文件或文件夹到此处，或点击选择"}
+                {isDragOver ? "松开以导入" : "拖拽文件或文件夹到此处，或点击选择"}
               </p>
               <p className="text-[12px] text-[#8d8e99]">支持 .mdoc / .md / .txt / .html / .htm / .docx 或文件夹</p>
             </div>
@@ -508,7 +534,7 @@ function AddProjectModal({
             onClick={tab === "create" ? handleCreate : handleImport}
             disabled={tab === "create" && !projectName.trim()}
           >
-            {tab === "create" ? "确定" : "选择项目"}
+            {tab === "create" ? "确定" : "选择"}
           </button>
         </div>
       </div>
@@ -575,13 +601,13 @@ export function ProjectListView({
           </span>
         </div>
         <div className="flex items-center gap-[12px]">
-          {/* Add Project Button - black bg with icon */}
+          {/* Add button - supports both folders/projects and standalone files. */}
           <button
             className="h-[32px] px-[12px] bg-[#131212] text-white rounded-[6px] flex items-center gap-[8px] text-[14px] hover:bg-[#333] transition-colors"
             onClick={() => setShowAddModal(true)}
           >
             <FolderPlusIcon />
-            <span>添加项目</span>
+            <span>添加</span>
           </button>
           {/* Search Input - 276x32, bordered */}
           <div className="relative w-[276px] h-[32px]">
@@ -623,7 +649,7 @@ export function ProjectListView({
         {filteredProjects.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full">
             <EmptyStateIllustration />
-            <p className="text-[14px] text-[#8d8e99] mb-[16px]">当前没有项目，点击上方 <span className="font-semibold text-[#131212]">添加项目</span> 去选择一个本地项目文件或新增一个项目吧</p>
+            <p className="text-[14px] text-[#8d8e99] mb-[16px]">当前没有内容，点击上方 <span className="font-semibold text-[#131212]">添加</span> 去选择本地文件、文件夹或新增一个项目吧</p>
           </div>
         ) : viewMode === "grid" ? (
           <div className="flex flex-wrap gap-[16px]">
