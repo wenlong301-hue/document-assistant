@@ -1,26 +1,28 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import type { Project } from "../document/types";
 
+const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
+
 // ===== SVG Icons (from Figma) =====
 function EmptyStateIllustration() {
   return (
-    <img src="/empty-state.png" alt="" className="w-[280px] h-[210px] object-contain" />
+    <img src={assetUrl("empty-state.png")} alt="" className="w-[280px] h-[210px] object-contain" />
   );
 }
 function LogoIcon() {
-  return <img src="/icons/logo.svg" alt="" className="size-[26px]" />;
+  return <img src={assetUrl("icons/logo.svg")} alt="" className="size-[26px]" />;
 }
 
 function FolderIconActive() {
-  return <img src="/icons/folder-icon-active.svg" alt="" className="w-[52px] h-[48px]" />;
+  return <img src={assetUrl("icons/folder-icon-active.svg")} alt="" className="w-[52px] h-[48px]" />;
 }
 
 function FolderIconDefault() {
-  return <img src="/icons/folder-icon.svg" alt="" className="w-[52px] h-[48px]" />;
+  return <img src={assetUrl("icons/folder-icon.svg")} alt="" className="w-[52px] h-[48px]" />;
 }
 
 function MoreIcon() {
-  return <img src="/icons/more-icon.svg" alt="" className="size-[16px]" />;
+  return <img src={assetUrl("icons/more-icon.svg")} alt="" className="size-[16px]" />;
 }
 
 function MoreIconActive() {
@@ -34,31 +36,31 @@ function MoreIconActive() {
 }
 
 function FolderPlusIcon() {
-  return <img src="/icons/folder-plus.svg" alt="" className="size-[16px]" />;
+  return <img src={assetUrl("icons/folder-plus.svg")} alt="" className="size-[16px]" />;
 }
 
 function SearchIcon() {
-  return <img src="/icons/search.svg" alt="" className="size-[16px] shrink-0" />;
+  return <img src={assetUrl("icons/search.svg")} alt="" className="size-[16px] shrink-0" />;
 }
 
 function MenuIcon() {
-  return <img src="/icons/menu-icon.svg" alt="" className="size-[16px]" />;
+  return <img src={assetUrl("icons/menu-icon.svg")} alt="" className="size-[16px]" />;
 }
 
 function GridIcon() {
-  return <img src="/icons/grid-icon.svg" alt="" className="size-[16px]" />;
+  return <img src={assetUrl("icons/grid-icon.svg")} alt="" className="size-[16px]" />;
 }
 
 function PlusIcon() {
-  return <img src="/icons/plus.svg" alt="" className="size-[16px]" />;
+  return <img src={assetUrl("icons/plus.svg")} alt="" className="size-[16px]" />;
 }
 
 function FolderOpenIcon() {
-  return <img src="/icons/folder-open.svg" alt="" className="size-[16px]" />;
+  return <img src={assetUrl("icons/folder-open.svg")} alt="" className="size-[16px]" />;
 }
 
 function SmallFolderIcon() {
-  return <img src="/icons/folder-icon.svg" alt="" className="size-[16px] shrink-0" />;
+  return <img src={assetUrl("icons/folder-icon.svg")} alt="" className="size-[16px] shrink-0" />;
 }
 
 // ===== Project Grid Card =====
@@ -222,7 +224,7 @@ function ProjectListRow({
     >
       <div className="flex items-center gap-[12px] flex-[3] min-w-0">
         <div className="flex items-center justify-center w-[24px] h-[24px] shrink-0">
-          <img src="/icons/folder-icon.svg" alt="" className="w-[24px] h-[24px] shrink-0" />
+          <img src={assetUrl("icons/folder-icon.svg")} alt="" className="w-[24px] h-[24px] shrink-0" />
         </div>
         <span className="text-[14px] text-[#131212] truncate">{project.name}</span>
       </div>
@@ -585,7 +587,7 @@ export function ProjectListView({
               }`}
               onClick={() => onViewModeChange("list")}
             >
-              <img src="/icons/menu-icon.svg" alt="" className={`size-[16px] ${viewMode === "list" ? "brightness-0 invert" : ""}`} />
+              <img src={assetUrl("icons/menu-icon.svg")} alt="" className={`size-[16px] ${viewMode === "list" ? "brightness-0 invert" : ""}`} />
             </button>
             <button
               className={`w-[24px] h-[24px] flex items-center justify-center rounded-[6px] transition-colors ${
@@ -593,7 +595,7 @@ export function ProjectListView({
               }`}
               onClick={() => onViewModeChange("grid")}
             >
-              <img src="/icons/grid-icon.svg" alt="" className={`size-[16px] ${viewMode === "grid" ? "" : "brightness-0"}`} />
+              <img src={assetUrl("icons/grid-icon.svg")} alt="" className={`size-[16px] ${viewMode === "grid" ? "" : "brightness-0"}`} />
             </button>
           </div>
         </div>

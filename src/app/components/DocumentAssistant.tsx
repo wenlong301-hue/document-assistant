@@ -52,6 +52,8 @@ import { HelpModal } from "../document/HelpModal";
 import { NewDocModal } from "../document/NewDocModal";
 import { UpdateModal, type UpdateInfo, type UpdateProgress } from "../document/UpdateModal";
 
+const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
+
 const turndownService = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
 turndownService.keep(["table", "thead", "tbody", "tr", "th", "td", "video"]);
 
@@ -298,7 +300,7 @@ function Frame11({ onOpenShare, onOpenExport, onDelete, onImport, onSave, onOpen
     <div className="absolute content-stretch flex h-[66px] items-center justify-between left-0 right-0 pl-[20px] pr-[8px] py-[16px] top-0">
       {isProjectLevel ? (
         <div className="content-stretch flex gap-[8px] items-center relative shrink-0 cursor-pointer" onClick={onBack}>
-          <img src="/icons/arrow-left.svg" alt="" className="size-[28px]" />
+          <img src={assetUrl("icons/arrow-left.svg")} alt="" className="size-[28px]" />
           <p className="font-['PingFang_SC:Medium',sans-serif] font-medium leading-[normal] relative shrink-0 text-[20px] text-[#131212] whitespace-nowrap">
             {projectName || ""}
           </p>
@@ -332,7 +334,7 @@ function SidebarShareStatus({ shared, onClick }: { shared: boolean; onClick: () 
           className="flex items-center gap-[8px] px-[6px] py-[8px] cursor-pointer group flex-1"
           onClick={onClick}
         >
-          <img src="/icons/wifi-off.svg" alt="" className="size-[16px] shrink-0" />
+          <img src={assetUrl("icons/wifi-off.svg")} alt="" className="size-[16px] shrink-0" />
           <p className={`font-['PingFang_SC:Regular',sans-serif] text-[14px] leading-[normal] transition-colors ${shared ? "text-[#15803d]" : "text-[#8D8E99] group-hover:text-[#131212]"}`}>
             {shared ? "分享中" : "未开启分享"}
           </p>
@@ -438,9 +440,9 @@ function DocItem({ name, active, onClick, onRename, onDelete, onExport, onEnterO
       <div className="flex flex-row items-center size-full px-[8px] py-[8px] gap-[8px]">
         <div className="content-stretch flex flex-[1_0_0] gap-[8px] items-center min-w-px relative">
           {isFolderFile ? (
-            <img src="/icons/file-tree.svg" alt="" className="size-[16px] shrink-0" />
+            <img src={assetUrl("icons/file-tree.svg")} alt="" className="size-[16px] shrink-0" />
           ) : (
-            <img src="/icons/folder-tree.svg" alt="" className="size-[16px] shrink-0" />
+            <img src={assetUrl("icons/folder-tree.svg")} alt="" className="size-[16px] shrink-0" />
           )}
           <p className="[word-break:break-word] flex-[1_0_0] font-['PingFang_SC:Regular',sans-serif] leading-[normal] min-w-px overflow-hidden relative text-[14px] text-ellipsis whitespace-nowrap" style={{ color: highlighted ? "#131212" : "#8D8E99" }}>
             {name}
@@ -455,7 +457,7 @@ function DocItem({ name, active, onClick, onRename, onDelete, onExport, onEnterO
             setMenuOpen((v) => !v);
           }}
         >
-          <img src="/icons/dot-vertical.svg" alt="" className="size-[16px]" />
+          <img src={assetUrl("icons/dot-vertical.svg")} alt="" className="size-[16px]" />
         </div>
       </div>
       {menuOpen && (
@@ -919,7 +921,7 @@ function Frame27({ onNewDoc, onNewFile, mode, onSwitchMode }: { onNewDoc: () => 
         className="content-stretch flex gap-[8px] items-center px-[8px] py-[7px] relative shrink-0 cursor-pointer rounded-[8px] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors duration-150"
         onClick={onSwitchMode}
       >
-        <img src="/icons/folder-open.svg" alt="" className="size-[20px]" />
+        <img src={assetUrl("icons/folder-open.svg")} alt="" className="size-[20px]" />
         <p className="font-['PingFang_SC:Medium',sans-serif] font-medium leading-[normal] relative shrink-0 text-[#131212] text-[16px] whitespace-nowrap">
           {isOutline ? "大纲树" : "文件树"}
         </p>
@@ -928,7 +930,7 @@ function Frame27({ onNewDoc, onNewFile, mode, onSwitchMode }: { onNewDoc: () => 
         className="content-stretch flex gap-[8px] items-center p-[8px] relative shrink-0 cursor-pointer rounded-[8px] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors duration-150"
         onClick={isOutline ? onNewFile : onNewDoc}
       >
-        <img src="/icons/plus-02.svg" alt="" className="size-[20px]" />
+        <img src={assetUrl("icons/plus-02.svg")} alt="" className="size-[20px]" />
         <p className="font-['PingFang_SC:Regular',sans-serif] leading-[normal] relative shrink-0 text-[#131212] text-[14px] whitespace-nowrap">
           {isOutline ? "新建层级" : "新建文件"}
         </p>
