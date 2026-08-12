@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveDoc: (id, data) => ipcRenderer.invoke('save-doc', id, data),
   saveDocToFolder: (id, data) => ipcRenderer.invoke('save-doc-to-folder', id, data),
   deleteDoc: (id) => ipcRenderer.invoke('delete-doc', id),
-  startShare: (port, docId) => ipcRenderer.invoke('start-share', port, docId),
+  startShare: (port, docId, html) => ipcRenderer.invoke('start-share', port, docId, html),
   stopShare: () => ipcRenderer.invoke('stop-share'),
   getPlatform: () => ipcRenderer.invoke('get-platform'),
   getVersion: () => ipcRenderer.invoke('get-version'),
@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeFolder: () => ipcRenderer.invoke('close-folder'),
   readFolderFile: (filePath) => ipcRenderer.invoke('read-folder-file', filePath),
   writeFolderFile: (filePath, payload) => ipcRenderer.invoke('write-folder-file', filePath, payload),
+  getMarkdownSidecarPath: (filePath) => ipcRenderer.invoke('get-markdown-sidecar-path', filePath),
   renameFolderFile: (filePath, newName) => ipcRenderer.invoke('rename-folder-file', filePath, newName),
   trashFolderFile: (filePath) => ipcRenderer.invoke('trash-folder-file', filePath),
   onFolderChanged: (callback) => {

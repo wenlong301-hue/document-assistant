@@ -4,19 +4,18 @@ import outlineSvg from "../../imports/首页大纲模式根节点/svg-4qt61e0wiv
 import svgPaths from "../../imports/首页文档模式/svg-8pwaal4bp9";
 
 // ===== SVG Icons =====
-function FolderIcon() {
+function FolderIcon({ color }: { color: string }) {
   return (
-    <svg className="size-[16px] shrink-0" viewBox="0 0 16 16" fill="none">
-      <path d="M2 4C2 3.44772 2.44772 3 3 3H6.5L8 4.5H13C13.5523 4.5 14 4.94772 14 5.5V12C14 12.5523 13.5523 13 13 13H3C2.44772 13 2 12.5523 2 12V4Z" fill="#131212"/>
+    <svg className="size-[16px] shrink-0 mr-[8px]" viewBox="0 0 16 16" fill="none">
+      <path d="M1.60066 5.61132L1.60061 11.2942C1.60059 12.3988 2.49602 13.2942 3.6006 13.2942L12.3998 13.2942C13.5043 13.2942 14.3997 12.3988 14.3998 11.2943L14.3999 5.67518C14.4 5.12288 13.9522 4.67515 13.3999 4.67515H8.05577L6.21242 2.70605H2.60035C2.04792 2.70605 1.60014 3.15358 1.60031 3.70601C1.60048 4.30934 1.60067 5.06447 1.60066 5.61132Z" stroke={color} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   );
 }
 
-function DocumentIcon() {
+function DocumentIcon({ color }: { color: string }) {
   return (
-    <svg className="size-[16px] shrink-0" viewBox="0 0 16 16" fill="none">
-      <path d="M4 2H10L12 4V14H4V2Z" stroke="#131212" strokeWidth="1.2" strokeLinejoin="round"/>
-      <path d="M10 2V4H12" stroke="#131212" strokeWidth="1.2" strokeLinejoin="round"/>
+    <svg className="size-[16px] shrink-0 mr-[8px]" viewBox="0 0 16 16" fill="none">
+      <path d="M10.0001 1.6001V4.0001C10.0001 4.44193 10.3583 4.8001 10.8001 4.8001H13.2001M12.0001 2.8001C11.6441 2.48153 11.2746 2.10368 11.0414 1.85828C10.8862 1.69499 10.6717 1.6001 10.4464 1.6001H4.39994C3.51629 1.6001 2.79995 2.31644 2.79994 3.20009L2.79988 12.8001C2.79988 13.6837 3.51622 14.4001 4.39987 14.4001L11.5999 14.4001C12.4835 14.4001 13.1999 13.6838 13.1999 12.8001L13.2001 4.31865C13.2001 4.11409 13.1221 3.91745 12.9801 3.77019C12.7176 3.49786 12.2792 3.04978 12.0001 2.8001Z" stroke={color} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   );
 }
@@ -44,26 +43,18 @@ function FileTreeNode({
   const hasChildren = node.isDirectory && node.children && node.children.length > 0;
   const [hovered, setHovered] = useState(false);
   const color = isSelected ? "#131212" : "#8D8E99";
+  const iconColor = isSelected || hovered ? "#131212" : "#8D8E99";
   const showControls = isSelected || hovered;
 
   const handleClick = () => {
     onSelect(node);
   };
 
-  // Sort children: directories first, then files
-  const sortedChildren = useMemo(() => {
-    if (!node.children) return [];
-    return [...node.children].sort((a, b) => {
-      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
-      return a.name.localeCompare(b.name, "zh-CN");
-    });
-  }, [node.children]);
-
   return (
     <div>
       <div
         className={`h-[36px] relative rounded-[8px] shrink-0 w-full flex items-center cursor-pointer transition-colors select-none
-          ${isSelected ? "bg-[#EBECF0]" : hovered ? "bg-[#EBECF0]" : ""}`}
+          ${isSelected ? "bg-[#EBECF0]" : hovered ? "bg-[#f5f6f8]" : ""}`}
         style={{ paddingLeft: 8 + depth * 16, paddingRight: 8 }}
         onClick={handleClick}
         onContextMenu={(e) => onContextMenu(e, node)}
@@ -84,7 +75,7 @@ function FileTreeNode({
         </div>
 
         {/* Icon */}
-        {node.isDirectory ? <FolderIcon /> : <DocumentIcon />}
+        {node.isDirectory ? <FolderIcon color={iconColor} /> : <DocumentIcon color={iconColor} />}
 
         {/* Name */}
         <span className="flex-1 min-w-0 text-[14px] truncate" style={{ color }}>
@@ -104,23 +95,6 @@ function FileTreeNode({
         </div>
       </div>
 
-      {/* Children */}
-      {node.isDirectory && isExpanded && sortedChildren.length > 0 && (
-        <div>
-          {sortedChildren.map((child) => (
-            <FileTreeNode
-              key={child.path}
-              node={child}
-              depth={depth + 1}
-              selectedPath={selectedPath}
-              expandedPaths={expandedPaths}
-              onSelect={onSelect}
-              onToggleExpand={onToggleExpand}
-              onContextMenu={onContextMenu}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }

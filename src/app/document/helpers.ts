@@ -4,6 +4,7 @@ import {
   escapeHtml,
   escapeScriptJson,
   markdownToSimpleHtml,
+  sanitizeHtml,
   sanitizeFileName,
   textToHtml,
 } from "../editor/utils/html";
@@ -138,6 +139,178 @@ export const normalizeStoredDoc = (name: string, raw: any): StoredDoc => {
   return createStoredDoc(docName, children, normalizeContentMap(raw?.content));
 };
 
+const markdownHeadingText = (value: string) => {
+  const parsed = new DOMParser().parseFromString(markdownToSimpleHtml(value), "text/html");
+  return parsed.body.textContent?.trim() || value.trim() || "未命名文件";
+};
+
+const markdownNodeId = (index: number, title: string) => {
+  const slug = title
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return `md-${index}${slug ? `-${slug}` : ""}`;
+};
+
+export const importMarkdownAsStoredDoc = (name: string, source: string): StoredDoc => {
+  const lines = String(source || "").replace(/^\uFEFF/, "").split(/\r?\n/);
+  const items: Array<{ id: string; level: number; title: string; body: string[] }> = [];
+  const preface: string[] = [];
+  let inFence = false;
+
+  lines.forEach((line) => {
+    if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
+    const heading = !inFence ? line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/) : null;
+    if (heading) {
+      const title = markdownHeadingText(heading[2]);
+      items.push({ id: markdownNodeId(items.length, title), level: heading[1].length, title, body: [] });
+      return;
+    }
+    if (items.length > 0) items[items.length - 1].body.push(line);
+    else preface.push(line);
+  });
+
+  if (items.length === 0) {
+    const title = name || "未命名文件";
+    const tree = buildOutlineTree(title);
+    const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
+    return createStoredDoc(title, tree, { [leaf.id]: markdownToSimpleHtml(source) });
+  }
+
+  const roots: OutlineNode[] = [];
+  const stack: Array<{ level: number; node: OutlineNode }> = [];
+  const content: DocContentMap = {};
+  const prefaceHtml = preface.join("\n").trim();
+  if (prefaceHtml) {
+    const id = markdownNodeId(-1, name || "前言");
+    roots.push({ id, name: name || "前言", children: [], includeInPreview: true });
+    content[id] = markdownToSimpleHtml(prefaceHtml);
+  }
+  items.forEach((item) => {
+    const node: OutlineNode = { id: item.id, name: item.title, children: [], includeInPreview: true };
+    const html = item.body.join("\n").trim();
+    content[item.id] = html ? markdownToSimpleHtml(html) : emptyParagraph;
+    while (stack.length > 0 && stack[stack.length - 1].level >= item.level) stack.pop();
+    if (stack.length === 0) roots.push(node);
+    else stack[stack.length - 1].node.children.push(node);
+    stack.push({ level: item.level, node });
+  });
+
+  return createStoredDoc(roots[0]?.name || name || "未命名文件", roots, content);
+};
+
+export const importHtmlAsStoredDoc = (name: string, source: string): StoredDoc => {
+  const parsed = new DOMParser().parseFromString(source || "", "text/html");
+  const embeddedState = parsed.querySelector<HTMLScriptElement>('script[data-doc-assistant-state]')?.textContent;
+  if (embeddedState) {
+    try {
+      return normalizeStoredDoc(name, JSON.parse(embeddedState));
+    } catch {
+      // Continue with legacy and generic HTML recovery.
+    }
+  }
+
+  const legacyScript = parsed.querySelector<HTMLScriptElement>("body > script:last-of-type")?.textContent || "";
+  const sectionsMatch = legacyScript.match(/window\.__DOC_SECTIONS__=(.*?);\s*window\.__DOC_INITIAL__=/s);
+  if (sectionsMatch) {
+    try {
+      const sections = JSON.parse(sectionsMatch[1]) as Record<string, PreviewSection>;
+      const content = Object.fromEntries(Object.entries(sections).map(([id, section]) => [id, sanitizeHtml(section.html || emptyParagraph)]));
+      const buildTree = (container: Element): OutlineNode[] => Array.from(container.children)
+        .filter((child) => child.classList.contains("tree-node"))
+        .map((child) => {
+          const id = child.getAttribute("data-node-id") || `node-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          const label = child.querySelector(":scope > .tree-item > .tree-name")?.textContent?.trim();
+          const childrenContainer = child.querySelector(":scope > .tree-children");
+          return {
+            id,
+            name: label || sections[id]?.name || "未命名文件",
+            children: childrenContainer ? buildTree(childrenContainer) : [],
+            includeInPreview: true,
+          };
+        });
+      const treeRoot = parsed.querySelector(".sidebar-left .doc-tree") || parsed.querySelector(".doc-tree");
+      const children = treeRoot ? buildTree(treeRoot) : Object.entries(sections).map(([id, section]) => ({
+        id,
+        name: section.name || "未命名文件",
+        children: [],
+        includeInPreview: true,
+      }));
+      if (children.length > 0) return createStoredDoc(name, children, content);
+    } catch {
+      // Continue with generic HTML extraction.
+    }
+  }
+
+  const contentRoot = parsed.querySelector<HTMLElement>("#doc-content")
+    || parsed.querySelector<HTMLElement>("main.content")
+    || parsed.querySelector<HTMLElement>(".article-inner")
+    || parsed.querySelector<HTMLElement>(".article-card")
+    || parsed.querySelector<HTMLElement>("article")
+    || parsed.querySelector<HTMLElement>("main")
+    || parsed.body;
+  contentRoot.querySelectorAll("script,style,noscript,template,.copy-btn").forEach((node) => node.remove());
+  const title = contentRoot.querySelector("h1")?.textContent?.trim() || parsed.title.trim() || name;
+  contentRoot.querySelectorAll(".toc-tree,.toc-empty,.toc-link,.toc-node,.help-toc,.manual-toc,.table-of-contents").forEach((node) => node.remove());
+  const headings = Array.from(contentRoot.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6"))
+    .filter((heading) => heading.textContent?.trim());
+  if (headings.length > 0) {
+    const content: DocContentMap = {};
+    const nodesById = new Map<string, OutlineNode>();
+    headings.forEach((heading, index) => {
+      const headingTitle = heading.textContent?.trim() || "未命名文件";
+      const id = heading.getAttribute("data-manual-anchor") || heading.id || `html-${index}-${Math.random().toString(36).slice(2)}`;
+      const node: OutlineNode = { id, name: headingTitle, children: [], includeInPreview: true };
+      nodesById.set(id, node);
+      const wrapper = parsed.createElement("div");
+      let current = heading.nextSibling;
+      const nextHeading = headings[index + 1];
+      while (current && current !== nextHeading) {
+        const next = current.nextSibling;
+        wrapper.appendChild(current.cloneNode(true));
+        current = next;
+      }
+      content[id] = sanitizeHtml(wrapper.innerHTML || emptyParagraph);
+    });
+    const tocLinks = Array.from(parsed.querySelectorAll<HTMLAnchorElement>(".toc-link[href^='#']"));
+    const roots: OutlineNode[] = [];
+    const stack: Array<{ level: number; node: OutlineNode }> = [];
+    const usedIds = new Set<string>();
+    tocLinks.forEach((link) => {
+      const id = decodeURIComponent((link.getAttribute("href") || "").slice(1));
+      const sourceNode = nodesById.get(id);
+      if (!sourceNode || usedIds.has(id)) return;
+      const levelClass = Array.from(link.classList).find((className) => className.startsWith("level-"));
+      const level = levelClass ? Number(levelClass.replace("level-", "")) + 1 : 1;
+      const node: OutlineNode = { ...sourceNode, children: [] };
+      usedIds.add(id);
+      while (stack.length > 0 && stack[stack.length - 1].level >= level) stack.pop();
+      if (stack.length === 0) roots.push(node);
+      else stack[stack.length - 1].node.children.push(node);
+      stack.push({ level, node });
+    });
+    if (roots.length === 0) {
+      const headingStack: Array<{ level: number; node: OutlineNode }> = [];
+      headings.forEach((heading) => {
+        const id = heading.getAttribute("data-manual-anchor") || heading.id;
+        const sourceNode = id ? nodesById.get(id) : undefined;
+        if (!sourceNode) return;
+        const level = Number(heading.tagName.slice(1)) || 1;
+        while (headingStack.length > 0 && headingStack[headingStack.length - 1].level >= level) headingStack.pop();
+        if (headingStack.length === 0) roots.push(sourceNode);
+        else headingStack[headingStack.length - 1].node.children.push(sourceNode);
+        headingStack.push({ level, node: sourceNode });
+      });
+    }
+    return createStoredDoc(title, roots, content);
+  }
+  const html = sanitizeHtml(contentRoot.innerHTML || emptyParagraph);
+  const tree = buildOutlineTree(title);
+  return createStoredDoc(title, tree, { [tree[0].id]: html });
+};
+
 export const flattenOutlineNodes = (nodes: OutlineNode[]): OutlineNode[] => nodes.flatMap((node) => [node, ...flattenOutlineNodes(node.children)]);
 
 
@@ -180,7 +353,7 @@ export const buildPreviewHtml = (title: string, sections: PreviewSection[], outl
     : '';
   const initialTitle = sectionMap[firstNodeId]?.name || sections[0]?.name || title;
 
-  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${escapeHtml(title)}</title><style>
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${escapeHtml(title)}</title><script type="application/json" data-doc-assistant-state>${escapeScriptJson({ name: title, children: outlineTree || [], content: contentMap || {} })}</script><style>
 *{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}body{font-family:'PingFang SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;color:#131212;line-height:1.6;min-height:100vh;overflow-x:hidden;overflow-y:auto}
 body::-webkit-scrollbar{width:6px}body::-webkit-scrollbar-thumb{background:#d0d1d6;border-radius:3px}body::-webkit-scrollbar-track{background:transparent}
 .mobile-bar{display:none;position:sticky;top:0;z-index:40;height:48px;padding:0 12px;align-items:center;gap:10px;background:rgba(255,255,255,.96);backdrop-filter:blur(8px);border-bottom:1px solid #ebecf0}

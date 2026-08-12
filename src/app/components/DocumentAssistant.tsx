@@ -26,10 +26,11 @@ import {
   findNodeDepth,
   flattenOutlineNodes,
   getFirstPreviewableNode,
+  importHtmlAsStoredDoc,
+  importMarkdownAsStoredDoc,
   headingsToWordParagraphs,
   isHtmlContentEmpty,
   isNodePreviewable,
-  markdownToSimpleHtml,
   normalizeMdocDocuments,
   normalizeStoredDoc,
   outlineCollapsedIconPath,
@@ -43,7 +44,7 @@ import {
   wordHtmlDocument,
   writeWebState,
 } from "../document/helpers";
-import { emptyParagraph, escapeHtml, getPlainTextFromHtml, sanitizeHtml } from "../editor/utils/html";
+import { emptyParagraph, escapeHtml, getPlainTextFromHtml } from "../editor/utils/html";
 import { Toast } from "../editor/ui/Toast";
 import { EditorWorkspace } from "../document/EditorWorkspace";
 import { DeleteConfirmModal } from "../document/DeleteConfirmModal";
@@ -280,7 +281,7 @@ function FrameHelp() {
   );
 }
 
-function Frame11({ onOpenShare, onOpenExport, onDelete, onImport, onSave, onOpenHelp, level, projectName, onBack }: {
+function Frame11({ onOpenShare, onOpenExport, onDelete, onImport, onSave, onOpenHelp, level, projectName, onBack, shareDisabled = false }: {
   onOpenShare: () => void;
   onOpenExport: () => void;
   onDelete: () => void;
@@ -290,6 +291,7 @@ function Frame11({ onOpenShare, onOpenExport, onDelete, onImport, onSave, onOpen
   level?: "projects" | "project";
   projectName?: string;
   onBack?: () => void;
+  shareDisabled?: boolean;
 }) {
   const isProjectLevel = level === "project";
   return (
@@ -308,8 +310,9 @@ function Frame11({ onOpenShare, onOpenExport, onDelete, onImport, onSave, onOpen
         <div className="cursor-pointer transition-all duration-150 hover:opacity-75 active:scale-95 active:opacity-60 rounded-[6px]" onClick={onImport}><Frame8 /></div>
         <div className="cursor-pointer transition-all duration-150 hover:opacity-75 active:scale-95 active:opacity-60 rounded-[6px]" onClick={onOpenExport}><Frame7 /></div>
         <div
-          className="cursor-pointer transition-all duration-150 hover:bg-[#EBECF0] active:bg-[#dddee3] active:scale-95 rounded-[6px]"
-          onClick={onOpenShare}
+          className={`transition-all duration-150 rounded-[6px] ${shareDisabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:bg-[#EBECF0] active:bg-[#dddee3] active:scale-95"}`}
+          onClick={shareDisabled ? undefined : onOpenShare}
+          title={shareDisabled ? "请选择文件后再分享" : undefined}
         >
           <Frame12 />
         </div>
@@ -565,6 +568,11 @@ function filterOutlineNodes(nodes: OutlineNode[], query: string): OutlineNode[] 
 
 type DragState = { sourceId: string; isRootSource: boolean; overId: string } | null;
 
+const getDisplayFileName = (value: string) => {
+  const name = String(value || "文档").split(/[\\/]/).pop() || "文档";
+  return name.replace(/\.(mdoc|md|txt|html|htm|docx)$/i, "") || name;
+};
+
 type OutlineMenuHandlers = {
   menuState: { id: string; rect: { x: number; y: number } } | null;
   onMore: (id: string, rect: { x: number; y: number }) => void;
@@ -633,12 +641,6 @@ function OutlineTreeNode({ node, depth, selectedId, expandedIds, dragState, onSe
               <path d={isExpanded ? outlineSvg.p32aa7080 : outlineSvg.p2c70bb70} fill={isSelected ? "#131212" : "#8D8E99"} />
             </svg>
           )}
-        </div>
-        {/* file icon */}
-        <div className="relative shrink-0 size-[16px] mr-[8px]">
-          <svg className="block size-full" fill="none" viewBox="0 0 16 16">
-            <path d={outlineSvg.p2f15d400} stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" />
-          </svg>
         </div>
         {/* name */}
         <p className="flex-1 min-w-0 font-['PingFang_SC:Regular',sans-serif] text-[14px] leading-[normal] truncate" style={{ color }}>
@@ -1164,17 +1166,18 @@ function ExportModal({ docName, content, contentMap, outlineNodes, selectedNodeI
     }
 
     try {
-      const safeName = sanitizeFileName(exportTitle || docName || "文档");
+      const displayExportTitle = scope === "current" ? exportTitle : getDisplayFileName(exportTitle || docName || "文档");
+      const safeName = sanitizeFileName(displayExportTitle || "文档");
       const skipTitle = scope === "all" || (scope === "current" && !!exportOutlineTree);
-      const payload = { title: exportTitle, content: exportContent, defaultName: safeName, options: { skipTitle } };
+      const payload = { title: displayExportTitle, content: exportContent, defaultName: safeName, options: { skipTitle } };
 
       if (format === "HTML") {
-        const fullHtml = buildPreviewHtml(exportTitle, exportSections, exportOutlineTree, initialNodeId, contentMap);
+        const fullHtml = buildPreviewHtml(displayExportTitle, exportSections, exportOutlineTree, initialNodeId, contentMap);
         if (isElectron) {
-          const result = await (window as any).electronAPI.exportHtml(fullHtml, `${docName}.html`);
+          const result = await (window as any).electronAPI.exportHtml(fullHtml, `${safeName}.html`);
           notify(result === false ? "已取消导出" : "导出成功", result === false ? "info" : "success");
         } else {
-          downloadBlob(new Blob([fullHtml], { type: "text/html" }), `${docName}.html`);
+          downloadBlob(new Blob([fullHtml], { type: "text/html" }), `${safeName}.html`);
           notify("导出成功", "success");
         }
       } else if (format === "Markdown") {
@@ -1345,7 +1348,7 @@ export default function DocumentAssistant() {
   const [activeFolder, setActiveFolder] = useState<string | null>(null);
   const [folderFiles, setFolderFiles] = useState<FolderFileItem[]>([]);
   const [folderGone, setFolderGone] = useState(false);
-  const openFileInfoRef = useRef<{ docName: string; filePath: string; ext: string } | null>(null);
+  const openFileInfoRef = useRef<{ docName: string; filePath: string; ext: string; sourceFilePath?: string } | null>(null);
 
   // Project-level navigation state
   const [level, setLevel] = useState<"projects" | "project">("projects");
@@ -1362,6 +1365,18 @@ export default function DocumentAssistant() {
     const api = (window as any).electronAPI;
     if (!api?.writeFolderFile) return;
     const parts = flattenOutlineNodes(doc.children || []);
+    const markdownParts: Array<{ name: string; html: string; level: number }> = [];
+    const collectMarkdownParts = (nodes: OutlineNode[], level: number) => {
+      nodes.forEach((node) => {
+        markdownParts.push({ name: node.name, html: doc.content?.[node.id] || emptyParagraph, level });
+        collectMarkdownParts(node.children || [], Math.min(6, level + 1));
+      });
+    };
+    collectMarkdownParts(doc.children || [], 1);
+    const markdownContentHtml = markdownParts.map((part) => {
+      const level = Math.min(6, Math.max(1, part.level));
+      return part.html.trim().startsWith("<h1") ? part.html : `<h${level}>${escapeHtml(part.name)}</h${level}>${part.html}`;
+    }).join("\n");
     const contentHtml = parts.length > 0
       ? parts.map((n) => doc.content?.[n.id] || emptyParagraph).join("\n")
       : `<h1>${escapeHtml(doc.name || docName)}</h1>${emptyParagraph}`;
@@ -1372,14 +1387,20 @@ export default function DocumentAssistant() {
         content: JSON.stringify({ ...doc, name: doc.name || docName, children: doc.children || [], updatedAt: new Date().toISOString() }),
       };
     } else if (info.ext === "md") {
-      payload = { ext: "md", html: contentHtml, title: doc.name || docName };
+      payload = { ext: "md", html: markdownContentHtml || contentHtml, title: getDisplayFileName(doc.name || docName) };
     } else if (info.ext === "txt") {
       const text = parts.length > 0 ? parts.map((n) => getPlainTextFromHtml(doc.content?.[n.id] || "")).join("\n\n") : "";
       payload = { ext: "txt", content: text };
     } else if (info.ext === "docx") {
-      payload = { ext: "docx", html: contentHtml, title: doc.name || docName };
+      payload = { ext: "docx", html: contentHtml, title: getDisplayFileName(doc.name || docName) };
     } else {
-      payload = { ext: "html", content: sanitizeHtml(contentHtml) };
+      const sections = buildPreviewSections(doc.children || [], doc.content || {});
+      const displayName = getDisplayFileName(doc.name || docName);
+      const fallback = [{ id: "root", name: displayName, html: contentHtml }];
+      payload = {
+        ext: "html",
+        content: buildPreviewHtml(displayName, sections.length > 0 ? sections : fallback, doc.children || [], sections[0]?.id, doc.content || {}),
+      };
     }
     try {
       const result = await api.writeFolderFile(info.filePath, payload);
@@ -1737,14 +1758,15 @@ export default function DocumentAssistant() {
   const buildCurrentShareHtml = useCallback(() => {
     if (!selectedDoc) throw new Error("请先新建或选择文档");
     const doc = docStore[selectedDoc] ?? createStoredDoc(selectedDoc, getOutlineTree(selectedDoc));
+    const displayName = getDisplayFileName(doc.name || selectedDoc);
     const tree = doc.children?.length ? doc.children : getOutlineTree(selectedDoc);
     const sections = buildPreviewSections(tree, doc.content);
     const bodyHtml = sections.length > 0
       ? sections.map((section) => section.html).join('\n<hr style="border:none;border-top:1px solid #ebecf0;margin:24px 0"/>\n')
-      : `<h1>${escapeHtml(doc.name || selectedDoc)}</h1>${emptyParagraph}`;
+      : `<h1>${escapeHtml(displayName)}</h1>${emptyParagraph}`;
     return buildPreviewHtml(
-      doc.name || selectedDoc,
-      sections.length > 0 ? sections : [{ id: "root", name: doc.name || selectedDoc, html: bodyHtml }],
+      displayName,
+      sections.length > 0 ? sections : [{ id: "root", name: displayName, html: bodyHtml }],
       tree,
       selectedNodeId || sections[0]?.id,
       doc.content,
@@ -1779,12 +1801,18 @@ export default function DocumentAssistant() {
         return;
       }
       if (!shared) {
+        if (shareDisabled) {
+          setShareError("请选择文件后再开启分享");
+          setToast({ message: "请选择文件后再分享", type: "info" });
+          return;
+        }
         if (!selectedDoc) {
           setShareError("请先新建或选择文档后再开启分享");
           setToast({ message: "请先选择文档", type: "error" });
           return;
         }
-        const url = await (window as any).electronAPI.startShare(6535, selectedDoc);
+        const html = buildCurrentShareHtml();
+        const url = await (window as any).electronAPI.startShare(6535, selectedDoc, html);
         setShareUrl(url);
         setShared(true);
         setToast({ message: "分享已开启", type: "success" });
@@ -1865,25 +1893,27 @@ export default function DocumentAssistant() {
             setToast({ message: "mdoc 文件格式错误", type: "error" });
             return;
           }
+        } else if (ext === "html" || ext === "htm") {
+          const doc = importHtmlAsStoredDoc(name, text);
+          const firstNode = flattenOutlineNodes(doc.children).find((node) => doc.content[node.id]?.replace(/<[^>]*>/g, "").trim()) ?? flattenOutlineNodes(doc.children)[0];
+          setDocs((prev) => [...new Set([...prev, doc.name])]);
+          setSelectedDoc(doc.name);
+          setDocStore((prev) => ({ ...prev, [doc.name]: doc }));
+          setOutlineTrees((prev) => ({ ...prev, [doc.name]: doc.children }));
+          setOutlineNodes(doc.children);
+          setSelectedNodeId(firstNode?.id ?? "");
+          setMode("outline");
+          persistDoc(doc.name, doc, 0);
         } else if (ext === "md") {
-          const html = markdownToSimpleHtml(text);
-          const lines = text.split("\n");
-          const titles: string[] = [];
-          lines.forEach(line => {
-            const m = line.match(/^(#{1,5})\s+(.+)/);
-            if (m) titles.push(m[2].trim());
-          });
-          const title = titles[0] || name;
-          const tree = buildOutlineTree(title);
-          const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
-          const doc = createStoredDoc(title, tree, { [leaf.id]: html });
-          setDocs((prev) => [...new Set([...prev, title])]);
-          setSelectedDoc(title);
-          setDocStore((prev) => ({ ...prev, [title]: doc }));
-          setOutlineTrees((prev) => ({ ...prev, [title]: tree }));
-          setOutlineNodes(tree);
-          setSelectedNodeId(leaf.id);
-          persistDoc(title, doc, 0);
+          const doc = importMarkdownAsStoredDoc(name, text);
+          const firstNode = flattenOutlineNodes(doc.children).find((node) => doc.content[node.id]?.replace(/<[^>]*>/g, "").trim()) ?? flattenOutlineNodes(doc.children)[0];
+          setDocs((prev) => [...new Set([...prev, doc.name])]);
+          setSelectedDoc(doc.name);
+          setDocStore((prev) => ({ ...prev, [doc.name]: doc }));
+          setOutlineTrees((prev) => ({ ...prev, [doc.name]: doc.children }));
+          setOutlineNodes(doc.children);
+          setSelectedNodeId(firstNode?.id ?? "");
+          persistDoc(doc.name, doc, 0);
         } else {
           const html = textToHtml(text);
           const tree = buildOutlineTree(name);
@@ -1980,8 +2010,9 @@ export default function DocumentAssistant() {
       return;
     }
     const docName = file.relPath;
-    const apply = (doc: StoredDoc, tree: OutlineNode[], nodeId: string, enterOutline = true) => {
-      openFileInfoRef.current = { docName, filePath: file.path, ext: file.ext };
+    const fileExt = file.ext.replace(/^\./, "").toLowerCase();
+    const apply = (doc: StoredDoc, tree: OutlineNode[], nodeId: string, enterOutline = true, writeInfo?: { filePath: string; ext: string; sourceFilePath?: string }) => {
+      openFileInfoRef.current = { docName, filePath: writeInfo?.filePath || file.path, ext: writeInfo?.ext || fileExt, sourceFilePath: writeInfo?.sourceFilePath };
       setSelectedDoc(docName);
       setDocStore((prev) => ({ ...prev, [docName]: doc }));
       setOutlineTrees((prev) => ({ ...prev, [docName]: tree }));
@@ -1990,7 +2021,7 @@ export default function DocumentAssistant() {
       if (enterOutline) setMode("outline");
     };
     try {
-      if (file.ext === "docx") {
+      if (fileExt === "docx") {
         const binary = atob(raw.base64 || "");
         const arrayBuffer = Uint8Array.from(binary, (c) => c.charCodeAt(0)).buffer;
         const result = await mammoth.convertToHtml({ arrayBuffer });
@@ -1998,20 +2029,20 @@ export default function DocumentAssistant() {
         const tree = buildOutlineTree(docName);
         const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
         apply(createStoredDoc(docName, tree, { [leaf.id]: html || emptyParagraph }), tree, leaf.id);
-      } else if (file.ext === "mdoc") {
+      } else if (fileExt === "mdoc") {
         const doc = { ...normalizeStoredDoc(docName, JSON.parse(raw.text || "{}")), name: docName };
         const firstNode = flattenOutlineNodes(doc.children).find((node) => doc.content[node.id]?.replace(/<[^>]*>/g, "").trim()) ?? flattenOutlineNodes(doc.children)[0];
         apply(doc, doc.children, firstNode?.id ?? "");
-      } else if (file.ext === "md") {
-        const html = markdownToSimpleHtml(raw.text || "");
-        const tree = buildOutlineTree(docName);
-        const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
-        apply(createStoredDoc(docName, tree, { [leaf.id]: html }), tree, leaf.id);
-      } else if (file.ext === "html") {
-        const html = sanitizeHtml(raw.text || "");
-        const tree = buildOutlineTree(docName);
-        const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
-        apply(createStoredDoc(docName, tree, { [leaf.id]: html || emptyParagraph }), tree, leaf.id);
+      } else if (fileExt === "md") {
+        const doc = { ...importMarkdownAsStoredDoc(docName, raw.text || ""), name: docName };
+        const firstNode = flattenOutlineNodes(doc.children).find((node) => doc.content[node.id]?.replace(/<[^>]*>/g, "").trim()) ?? flattenOutlineNodes(doc.children)[0];
+        const sidecarPath = api.getMarkdownSidecarPath ? await api.getMarkdownSidecarPath(file.path) : `${file.path}.mdoc`;
+        apply(doc, doc.children, firstNode?.id ?? "", true, { filePath: sidecarPath, ext: "mdoc", sourceFilePath: file.path });
+      } else if (fileExt === "html" || fileExt === "htm") {
+        if (!raw.text?.trim()) throw new Error("HTML 文件内容为空");
+        const doc = importHtmlAsStoredDoc(docName, raw.text);
+        const firstNode = flattenOutlineNodes(doc.children).find((node) => doc.content[node.id]?.replace(/<[^>]*>/g, "").trim()) ?? flattenOutlineNodes(doc.children)[0];
+        apply({ ...doc, name: docName }, doc.children, firstNode?.id ?? "");
       } else {
         const html = textToHtml(raw.text || "");
         const tree = buildOutlineTree(docName);
@@ -2020,7 +2051,8 @@ export default function DocumentAssistant() {
       }
     } catch (error) {
       console.error("open folder file failed:", error);
-      setToast({ message: file.ext === "mdoc" ? "mdoc 文件格式错误" : "打开文件失败", type: "error" });
+      const detail = error instanceof Error ? error.message : "未知错误";
+      setToast({ message: fileExt === "mdoc" ? "mdoc 文件格式错误" : `打开文件失败：${detail}`, type: "error" });
     }
   };
 
@@ -2074,7 +2106,7 @@ export default function DocumentAssistant() {
       clearTimeout(saveTimersRef.current[selectedDoc]);
       const doc = docStore[selectedDoc] ?? createStoredDoc(selectedDoc, getOutlineTree(selectedDoc));
       await writeFolderDocBack(selectedDoc, doc);
-      setToast({ message: "已保存到原文件", type: "success" });
+      setToast({ message: info.sourceFilePath ? "已保存为 mdoc 副本，原 md 文件未修改" : "已保存到原文件", type: "success" });
       return;
     }
     await handleSaveToFolder();
@@ -2233,16 +2265,16 @@ export default function DocumentAssistant() {
 
   const handleDocListExport = async (name: string) => {
     const doc = docStore[name] ?? createStoredDoc(name, getOutlineTree(name));
-    const exportBase = openFileInfoRef.current?.docName === name ? String(name).replace(/\.[^.]+$/, "") : (doc.name || name);
+    const exportBase = getDisplayFileName(openFileInfoRef.current?.docName === name ? name : (doc.name || name));
     const parts = flattenOutlineNodes(doc.children).map((node) => ({
       name: node.name,
       html: doc.content?.[node.id] || emptyParagraph,
     }));
     const bodyHtml = parts.length > 0
       ? parts.map((part) => `<h1>${escapeHtml(part.name)}</h1>${part.html}`).join('\n<hr style="border:none;border-top:1px solid #ebecf0;margin:24px 0"/>\n')
-      : `<h1>${escapeHtml(doc.name || name)}</h1>${emptyParagraph}`;
+      : `<h1>${escapeHtml(exportBase)}</h1>${emptyParagraph}`;
     const sections = buildPreviewSections(doc.children, doc.content);
-    const fullHtml = buildPreviewHtml(doc.name || name, sections.length > 0 ? sections : [{ id: "root", name: doc.name || name, html: bodyHtml }], doc.children, sections[0]?.id, doc.content);
+    const fullHtml = buildPreviewHtml(exportBase, sections.length > 0 ? sections : [{ id: "root", name: exportBase, html: bodyHtml }], doc.children, sections[0]?.id, doc.content);
     if (isElectron) {
       await (window as any).electronAPI.exportHtml(fullHtml, `${exportBase}.html`);
       return;
@@ -2399,26 +2431,18 @@ export default function DocumentAssistant() {
     if (node.isDirectory) {
       setSubmode("files");
     } else {
-      // Load document content and switch to outline mode
+      const file = folderFiles.find((item) => item.path === node.path) || {
+        path: node.path,
+        relPath: node.name,
+        name: node.name,
+        ext: node.name.includes(".") ? `.${node.name.split(".").pop()?.toLowerCase()}` : "",
+        size: 0,
+        mtimeMs: 0,
+      };
+      await openFolderFile(file);
       setSubmode("outline");
-      const api = (window as any).electronAPI;
-      if (api?.readFolderFile) {
-        try {
-          const doc = await api.readFolderFile(node.path);
-          if (doc) {
-            const normalized = normalizeStoredDoc(node.name, doc);
-            setSelectedDoc(node.name);
-            setDocStore((prev) => ({ ...prev, [node.name]: normalized }));
-            setOutlineNodes(normalized.children || []);
-            setSelectedNodeId(normalized.children?.[0]?.id ?? "");
-            setMode("outline");
-          }
-        } catch (error) {
-          console.error("read folder file failed:", error);
-        }
-      }
     }
-  }, []);
+  }, [folderFiles, openFolderFile]);
 
   const handleSwitchSubmode = useCallback(() => {
     setSubmode((prev) => (prev === "files" ? "outline" : "files"));
@@ -2476,6 +2500,8 @@ export default function DocumentAssistant() {
 
   const selectedNode = mode === "outline" ? findNode(outlineNodes, selectedNodeId) : null;
   const selectedNodeDepth = mode === "outline" ? findNodeDepth(outlineNodes, selectedNodeId) : 0;
+  const workspaceDocName = mode === "document" && selectedFileNode?.name ? selectedFileNode.name : selectedDoc;
+  const shareDisabled = level === "project" && (!selectedFileNode || selectedFileNode.isDirectory);
 
   const handleTitleChange = (name: string) => {
     if (mode === "outline" && selectedNode) {
@@ -2533,10 +2559,16 @@ export default function DocumentAssistant() {
         />
       ) : (
         <>
-          <EditorWorkspace docName={selectedDoc} mode={mode} selectedNode={selectedNode} nodeDepth={selectedNodeDepth} nodeContent={selectedNode ? getNodeContent(selectedDoc, selectedNode.id) : emptyParagraph} onTitleChange={handleTitleChange} theme={theme} fontSize={fontSize} lineHeight={lineHeight} sidebarWidth={276}
+          <EditorWorkspace docName={workspaceDocName} mode={mode} selectedNode={selectedNode} nodeDepth={selectedNodeDepth} nodeContent={selectedNode ? getNodeContent(selectedDoc, selectedNode.id) : emptyParagraph} onTitleChange={handleTitleChange} theme={theme} fontSize={fontSize} lineHeight={lineHeight} sidebarWidth={276}
             onContentChange={handleNodeContentChange} />
           <Frame11
-            onOpenShare={() => setShowShareModal(true)}
+            onOpenShare={() => {
+              if (shareDisabled) {
+                setToast({ message: "请选择文件后再分享", type: "info" });
+                return;
+              }
+              setShowShareModal(true);
+            }}
             onOpenExport={() => setShowExportModal(true)}
             onDelete={handleTopBarDelete}
             onImport={() => importInputRef.current?.click()}
@@ -2545,16 +2577,16 @@ export default function DocumentAssistant() {
             level={level}
             projectName={selectedProject?.name || ""}
             onBack={handleBackToProjects}
+            shareDisabled={shareDisabled}
           />
-          <input ref={importInputRef} type="file" accept=".mdoc,.md,.txt,.docx" className="hidden" onChange={handleImport} />
+          <input ref={importInputRef} type="file" accept=".mdoc,.md,.txt,.html,.htm,.docx" className="hidden" onChange={handleImport} />
           <Group1 value={searchQuery} onChange={setSearchQuery} mode={mode} onEnter={handleSearchEnter} />
           {mode === "outline" && selectedDoc && (
             <div className="absolute left-[20px] top-[170px] w-[274px] flex items-center gap-[8px] px-[8px] py-[9.5px]">
               <svg className="size-[16px] shrink-0" viewBox="0 0 16 16" fill="none">
-                <path d="M4 2H10L12 4V14H4V2Z" stroke="#8d8e99" strokeWidth="1.2" strokeLinejoin="round"/>
-                <path d="M10 2V4H12" stroke="#8d8e99" strokeWidth="1.2" strokeLinejoin="round"/>
+                <path d="M10.0001 1.6001V4.0001C10.0001 4.44193 10.3583 4.8001 10.8001 4.8001H13.2001M12.0001 2.8001C11.6441 2.48153 11.2746 2.10368 11.0414 1.85828C10.8862 1.69499 10.6717 1.6001 10.4464 1.6001H4.39994C3.51629 1.6001 2.79995 2.31644 2.79994 3.20009L2.79988 12.8001C2.79988 13.6837 3.51622 14.4001 4.39987 14.4001L11.5999 14.4001C12.4835 14.4001 13.1999 13.6838 13.1999 12.8001L13.2001 4.31865C13.2001 4.11409 13.1221 3.91745 12.9801 3.77019C12.7176 3.49786 12.2792 3.04978 12.0001 2.8001Z" stroke="#8D8E99" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" />
               </svg>
-              <span className="text-[12px] text-[#8d8e99] font-medium truncate">{selectedDoc}</span>
+              <span className="text-[12px] text-[#8D8E99] font-medium truncate">{getDisplayFileName(selectedDoc)}</span>
             </div>
           )}
           {mode === "document" ? (

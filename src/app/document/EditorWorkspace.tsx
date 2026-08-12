@@ -18,7 +18,7 @@ export function EditorWorkspace({ docName, mode, selectedNode, nodeDepth, nodeCo
     if (next && next !== titleName) onTitleChange?.(next);
     else setTitleDraft(titleName);
   };
-  const titleOnlyReason = "当前选中的是文件夹，请选择文件夹内的文档进行编辑";
+  const titleOnlyReason = "切换到大纲模式下编辑文件内容";
 
   return (
     <div className="absolute bg-white overflow-hidden rounded-[12px] z-[1]" style={{ left: (sidebarWidth ?? 276) + 32, right: 8, top: 66, bottom: 8 }}>
@@ -46,7 +46,7 @@ export function EditorWorkspace({ docName, mode, selectedNode, nodeDepth, nodeCo
       {mode === "document" ? (
         <div className="absolute inset-0 top-[60px] flex flex-col items-center justify-center gap-[16px]">
           <IllustrationSvg />
-          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#93959f] text-[14px]">{docName ? "您还没有创建文档，点击左侧的 新建文件 去添加第一个文档吧" : "您还没有创建文档，点击左侧的 新建文件 去添加第一个文档吧"}</p>
+          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#93959f] text-[14px]">{titleOnlyReason}</p>
         </div>
       ) : isOutlineEmpty ? (
         <div className="absolute inset-0 top-[60px] flex flex-col items-center justify-center gap-[16px]">

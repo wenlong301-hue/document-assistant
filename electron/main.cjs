@@ -15,6 +15,7 @@ let mainWindow;
 let tray = null;
 let shareServer = null;
 let activeShareDocId = null;
+let activeShareHtml = null;
 let updateCheckInFlight = false;
 let lastDownloadedUpdatePath = null;
 let closeBehavior = 'ask'; // 'ask', 'tray', 'quit'
@@ -464,7 +465,7 @@ function deleteDoc(docId) {
   if (fs.existsSync(fp)) fs.unlinkSync(fp);
 }
 
-const FOLDER_SUPPORTED_EXTS = new Set(['.mdoc', '.md', '.txt', '.docx', '.html']);
+const FOLDER_SUPPORTED_EXTS = new Set(['.mdoc', '.md', '.txt', '.docx', '.html', '.htm']);
 const FOLDER_SKIP_DIRS = new Set(['node_modules', '.git', '.svn', '.hg', 'dist', 'build', '.next', '.nuxt', '.cache', '.idea', '.vscode', '__pycache__', '.DS_Store', 'Pods', '.venv', 'venv', '.trash', '$RECYCLE.BIN']);
 let activeFolderWatcher = null;
 let activeFolderPath = null;
@@ -552,6 +553,7 @@ function readFolderFile(filePath) {
 async function writeFolderFile(filePath, payload) {
   try {
     const ext = String(payload?.ext || path.extname(filePath || '') || '').toLowerCase();
+    ensureDir(path.dirname(filePath));
     if (ext === '.docx') {
       const fullHtml = wordHtmlDocument(payload?.title || '未命名文档', payload?.html || '', {});
       const buffer = await htmlToDocx(fullHtml, null, {
@@ -574,6 +576,12 @@ async function writeFolderFile(filePath, payload) {
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : '写入失败' };
   }
+}
+
+function getMarkdownSidecarPath(filePath) {
+  const source = String(filePath || '');
+  const dir = path.join(path.dirname(source), '.document-assistant');
+  return path.join(dir, `${path.basename(source)}.mdoc`);
 }
 
 function buildSharePage(docs) {
@@ -840,8 +848,16 @@ function respondWithDoc(res, docId) {
   return false;
 }
 
-function startShareServer(port = 6535, docId = null) {
+function respondWithActiveShare(res) {
+  if (!activeShareHtml) return false;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.end(activeShareHtml);
+  return true;
+}
+
+function startShareServer(port = 6535, docId = null, html = null) {
   if (docId) activeShareDocId = docId;
+  if (html) activeShareHtml = String(html);
   if (shareServer?.listening) return Promise.resolve(shareServer);
   shareServer = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -852,6 +868,7 @@ function startShareServer(port = 6535, docId = null) {
       return;
     }
     if (url.pathname === '/' || url.pathname === '') {
+      if (respondWithActiveShare(res)) return;
       if (activeShareDocId) {
         respondWithDoc(res, activeShareDocId);
         return;
@@ -892,6 +909,7 @@ function startShareServer(port = 6535, docId = null) {
 function stopShareServer() {
   if (shareServer) { try { shareServer.close(); } catch {} shareServer = null; }
   activeShareDocId = null;
+  activeShareHtml = null;
 }
 
 function createWindow() {
@@ -1037,9 +1055,9 @@ ipcMain.handle('get-doc', (_e, id) => getDocContent(id));
 ipcMain.handle('save-doc', (_e, id, data) => saveDoc(id, data));
 ipcMain.handle('save-doc-to-folder', (_e, id, data) => saveDocToFolder(id, data));
 ipcMain.handle('delete-doc', (_e, id) => deleteDoc(id));
-ipcMain.handle('start-share', async (_e, port, docId) => {
+ipcMain.handle('start-share', async (_e, port, docId, html) => {
   const sharePort = port || 6535;
-  await startShareServer(sharePort, docId || null);
+  await startShareServer(sharePort, docId || null, html || null);
   // 根路径已按 activeShareDocId 直达当前文档详情，链接保持简洁
   return `http://${getLocalIP()}:${sharePort}`;
 });
@@ -1254,6 +1272,8 @@ ipcMain.handle('read-folder-file', (_e, filePath) => readFolderFile(filePath));
 
 ipcMain.handle('write-folder-file', (_e, filePath, payload) => writeFolderFile(filePath, payload));
 
+ipcMain.handle('get-markdown-sidecar-path', (_e, filePath) => getMarkdownSidecarPath(filePath));
+
 ipcMain.handle('rename-folder-file', (_e, filePath, newName) => {
   try {
     const safe = sanitizeFileName(newName);
@@ -1318,13 +1338,13 @@ async function scanFolderTree(dir) {
             if (se.isDirectory()) {
               const subChildren = await scanFolderTree_single(sfull, srel);
               subEntries.push({ name: se.name, path: sfull, isDirectory: true, children: subChildren });
-            } else {
+            } else if (se.isFile() && FOLDER_SUPPORTED_EXTS.has(path.extname(se.name).toLowerCase())) {
               subEntries.push({ name: se.name, path: sfull, isDirectory: false });
             }
           }
         } catch {}
         results.push({ name: entry.name, path: full, isDirectory: true, children: subEntries });
-      } else if (entry.isFile()) {
+      } else if (entry.isFile() && FOLDER_SUPPORTED_EXTS.has(path.extname(entry.name).toLowerCase())) {
         results.push({ name: entry.name, path: full, isDirectory: false });
       }
     }
@@ -1350,7 +1370,7 @@ async function scanFolderTree_single(dir, rel) {
       if (entry.isDirectory()) {
         const children = await scanFolderTree_single(full, relPath);
         results.push({ name: entry.name, path: full, isDirectory: true, children });
-      } else if (entry.isFile()) {
+      } else if (entry.isFile() && FOLDER_SUPPORTED_EXTS.has(path.extname(entry.name).toLowerCase())) {
         results.push({ name: entry.name, path: full, isDirectory: false });
       }
     }

@@ -1,60 +1,138 @@
 # 文档助手（Doc Assistant）
 
-本地优先的**多级文档写作工具**：用大纲树管理章节结构，用富文本编辑正文，支持**局域网分享预览**与 **HTML / Markdown / Word / PDF** 导出。
+文档助手是一款本地优先的多级文档写作、整理和分享工具。它把一篇长文拆成可管理的大纲节点，每个节点都有独立正文，适合编写产品说明、操作手册、技术方案、会议纪要、知识库和项目文档。
+
+应用支持桌面端 Electron 运行，核心数据保存在本机；也支持浏览器 Web 端作为功能子集使用。桌面端可打开普通本地文件夹作为项目，管理 `.mdoc`、`.md`、`.html`、`.htm`、`.txt`、`.docx` 等文档文件，并提供局域网只读分享、HTML / Markdown / Word / PDF 导出和 GitHub Releases 自动更新。
 
 | 项 | 说明 |
 |----|------|
 | 产品名 | 文档助手 |
-| 版本 | 0.1.0 |
-| 原生格式 | `.mdoc`（JSON） |
-| 桌面端 | Electron（macOS / Windows） |
-| Web 端 | Vite + React（浏览器预览，功能子集） |
+| 当前版本 | 0.1.2 |
+| 原生格式 | `.mdoc`（JSON，保存大纲树与各节点 HTML 正文） |
+| 桌面端 | Electron，支持 macOS / Windows |
+| Web 端 | Vite + React，支持编辑与导出功能子集 |
 | 安装包 | [GitHub Releases](https://github.com/wenlong301-hue/document-assistant/releases) |
-
-完整用户说明见 [使用手册.md](./使用手册.md)。应用内顶栏 **帮助** 也可快速查阅。
-
----
-
-## 功能亮点
-
-- **文档 + 大纲双模式**：列表管理多篇文档，大纲树管理章节（约 6 层）
-- **富文本编辑**：标题/字体/列表/任务/表格/链接/图片/视频/附件；支持 `/` 斜杠命令（删掉 `/` 自动关闭）与 Markdown 快捷输入
-- **局域网分享**：桌面端开启后，同一 Wi-Fi 用浏览器打开预览（端口 `6535`）；手机支持多级目录抽屉
-- **多格式导出**：HTML 预览页、Markdown、Word（.docx）、PDF
-- **导入**：`.mdoc` / `.md` / `.txt` / `.docx`
-- **本地存储**：桌面写入 `文档/DocAssistant/*.mdoc`；Web 使用 IndexedDB
-- **自动更新**：桌面端启动检查 GitHub Releases；帮助页可手动「检查更新」并下载安装包
+| 使用说明 | [使用手册.md](./使用手册.md) |
 
 ---
 
-## 界面结构
+## 功能概览
 
-```
-顶栏：文档助手 | 保存 · 导入 · 导出 · 分享 · 删除 · 帮助
-左侧：搜索 · 文档/大纲 · 列表或大纲树 · 分享状态
-右侧：标题 + 富文本编辑器 + 底栏（保存状态 / 字数 / 大纲）
-```
+- **多级大纲写作**：用大纲树组织章节，支持新增、重命名、克隆、删除、展开收起、拖拽排序和预览隐藏。
+- **富文本编辑器**：基于 TipTap，支持标题、字体、字号、颜色、高亮、列表、任务、引用、代码块、链接、图片、视频、附件和表格。
+- **Markdown 快捷输入**：支持 `#`、`>`、`1.`、`-`、``` ``` 等常见 Markdown 行首快捷转换。
+- **斜杠命令**：在空行输入 `/` 快速插入标题、列表、引用、代码块、链接、媒体、附件和表格。
+- **本地文件夹项目**：可打开任意本地文件夹，以文件树形式管理支持的文档文件。
+- **Markdown 安全打开**：从文件夹打开 `.md` 时，原文件保持只读不覆盖；应用编辑结果写入旁边 `.document-assistant/*.mdoc` 副本。
+- **Markdown 大纲化导入**：按 `#` 至 `######` 标题拆分为大纲层级，并保留第一个标题前的前言、frontmatter 或说明内容。
+- **HTML 往返导入**：文档助手导出的 HTML 内嵌文档状态，再导入时可恢复大纲树与节点正文。
+- **局域网分享**：桌面端开启 `6535` 端口，同一 Wi-Fi 下可用电脑或手机浏览器只读预览。
+- **多格式导出**：支持 HTML、Markdown、Word `.docx`、PDF。
+- **本地存储与自动保存**：桌面端默认写入用户文档目录 `DocAssistant/*.mdoc`；Web 端写入 IndexedDB。
+- **自动更新**：桌面端启动后静默检查 GitHub Releases；帮助页支持手动检查、下载和安装更新。
 
-遮罩弹窗（分享/导出/删除/帮助/新建等）层级高于编辑器浮动层（如图片宽度条、斜杠菜单），避免互相遮挡。
+---
+
+## 典型使用场景
+
+- 编写产品用户手册、上线说明、FAQ 和培训资料。
+- 按章节维护技术方案、接口说明、架构文档和项目交付文档。
+- 将一个本地资料文件夹作为项目，集中浏览和编辑 `.mdoc`、`.md`、`.html`、`.docx` 等文件。
+- 临时开启局域网分享，让同事或手机端快速预览当前文档。
+- 将大纲化内容导出为 HTML 离线页、Markdown、Word 或 PDF。
 
 ---
 
 ## 快速开始（用户）
 
-1. 从 [Releases](https://github.com/wenlong301-hue/document-assistant/releases) 下载：
-   - macOS：`DocAssistant-*-mac-arm64.dmg`
-   - Windows：`DocAssistant-*-win-x64.exe`
-2. 安装并打开（当前为**未签名**构建）：
-   - **macOS**：拖入「应用程序」后，若提示「无法验证开发者」→ **右键 → 打开**，或在「隐私与安全性」中允许
-   - **macOS 若提示「已损坏，无法打开」**：这是隔离属性误报，**不要**移到废纸篓，在终端执行：
-     ```bash
-     xattr -cr "/Applications/文档助手.app"
-     ```
-     再打开；详见 [使用手册 §2.2](./使用手册.md#22-macos-安装)
-   - **Windows**：SmartScreen 提示时选「仍要运行」
-3. **新建文档** → 切到 **大纲** → 写作 → **保存 / 分享 / 导出**
+1. 从 [Releases](https://github.com/wenlong301-hue/document-assistant/releases) 下载安装包。
+2. 安装并打开应用。
+3. 新建文档，进入大纲树，开始编写内容。
+4. 需要管理已有资料时，进入项目视图并打开本地文件夹。
+5. 需要分享时，选中文件或文档，点击顶栏 **分享**。
+6. 需要分发时，点击顶栏 **导出**，选择 HTML / Markdown / Word / PDF。
 
-更细的操作步骤、快捷键与 FAQ 见 [使用手册.md](./使用手册.md)。
+macOS 当前为未签名构建，若提示无法验证开发者，请右键打开；若提示应用已损坏，请执行：
+
+```bash
+xattr -cr "/Applications/文档助手.app"
+```
+
+详细安装、操作和 FAQ 见 [使用手册.md](./使用手册.md)。
+
+---
+
+## 文件与存储策略
+
+### `.mdoc` 原生文档
+
+`.mdoc` 是文档助手的原生格式，本质是 JSON，包含：
+
+- 文档名称
+- 大纲树结构
+- 每个节点的正文 HTML
+- 更新时间
+
+它最适合在文档助手中往返编辑，也最能完整保留大纲与富文本内容。
+
+### Markdown 文件保护
+
+从 0.1.2 开始，在本地文件夹项目中打开 `.md` 时，应用不会直接覆盖原 Markdown 文件。
+
+保存路径示例：
+
+```text
+原文件: docs/manual.md
+应用编辑副本: docs/.document-assistant/manual.md.mdoc
+```
+
+这样外部 Markdown 工具仍能看到原始 `.md` 内容，文档助手内部则使用转换后的 `.mdoc` 副本进行富文本与大纲编辑。如需生成新的 Markdown，请使用 **导出 → Markdown**。
+
+### 桌面端默认库
+
+桌面端默认文档库位于用户文档目录：
+
+```text
+~/Documents/DocAssistant/*.mdoc
+```
+
+---
+
+## 界面结构
+
+```text
+顶栏：文档助手 | 保存 · 导入 · 导出 · 分享 · 删除 · 帮助
+左侧：搜索 · 文件树/大纲树 · 文档列表/项目文件树/大纲树 · 分享状态
+右侧：标题 + 富文本编辑器 + 底栏（保存状态 / 字数 / 页内大纲）
+```
+
+---
+
+## 支持格式
+
+| 格式 | 读取 | 编辑保存 | 导出 | 说明 |
+|------|------|----------|------|------|
+| `.mdoc` | 支持 | 写回 `.mdoc` | 支持 | 原生格式，推荐长期编辑 |
+| `.md` | 支持 | 写入 sidecar `.mdoc`，不覆盖原文件 | 支持 | 按标题拆为大纲 |
+| `.html` / `.htm` | 支持 | 写回完整预览 HTML | 支持 | 文档助手导出的 HTML 可恢复大纲 |
+| `.txt` | 支持 | 写回纯文本 | 可导出其它格式 | 按段落转 HTML 编辑 |
+| `.docx` | 支持 | 写回 Word | 支持 | 复杂排版为尽量保留 |
+| `.pdf` | 不作为源文件编辑 | 不适用 | 支持导出 | PDF 为输出格式 |
+
+---
+
+## 桌面端 vs Web 端
+
+| 能力 | 桌面 Electron | Web 浏览器 |
+|------|---------------|------------|
+| 大纲编辑 | 支持 | 支持 |
+| 富文本编辑 | 支持 | 支持 |
+| 本地 `.mdoc` 文件库 | 支持 | 不支持，使用 IndexedDB |
+| 打开本地文件夹项目 | 支持 | 不支持 |
+| Markdown sidecar 保护 | 支持 | 不适用 |
+| 局域网 HTTP 分享 | 支持，端口 `6535` | 不支持 |
+| 导出 HTML / MD / Word / PDF | 支持系统另存为 | 支持浏览器下载，PDF 走打印 |
+| 自动更新 | 支持 GitHub Releases | 不支持 |
 
 ---
 
@@ -62,7 +140,7 @@
 
 ### 环境要求
 
-- Node.js 20+（推荐）
+- Node.js 20+
 - npm
 
 ### 安装与运行
@@ -70,15 +148,13 @@
 ```bash
 npm install
 
-# 开发（Electron + Vite 热更新）
+# Electron + Vite 开发
 npm run dev
-# 或
-npm run electron:dev
 
 # 仅构建前端
 npm run build
 
-# 本地预览打包结果（不装系统安装包）
+# 构建后用 Electron 预览
 npm run electron:preview
 ```
 
@@ -93,9 +169,7 @@ npm run electron:mac
 npm run electron:win
 ```
 
-产物目录：`安装包/`（已在 `.gitignore` 中忽略）
-
-产物命名：`DocAssistant-${version}-${os}-${arch}.${ext}`
+打包产物输出到 `安装包/`。
 
 ---
 
@@ -106,89 +180,71 @@ npm run electron:win
 | 桌面壳 | Electron |
 | 前端 | React 18、Vite 6、Tailwind CSS 4 |
 | 编辑器 | TipTap 3 |
-| 导入导出 | mammoth（docx）、html-to-docx、marked/turndown、printToPDF |
-| 桌面存储 | 用户文档目录 `DocAssistant/*.mdoc` |
-| Web 存储 | IndexedDB（失败可回退 localStorage） |
-| 分享 | 本地 HTTP 服务 `0.0.0.0:6535` |
+| Markdown | marked、turndown |
+| Word 导入 | mammoth |
+| Word 导出 | html-to-docx |
+| PDF 导出 | Electron `printToPDF` |
+| HTML 清理 | DOMPurify |
+| 分享服务 | Node HTTP server |
+| 更新 | electron-updater + GitHub Releases |
 
-### 目录结构（简要）
+---
 
-```
+## 目录结构
+
+```text
 document-assistant/
-├── electron/           # 主进程、preload、开发启动
-│   ├── main.cjs
-│   ├── preload.cjs
-│   └── dev.cjs
+├── electron/
+│   ├── main.cjs              # Electron 主进程、文件 IO、分享服务、导入导出
+│   ├── preload.cjs           # 安全暴露 IPC API
+│   └── dev.cjs               # 开发启动脚本
 ├── src/
 │   ├── app/
-│   │   ├── components/DocumentAssistant.tsx   # 主界面壳
-│   │   ├── document/   # 大纲/存储/预览 HTML/弹窗
-│   │   └── editor/     # TipTap 编辑器与工具栏
-│   └── imports/        # 设计资源 SVG
-├── build/              # 图标等
-├── .github/workflows/release.yml  # tag 触发自动发版
+│   │   ├── components/        # 主界面、文件树、项目视图
+│   │   ├── document/          # 文档模型、大纲、预览 HTML、弹窗
+│   │   └── editor/            # TipTap 编辑器、扩展、工具栏
+│   ├── imports/              # 设计导入资源
+│   └── styles/               # 全局样式、字体、主题
+├── public/                   # 图标与静态资源
+├── build/                    # 应用图标
+├── README.md
+├── CHANGELOG.md
 ├── 使用手册.md
 └── package.json
 ```
 
 ---
 
-## 桌面端 vs Web 端
+## 发布流程
 
-| 能力 | 桌面 Electron | Web |
-|------|---------------|-----|
-| 编辑 / 大纲 | ✅ | ✅ |
-| 本地 `.mdoc` 目录 | ✅ | ❌（IndexedDB） |
-| 局域网 HTTP 分享 | ✅ | ❌（仅本机预览/下载 HTML） |
-| 导出 Word/PDF/MD | 系统另存为 | 浏览器下载；PDF 走打印 |
-| 检查 / 下载更新 | ✅ GitHub Releases | ❌ |
-| 文件关联 `.mdoc` | 视系统 | 无 |
-
----
-
-## 发布流程（CI）
-
-推送符合 `v*` 的 tag（如 `v0.1.0`）会触发 GitHub Actions：
-
-1. 在 `windows-latest` / `macos-latest` 分别 `npm ci` → 构建 → `electron-builder`
-2. **必须同时产出** Windows 安装包与 macOS 安装包，否则 Release 失败
-3. 从 [CHANGELOG.md](./CHANGELOG.md) 截取当前版本小节，写入 GitHub Release 说明
-4. 上传：
-   - Windows：`DocAssistant-{version}-win-x64.exe` + `latest.yml`
-   - macOS：`DocAssistant-{version}-mac-arm64.dmg` / `.zip` + `latest-mac.yml`
-5. 已安装的桌面端通过 **electron-updater** 读取 yml 提示更新
-
-Workflow：`.github/workflows/release.yml`
-
-本地发版示例：
+推送符合 `v*` 的 tag 会触发 GitHub Actions 发版流程。
 
 ```bash
-# 1. 更新 package.json version
-# 2. 在 CHANGELOG.md 顶部新增 ## [x.y.z] - 日期 小节
-# 3. 提交后打 tag 并推送
-git tag -a v0.1.0 -m "v0.1.0"
-git push origin v0.1.0
+npm run build
+git tag -a v0.1.2 -m "v0.1.2"
+git push origin v0.1.2
 ```
 
----
-
-## 使用与限制摘要
-
-- **分享**：电脑与应用需保持开启；端口 `6535`；同一局域网
-- **预览收录**：空内容或「预览时隐藏本层」的节点不会进入分享/导出章节
-- **媒体限制**：图片源约 20MB / 嵌入约 4MB；视频 20MB；附件 10MB；不支持 SVG
-- **PDF**：不含视频
-- **签名**：当前 Release 默认未签名。macOS 首次打开需右键打开/隐私与安全性允许；若提示「已损坏」请用 `xattr -cr "/Applications/文档助手.app"` 清除隔离标记（见使用手册）
-- **Web 存储**：大媒体易触发浏览器配额，重要数据请导出备份
+Release 说明会从 [CHANGELOG.md](./CHANGELOG.md) 截取对应版本章节。
 
 ---
 
-## 文档
+## 使用限制
+
+- 当前安装包未签名，macOS / Windows 首次打开可能有系统安全提示。
+- 局域网分享要求电脑和访问设备在同一网络，且应用保持运行。
+- 分享端口固定为 `6535`，端口被占用时需关闭占用程序后重试。
+- 图片、视频、附件以内嵌方式保存，过大媒体会显著增大 `.mdoc` 体积。
+- PDF 导出不包含视频。
+- Markdown 导入会转换为编辑器支持的 HTML 与大纲结构，原 `.md` 不会被覆盖。
+
+---
+
+## 文档链接
 
 | 文档 | 说明 |
 |------|------|
 | [使用手册.md](./使用手册.md) | 面向最终用户的完整操作说明 |
-| 应用内 **帮助** | 顶栏入口，快速查阅功能与 FAQ |
 | [CHANGELOG.md](./CHANGELOG.md) | 版本变更记录 |
 | [Releases](https://github.com/wenlong301-hue/document-assistant/releases) | 安装包下载 |
 | [Issues](https://github.com/wenlong301-hue/document-assistant/issues) | 问题反馈 |
@@ -197,4 +253,4 @@ git push origin v0.1.0
 
 ## License
 
-Private（`package.json` 中 `"private": true`）。如需开源协议请另行补充。
+Private（`package.json` 中 `"private": true`）。
