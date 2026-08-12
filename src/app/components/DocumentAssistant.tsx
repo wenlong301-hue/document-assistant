@@ -9,7 +9,9 @@ import wifiOnSvg from "../../imports/Frame91/svg-mnkp41cgqd";
 import outlineMenuSvg from "../../imports/Group10-1/svg-kvilwhz9cx";
 import outlineSvg from "../../imports/首页大纲模式根节点/svg-4qt61e0wiv";
 import deleteSvg from "../../imports/删除提示确认/svg-wi3f4os8di";
-import type { DocContentMap, DocStore, OutlineNode, StoredDoc } from "../document/types";
+import type { DocContentMap, DocStore, FolderFileItem, OutlineNode, StoredDoc, Project, FolderTreeNode } from "../document/types";
+import { ProjectListView } from "./ProjectListView";
+import { FileTreeView } from "./FileTreeView";
 import {
   buildDeleteMessage,
   buildEmptyOutlineTree,
@@ -99,7 +101,7 @@ function Group1({ value, onChange, mode, onEnter }: { value: string; onChange: (
         </svg>
         <input
           type="text"
-          placeholder={mode === "outline" ? "搜索大纲..." : "搜索文档..."}
+          placeholder={mode === "outline" ? "搜索大纲" : "搜索文件"}
           value={value}
           autoComplete="off"
           onChange={(e) => onChange(e.target.value)}
@@ -278,12 +280,31 @@ function FrameHelp() {
   );
 }
 
-function Frame11({ onOpenShare, onOpenExport, onDelete, onImport, onSave, onOpenHelp }: { onOpenShare: () => void; onOpenExport: () => void; onDelete: () => void; onImport: () => void; onSave: () => void; onOpenHelp: () => void }) {
+function Frame11({ onOpenShare, onOpenExport, onDelete, onImport, onSave, onOpenHelp, level, projectName, onBack }: {
+  onOpenShare: () => void;
+  onOpenExport: () => void;
+  onDelete: () => void;
+  onImport: () => void;
+  onSave: () => void;
+  onOpenHelp: () => void;
+  level?: "projects" | "project";
+  projectName?: string;
+  onBack?: () => void;
+}) {
+  const isProjectLevel = level === "project";
   return (
     <div className="absolute content-stretch flex h-[66px] items-center justify-between left-0 right-0 pl-[20px] pr-[8px] py-[16px] top-0">
-      <Frame5 />
+      {isProjectLevel ? (
+        <div className="content-stretch flex gap-[8px] items-center relative shrink-0 cursor-pointer" onClick={onBack}>
+          <img src="/icons/arrow-left.svg" alt="" className="size-[28px]" />
+          <p className="font-['PingFang_SC:Medium',sans-serif] font-medium leading-[normal] relative shrink-0 text-[20px] text-[#131212] whitespace-nowrap">
+            {projectName || ""}
+          </p>
+        </div>
+      ) : (
+        <Frame5 />
+      )}
       <div className="content-stretch flex gap-[12px] items-center relative shrink-0">
-        <div className="cursor-pointer transition-all duration-150 hover:opacity-75 active:scale-95 active:opacity-60 rounded-[6px]" onClick={onSave}><FrameSave /></div>
         <div className="cursor-pointer transition-all duration-150 hover:opacity-75 active:scale-95 active:opacity-60 rounded-[6px]" onClick={onImport}><Frame8 /></div>
         <div className="cursor-pointer transition-all duration-150 hover:opacity-75 active:scale-95 active:opacity-60 rounded-[6px]" onClick={onOpenExport}><Frame7 /></div>
         <div
@@ -301,23 +322,15 @@ function Frame11({ onOpenShare, onOpenExport, onDelete, onImport, onSave, onOpen
 
 function SidebarShareStatus({ shared, onClick }: { shared: boolean; onClick: () => void }) {
   return (
-    <div className="absolute bottom-0 left-0 w-[316px]">
+    <div className="absolute bottom-0 left-0 w-[276px]">
       <div className="h-[0.6px] mx-[20px] bg-[#EBECF0]" />
       <div className="flex items-center">
         <div
-          className="flex items-center gap-[8px] px-[28px] py-[10px] cursor-pointer group flex-1"
+          className="flex items-center gap-[8px] px-[6px] py-[8px] cursor-pointer group flex-1"
           onClick={onClick}
         >
-          <div className="relative shrink-0 size-[16px]">
-            <svg className="block size-full" fill="none" viewBox="0 0 16 16">
-              {shared ? (
-                <path d={wifiOnSvg.pbf2d700} stroke="#15803D" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" />
-              ) : (
-                <path d={designSvg.p28f1ba00} stroke="#8D8E99" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" />
-              )}
-            </svg>
-          </div>
-          <p className={`font-['PingFang_SC:Regular',sans-serif] text-[14px] leading-[normal] transition-colors ${shared ? "text-[#15803d]" : "text-[#8d8e99] group-hover:text-[#131212]"}`}>
+          <img src="/icons/wifi-off.svg" alt="" className="size-[16px] shrink-0" />
+          <p className={`font-['PingFang_SC:Regular',sans-serif] text-[14px] leading-[normal] transition-colors ${shared ? "text-[#15803d]" : "text-[#8D8E99] group-hover:text-[#131212]"}`}>
             {shared ? "分享中" : "未开启分享"}
           </p>
         </div>
@@ -380,7 +393,7 @@ function DocContextMenu({ position, onRename, onExport, onDelete }: {
   );
 }
 
-function DocItem({ name, active, onClick, onRename, onDelete, onExport, onEnterOutline }: {
+function DocItem({ name, active, onClick, onRename, onDelete, onExport, onEnterOutline, isFolderFile }: {
   name: string;
   active?: boolean;
   onClick?: () => void;
@@ -388,13 +401,13 @@ function DocItem({ name, active, onClick, onRename, onDelete, onExport, onEnterO
   onDelete?: () => void;
   onExport?: () => void;
   onEnterOutline?: () => void;
+  isFolderFile?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
   const ref = useRef<HTMLDivElement>(null);
   const highlighted = active || hovered || menuOpen;
-  const color = highlighted ? "#131212" : "#93959F";
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -414,34 +427,32 @@ function DocItem({ name, active, onClick, onRename, onDelete, onExport, onEnterO
   return (
     <div
       ref={ref}
-      className={`h-[36px] relative rounded-[8px] shrink-0 w-full transition-colors cursor-pointer ${highlighted ? "bg-[#ebecf0]" : ""}`}
+      className={`h-[36px] relative rounded-[8px] shrink-0 w-full transition-colors cursor-pointer ${highlighted ? "bg-[#EBECF0]" : ""}`}
       onClick={() => { onClick?.(); onEnterOutline?.(); }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div className="flex flex-row items-center size-full">
-        <div className="content-stretch flex gap-[8px] items-center p-[8px] relative size-full">
-          <div className="content-stretch flex flex-[1_0_0] gap-[8px] items-center min-w-px relative">
-            <FolderIcon color={color} />
-            <p className="[word-break:break-word] flex-[1_0_0] font-['PingFang_SC:Regular',sans-serif] leading-[normal] min-w-px not-italic overflow-hidden relative text-[14px] text-ellipsis whitespace-nowrap" style={{ color }}>
-              {name}
-            </p>
-          </div>
-          <div
-            className={`relative shrink-0 size-[16px] transition-opacity rounded-[4px] hover:bg-[#d5d6da] ${hovered || menuOpen ? "opacity-100" : "opacity-0"}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              const r = e.currentTarget.getBoundingClientRect();
-              setMenuPos({ x: r.right - 134, y: r.bottom + 4 });
-              setMenuOpen((v) => !v);
-            }}
-          >
-            <svg className="absolute block inset-0 size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 16 16">
-              <path d={svgPaths.pa91b600} fill="#131212" />
-              <path d={svgPaths.p12e0c1f2} fill="#131212" />
-              <path d={svgPaths.p20e27070} fill="#131212" />
-            </svg>
-          </div>
+      <div className="flex flex-row items-center size-full px-[8px] py-[8px] gap-[8px]">
+        <div className="content-stretch flex flex-[1_0_0] gap-[8px] items-center min-w-px relative">
+          {isFolderFile ? (
+            <img src="/icons/file-tree.svg" alt="" className="size-[16px] shrink-0" />
+          ) : (
+            <img src="/icons/folder-tree.svg" alt="" className="size-[16px] shrink-0" />
+          )}
+          <p className="[word-break:break-word] flex-[1_0_0] font-['PingFang_SC:Regular',sans-serif] leading-[normal] min-w-px overflow-hidden relative text-[14px] text-ellipsis whitespace-nowrap" style={{ color: highlighted ? "#131212" : "#8D8E99" }}>
+            {name}
+          </p>
+        </div>
+        <div
+          className="relative shrink-0 size-[16px] transition-opacity rounded-[4px] hover:bg-[#d5d6da]"
+          onClick={(e) => {
+            e.stopPropagation();
+            const r = e.currentTarget.getBoundingClientRect();
+            setMenuPos({ x: r.right - 134, y: r.bottom + 4 });
+            setMenuOpen((v) => !v);
+          }}
+        >
+          <img src="/icons/dot-vertical.svg" alt="" className="size-[16px]" />
         </div>
       </div>
       {menuOpen && (
@@ -456,14 +467,17 @@ function DocItem({ name, active, onClick, onRename, onDelete, onExport, onEnterO
   );
 }
 
-function Frame16({ docs, selected, onSelect, onRename, onDelete, onExport, onEnterOutline }: {
-  docs: string[];
+type SidebarItem = { key: string; label: string; isFolderFile?: boolean };
+
+function Frame16({ items, selected, onSelect, onRename, onDelete, onExport, onEnterOutline, emptyHint }: {
+  items: SidebarItem[];
   selected: string;
-  onSelect: (name: string) => void;
-  onRename: (name: string) => void;
-  onDelete: (name: string) => void;
-  onExport: (name: string) => void;
+  onSelect: (key: string) => void;
+  onRename: (key: string) => void;
+  onDelete: (key: string) => void;
+  onExport: (key: string) => void;
   onEnterOutline: () => void;
+  emptyHint?: string;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   useAutoHideScrollbar(scrollRef);
@@ -472,15 +486,19 @@ function Frame16({ docs, selected, onSelect, onRename, onDelete, onExport, onEnt
       <div className="scroll-auto-hide absolute content-stretch flex flex-col gap-[4px] items-start left-[20px] top-[210px] w-[276px]"
         ref={scrollRef}
         style={{ maxHeight: "calc(100% - 250px)", overflowY: "auto" }}>
-        {docs.map((name) => (
+        {items.length === 0 && emptyHint && (
+          <div className="px-[8px] py-[24px] self-stretch text-center text-[13px] text-[#8d8e99] select-none">{emptyHint}</div>
+        )}
+        {items.map((item) => (
           <DocItem
-            key={name}
-            name={name}
-            active={selected === name}
-            onClick={() => onSelect(name)}
-            onRename={() => onRename(name)}
-            onDelete={() => onDelete(name)}
-            onExport={() => onExport(name)}
+            key={item.key}
+            name={item.label}
+            isFolderFile={item.isFolderFile}
+            active={selected === item.key}
+            onClick={() => onSelect(item.key)}
+            onRename={() => onRename(item.key)}
+            onDelete={() => onDelete(item.key)}
+            onExport={() => onExport(item.key)}
             onEnterOutline={onEnterOutline}
           />
         ))}
@@ -896,35 +914,21 @@ function Frame27({ onNewDoc, onNewFile, mode, onSwitchMode }: { onNewDoc: () => 
   return (
     <div className="absolute content-stretch flex items-center justify-between left-[20px] top-[122px] w-[276px]">
       <div
-        className="content-stretch flex gap-[8px] items-center px-[8px] py-[7px] relative shrink-0 cursor-pointer rounded-[6px] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors duration-150"
+        className="content-stretch flex gap-[8px] items-center px-[8px] py-[7px] relative shrink-0 cursor-pointer rounded-[8px] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors duration-150"
         onClick={onSwitchMode}
       >
-        <div className="relative shrink-0 size-[20px]">
-          {isOutline ? (
-            <svg className="absolute block inset-0 size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 20 20">
-              <path d={outlineSvg.p56ad280} stroke="#131212" strokeLinecap="round" strokeWidth="1.2" />
-            </svg>
-          ) : (
-            <svg className="absolute block inset-0 size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 20 20">
-              <path d={svgPaths.p9eb87c0} stroke="#131212" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" />
-            </svg>
-          )}
-        </div>
-        <p className="[word-break:break-word] font-['PingFang_SC:Medium',sans-serif] leading-[normal] not-italic relative shrink-0 text-[#131212] text-[16px] whitespace-nowrap">
-          {isOutline ? "大纲" : "文档"}
+        <img src="/icons/folder-open.svg" alt="" className="size-[20px]" />
+        <p className="font-['PingFang_SC:Medium',sans-serif] font-medium leading-[normal] relative shrink-0 text-[#131212] text-[16px] whitespace-nowrap">
+          {isOutline ? "大纲树" : "文件树"}
         </p>
       </div>
       <div
-        className="content-stretch flex gap-[8px] items-center p-[8px] relative shrink-0 cursor-pointer rounded-[6px] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors duration-150"
+        className="content-stretch flex gap-[8px] items-center p-[8px] relative shrink-0 cursor-pointer rounded-[8px] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors duration-150"
         onClick={isOutline ? onNewFile : onNewDoc}
       >
-        <div className="relative shrink-0 size-[20px]">
-          <svg className="absolute block inset-0 size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 20 20">
-            <path d="M10 5L10 15M15 10L5 10" id="Icon" stroke="#131212" strokeLinecap="round" strokeWidth="1.2" />
-          </svg>
-        </div>
-        <p className="[word-break:break-word] font-['PingFang_SC:Regular',sans-serif] leading-[normal] not-italic relative shrink-0 text-[#131212] text-[14px] whitespace-nowrap">
-          {isOutline ? "新建文件" : "新建文档"}
+        <img src="/icons/plus-02.svg" alt="" className="size-[20px]" />
+        <p className="font-['PingFang_SC:Regular',sans-serif] leading-[normal] relative shrink-0 text-[#131212] text-[14px] whitespace-nowrap">
+          {isOutline ? "新建层级" : "新建文件"}
         </p>
       </div>
     </div>
@@ -1053,15 +1057,32 @@ function ShareModal({ shared, mode, loading, errorMessage, onToggle, onClose, on
   );
 }
 
-function Frame4({ folderName }: { folderName: string }) {
+function Frame4({ folderName, hasFolder, onOpen, onClose }: { folderName: string; hasFolder: boolean; onOpen: () => void; onClose?: () => void }) {
   return (
-    <div className="absolute content-stretch flex gap-[8px] items-center left-[20px] px-[8px] py-[9.5px] top-[170px] w-[276px]">
-      <div className="relative shrink-0 size-[16px]">
-        <svg className="absolute block inset-0 size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 16 16">
-          <path d={svgPaths.p3d9dd500} id="Icon" stroke="#93959F" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" />
-        </svg>
+    <div className="absolute content-stretch flex items-center left-[20px] px-[8px] py-[8px] top-[170px] w-[276px]">
+      <div
+        className="flex items-center gap-[8px] flex-1 min-w-0 cursor-pointer rounded-[6px] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors duration-150 px-[4px] py-[3px]"
+        onClick={onOpen}
+        title={hasFolder ? "点击切换文件夹" : "点击打开文件夹"}
+      >
+        <div className="relative shrink-0 size-[16px]">
+          <svg className="absolute block inset-0 size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 16 16">
+            <path d={svgPaths.p3d9dd500} id="Icon" stroke="#93959F" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" />
+          </svg>
+        </div>
+        <p className="[word-break:break-word] flex-1 min-w-0 font-['PingFang_SC:Medium',sans-serif] leading-[normal] not-italic relative shrink-0 text-[#93959f] text-[12px] truncate">{folderName}</p>
+        {hasFolder && onClose && (
+          <span
+            className="shrink-0 flex items-center justify-center size-[16px] rounded-[4px] text-[#93959F] hover:text-[#131212] hover:bg-[#d5d6da] transition-colors"
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
+            title="返回默认文件夹"
+          >
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+              <path d="M12 4L4 12M12 12L4 4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4" />
+            </svg>
+          </span>
+        )}
       </div>
-      <p className="[word-break:break-word] font-['PingFang_SC:Medium',sans-serif] leading-[normal] not-italic relative shrink-0 text-[#93959f] text-[12px] truncate max-w-[220px]">{folderName}</p>
     </div>
   );
 }
@@ -1300,7 +1321,6 @@ export default function DocumentAssistant() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [outlineSearchEnter, setOutlineSearchEnter] = useState(0);
-  const [folderName] = useState("默认文件夹");
   const [mode, setMode] = useState<"document" | "outline">("document");
   const fontSize = "15px";
   const lineHeight = "1.8";
@@ -1322,14 +1342,67 @@ export default function DocumentAssistant() {
   const webShareUrlRef = useRef<string | null>(null);
   const webShareHtmlRef = useRef("");
   const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+  const [activeFolder, setActiveFolder] = useState<string | null>(null);
+  const [folderFiles, setFolderFiles] = useState<FolderFileItem[]>([]);
+  const [folderGone, setFolderGone] = useState(false);
+  const openFileInfoRef = useRef<{ docName: string; filePath: string; ext: string } | null>(null);
+
+  // Project-level navigation state
+  const [level, setLevel] = useState<"projects" | "project">("projects");
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [projectViewMode, setProjectViewMode] = useState<"grid" | "list">("grid");
+  const [submode, setSubmode] = useState<"files" | "outline">("files");
+  const [folderTree, setFolderTree] = useState<FolderTreeNode[]>([]);
+  const [selectedFileNode, setSelectedFileNode] = useState<FolderTreeNode | null>(null);
+
+  const writeFolderDocBack = useCallback(async (docName: string, doc: StoredDoc) => {
+    const info = openFileInfoRef.current;
+    if (!info || info.docName !== docName) return;
+    const api = (window as any).electronAPI;
+    if (!api?.writeFolderFile) return;
+    const parts = flattenOutlineNodes(doc.children || []);
+    const contentHtml = parts.length > 0
+      ? parts.map((n) => doc.content?.[n.id] || emptyParagraph).join("\n")
+      : `<h1>${escapeHtml(doc.name || docName)}</h1>${emptyParagraph}`;
+    let payload: Record<string, unknown>;
+    if (info.ext === "mdoc") {
+      payload = {
+        ext: "mdoc",
+        content: JSON.stringify({ ...doc, name: doc.name || docName, children: doc.children || [], updatedAt: new Date().toISOString() }),
+      };
+    } else if (info.ext === "md") {
+      payload = { ext: "md", html: contentHtml, title: doc.name || docName };
+    } else if (info.ext === "txt") {
+      const text = parts.length > 0 ? parts.map((n) => getPlainTextFromHtml(doc.content?.[n.id] || "")).join("\n\n") : "";
+      payload = { ext: "txt", content: text };
+    } else if (info.ext === "docx") {
+      payload = { ext: "docx", html: contentHtml, title: doc.name || docName };
+    } else {
+      payload = { ext: "html", content: sanitizeHtml(contentHtml) };
+    }
+    try {
+      const result = await api.writeFolderFile(info.filePath, payload);
+      if (result && result.ok === false) {
+        setToast({ message: `保存失败：${result.error || "写入错误"}`, type: "error" });
+      }
+    } catch (error) {
+      console.error("write folder file failed:", error);
+      setToast({ message: "保存失败", type: "error" });
+    }
+  }, []);
 
   const persistDoc = useCallback((docName: string, doc: StoredDoc, delay = 500) => {
     if (!isElectron || !docName) return;
     clearTimeout(saveTimersRef.current[docName]);
+    if (openFileInfoRef.current?.docName === docName) {
+      saveTimersRef.current[docName] = setTimeout(() => { void writeFolderDocBack(docName, doc); }, delay);
+      return;
+    }
     saveTimersRef.current[docName] = setTimeout(() => {
       (window as any).electronAPI.saveDoc(docName, { ...doc, updatedAt: new Date().toISOString() });
     }, delay);
-  }, [isElectron]);
+  }, [isElectron, writeFolderDocBack]);
 
   const ensureDoc = useCallback((docName: string): StoredDoc => {
     return docStore[docName] ?? createStoredDoc(docName);
@@ -1489,6 +1562,78 @@ export default function DocumentAssistant() {
       setToast({ message: "安装失败，请打开下载页手动安装", type: "error" });
     }
   }, []);
+
+  useEffect(() => {
+    if (!isElectron) return;
+    const api = (window as any).electronAPI;
+    if (!api?.onFolderChanged) return;
+    const unsub = api.onFolderChanged?.((payload: { path?: string; files?: FolderFileItem[]; gone?: boolean }) => {
+      const files = Array.isArray(payload?.files) ? payload.files : [];
+      setFolderFiles(files);
+      if (payload?.gone) setFolderGone(true);
+      const info = openFileInfoRef.current;
+      if (info && files.length > 0 && !files.some((f) => f.path === info.filePath)) {
+        const name = info.docName;
+        openFileInfoRef.current = null;
+        setDocStore((prev) => {
+          const { [name]: _removed, ...rest } = prev;
+          return rest;
+        });
+        setOutlineTrees((prev) => {
+          const { [name]: _removed, ...rest } = prev;
+          return rest;
+        });
+        setSelectedDoc("");
+        setOutlineNodes([]);
+        setSelectedNodeId("");
+        setMode("document");
+        setToast({ message: "当前文件已被移出文件夹，已关闭", type: "info" });
+      }
+    });
+    return () => unsub?.();
+  }, [isElectron]);
+
+  useEffect(() => {
+    if (!isElectron) return;
+    const api = (window as any).electronAPI;
+    if (!api?.getFolderState) return;
+    api.getFolderState().then((state: { path?: string | null; files?: FolderFileItem[]; gone?: boolean }) => {
+      if (!state?.path) return;
+      setActiveFolder(state.path);
+      setFolderFiles(Array.isArray(state.files) ? state.files : []);
+      if (state.gone) setFolderGone(true);
+    }).catch((error: unknown) => console.error("get folder state failed:", error));
+  }, [isElectron]);
+
+  // Load projects on mount
+  useEffect(() => {
+    if (!isElectron) return;
+    const api = (window as any).electronAPI;
+    if (!api?.getProjects) return;
+    api.getProjects().then((projectList: Project[]) => {
+      setProjects(projectList || []);
+      if (projectList && projectList.length > 0) {
+        const firstProject = projectList[0];
+        setSelectedProject(firstProject);
+        // Scan project folder if it has a folderPath
+        if (firstProject.folderPath && api.scanFolderTree) {
+          api.scanFolderTree(firstProject.folderPath).then((tree: FolderTreeNode[]) => {
+            setFolderTree(tree || []);
+          }).catch((error: unknown) => console.error("scan folder tree failed:", error));
+        }
+      }
+    }).catch((error: unknown) => console.error("load projects failed:", error));
+  }, [isElectron]);
+
+  // Load app settings on mount
+  useEffect(() => {
+    if (!isElectron) return;
+    const api = (window as any).electronAPI;
+    if (!api?.settingsRead) return;
+    api.settingsRead().then((settings: { closeBehavior?: string }) => {
+      setAppSettings(settings || {});
+    }).catch((error: unknown) => console.error("load settings failed:", error));
+  }, [isElectron]);
 
   useEffect(() => {
     if (isElectron) {
@@ -1812,6 +1957,243 @@ export default function DocumentAssistant() {
     if (mode === "outline") setMode("outline");
   };
 
+  const openFolderFile = async (file: FolderFileItem) => {
+    if (!isElectron) return;
+    const info = openFileInfoRef.current;
+    const alreadyOpen = info?.docName === file.relPath && !!docStore[file.relPath];
+    if (alreadyOpen) {
+      setSelectedDoc(file.relPath);
+      setOutlineNodes(getOutlineTree(file.relPath));
+      setSelectedNodeId(getOutlineTree(file.relPath)[0]?.id ?? "");
+      setMode("outline");
+      return;
+    }
+    const api = (window as any).electronAPI;
+    let raw: { ext: string; text?: string; base64?: string } | null = null;
+    try {
+      raw = await api.readFolderFile(file.path);
+    } catch (error) {
+      console.error("read folder file failed:", error);
+    }
+    if (!raw) {
+      setToast({ message: "无法读取文件", type: "error" });
+      return;
+    }
+    const docName = file.relPath;
+    const apply = (doc: StoredDoc, tree: OutlineNode[], nodeId: string, enterOutline = true) => {
+      openFileInfoRef.current = { docName, filePath: file.path, ext: file.ext };
+      setSelectedDoc(docName);
+      setDocStore((prev) => ({ ...prev, [docName]: doc }));
+      setOutlineTrees((prev) => ({ ...prev, [docName]: tree }));
+      setOutlineNodes(tree);
+      setSelectedNodeId(nodeId);
+      if (enterOutline) setMode("outline");
+    };
+    try {
+      if (file.ext === "docx") {
+        const binary = atob(raw.base64 || "");
+        const arrayBuffer = Uint8Array.from(binary, (c) => c.charCodeAt(0)).buffer;
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        const html = result.value;
+        const tree = buildOutlineTree(docName);
+        const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
+        apply(createStoredDoc(docName, tree, { [leaf.id]: html || emptyParagraph }), tree, leaf.id);
+      } else if (file.ext === "mdoc") {
+        const doc = { ...normalizeStoredDoc(docName, JSON.parse(raw.text || "{}")), name: docName };
+        const firstNode = flattenOutlineNodes(doc.children).find((node) => doc.content[node.id]?.replace(/<[^>]*>/g, "").trim()) ?? flattenOutlineNodes(doc.children)[0];
+        apply(doc, doc.children, firstNode?.id ?? "");
+      } else if (file.ext === "md") {
+        const html = markdownToSimpleHtml(raw.text || "");
+        const tree = buildOutlineTree(docName);
+        const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
+        apply(createStoredDoc(docName, tree, { [leaf.id]: html }), tree, leaf.id);
+      } else if (file.ext === "html") {
+        const html = sanitizeHtml(raw.text || "");
+        const tree = buildOutlineTree(docName);
+        const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
+        apply(createStoredDoc(docName, tree, { [leaf.id]: html || emptyParagraph }), tree, leaf.id);
+      } else {
+        const html = textToHtml(raw.text || "");
+        const tree = buildOutlineTree(docName);
+        const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
+        apply(createStoredDoc(docName, tree, { [leaf.id]: html }), tree, leaf.id);
+      }
+    } catch (error) {
+      console.error("open folder file failed:", error);
+      setToast({ message: file.ext === "mdoc" ? "mdoc 文件格式错误" : "打开文件失败", type: "error" });
+    }
+  };
+
+  const handleOpenFolder = async () => {
+    if (!isElectron) {
+      setToast({ message: "请在桌面应用中使用文件夹功能", type: "info" });
+      return;
+    }
+    const api = (window as any).electronAPI;
+    try {
+      const result = await api.openFolder();
+      if (result?.canceled) return;
+      openFileInfoRef.current = null;
+      setActiveFolder(result.path);
+      setFolderFiles(Array.isArray(result.files) ? result.files : []);
+      setFolderGone(false);
+      setMode("document");
+      setToast({ message: `已打开文件夹：${String(result.path).split(/[\\/]/).pop() || ""}`, type: "success" });
+    } catch (error) {
+      console.error("open folder failed:", error);
+      setToast({ message: "打开文件夹失败", type: "error" });
+    }
+  };
+
+  const handleCloseFolder = async () => {
+    if (!isElectron) return;
+    try {
+      await (window as any).electronAPI.closeFolder?.();
+    } catch {}
+    openFileInfoRef.current = null;
+    setActiveFolder(null);
+    setFolderFiles([]);
+    setFolderGone(false);
+    if (docs.length > 0) {
+      const first = docs[0];
+      setSelectedDoc(first);
+      setOutlineNodes(getOutlineTree(first));
+      setSelectedNodeId(getOutlineTree(first)[0]?.id ?? "");
+    } else {
+      setSelectedDoc("");
+      setOutlineNodes([]);
+      setSelectedNodeId("");
+    }
+    setMode("document");
+    setToast({ message: "已返回默认文件夹", type: "info" });
+  };
+
+  const handleSave = async () => {
+    const info = openFileInfoRef.current;
+    if (info && info.docName === selectedDoc) {
+      clearTimeout(saveTimersRef.current[selectedDoc]);
+      const doc = docStore[selectedDoc] ?? createStoredDoc(selectedDoc, getOutlineTree(selectedDoc));
+      await writeFolderDocBack(selectedDoc, doc);
+      setToast({ message: "已保存到原文件", type: "success" });
+      return;
+    }
+    await handleSaveToFolder();
+  };
+
+  const doDeleteFolderFile = async (info: { docName: string; filePath: string; ext: string }) => {
+    if (!isElectron) return;
+    const api = (window as any).electronAPI;
+    let result: { ok: boolean; error?: string } | null = null;
+    try {
+      result = await api.trashFolderFile(info.filePath);
+    } catch (error) {
+      console.error("trash folder file failed:", error);
+    }
+    if (result && result.ok === false) {
+      setToast({ message: `删除失败：${result.error || "未知错误"}`, type: "error" });
+      return;
+    }
+    const name = info.docName;
+    if (openFileInfoRef.current?.docName === name) {
+      openFileInfoRef.current = null;
+    }
+    setDocStore((prev) => {
+      const { [name]: _removed, ...rest } = prev;
+      return rest;
+    });
+    setOutlineTrees((prev) => {
+      const { [name]: _removed, ...rest } = prev;
+      return rest;
+    });
+    const remaining = folderFiles.filter((f) => f.path !== info.filePath);
+    setFolderFiles(remaining);
+    if (selectedDoc === name) {
+      setSelectedDoc("");
+      setOutlineNodes([]);
+      setSelectedNodeId("");
+      setMode("document");
+    }
+    setToast({ message: "已移入废纸篓", type: "success" });
+  };
+
+  const requestDelete = (name: string) => {
+    const info = openFileInfoRef.current?.docName === name ? openFileInfoRef.current : null;
+    setDocDeleteConfirm({
+      message: info
+        ? `确定将文件【${info.docName}】移入废纸篓？\n该文件将从文件夹中删除，不可撤销。`
+        : buildDeleteMessage("doc", name, getDocChildCount(name)),
+      onConfirm: () => { if (info) void doDeleteFolderFile(info); else doDeleteDoc(name); },
+    });
+  };
+
+  const handleRename = async (oldName: string, newName: string) => {
+    const fileItem = activeFolder ? folderFiles.find((f) => f.relPath === oldName) : undefined;
+    if (fileItem && isElectron) {
+      const api = (window as any).electronAPI;
+      const curExt = fileItem.ext || "";
+      let safe = sanitizeFileName(newName);
+      if (!safe.toLowerCase().endsWith(curExt.toLowerCase())) safe += curExt;
+      if (safe === fileItem.name) {
+        setToast({ message: "名称未变化", type: "info" });
+        return;
+      }
+      let result: { ok: boolean; path: string; error?: string; unchanged?: boolean } | null = null;
+      try {
+        result = await api.renameFolderFile(fileItem.path, safe);
+      } catch (error) {
+        console.error("rename folder file failed:", error);
+      }
+      if (result?.ok === false) {
+        setToast({ message: `重命名失败：${result.error || "未知错误"}`, type: "error" });
+        return;
+      }
+      if (result?.unchanged) {
+        setToast({ message: "名称未变化", type: "info" });
+        return;
+      }
+      const slash = fileItem.relPath.lastIndexOf("/");
+      const dir = slash >= 0 ? fileItem.relPath.slice(0, slash) : "";
+      const newRel = dir ? `${dir}/${safe}` : safe;
+      const info = openFileInfoRef.current;
+      if (info?.docName === oldName) {
+        const newInfo = { docName: newRel, filePath: result?.path || fileItem.path, ext: fileItem.ext };
+        openFileInfoRef.current = newInfo;
+        setSelectedDoc(newRel);
+      }
+      setFolderFiles((prev) => prev.map((f) =>
+        f.path === fileItem.path ? { ...f, path: result?.path || f.path, relPath: newRel, name: safe } : f
+      ));
+      setDocStore((prev) => {
+        if (!prev[oldName]) return prev;
+        const { [oldName]: doc, ...rest } = prev;
+        return { ...rest, [newRel]: { ...doc, name: newRel } };
+      });
+      setOutlineTrees((prev) => {
+        if (!prev[oldName]) return prev;
+        const { [oldName]: tree, ...rest } = prev;
+        return { ...rest, [newRel]: tree };
+      });
+      setToast({ message: "已重命名", type: "success" });
+      return;
+    }
+    setDocs((prev) => prev.map((d) => (d === oldName ? newName : d)));
+    if (selectedDoc === oldName) setSelectedDoc(newName);
+    const renamedDoc = { ...(docStore[oldName] ?? createStoredDoc(oldName)), name: newName, updatedAt: new Date().toISOString() };
+    setOutlineTrees((prev) => {
+      const tree = prev[oldName] ?? renamedDoc.children;
+      const { [oldName]: _oldTree, ...rest } = prev;
+      return { ...rest, [newName]: tree };
+    });
+    setDocStore((prev) => {
+      const { [oldName]: _oldDoc, ...rest } = prev;
+      return { ...rest, [newName]: renamedDoc };
+    });
+    if (isElectron) {
+      (window as any).electronAPI.deleteDoc(oldName);
+      persistDoc(newName, renamedDoc, 0);
+    }
+  };
+
   const handleNewDoc = (name: string) => {
     const tree = buildOutlineTree(name);
     const doc = createStoredDoc(name, tree);
@@ -1833,25 +2215,6 @@ export default function DocumentAssistant() {
     setSelectedNodeId(newNode.id);
   };
 
-  const handleRename = (oldName: string, newName: string) => {
-    setDocs((prev) => prev.map((d) => (d === oldName ? newName : d)));
-    if (selectedDoc === oldName) setSelectedDoc(newName);
-    const renamedDoc = { ...(docStore[oldName] ?? createStoredDoc(oldName)), name: newName, updatedAt: new Date().toISOString() };
-    setOutlineTrees((prev) => {
-      const tree = prev[oldName] ?? renamedDoc.children;
-      const { [oldName]: _oldTree, ...rest } = prev;
-      return { ...rest, [newName]: tree };
-    });
-    setDocStore((prev) => {
-      const { [oldName]: _oldDoc, ...rest } = prev;
-      return { ...rest, [newName]: renamedDoc };
-    });
-    if (isElectron) {
-      (window as any).electronAPI.deleteDoc(oldName);
-      persistDoc(newName, renamedDoc, 0);
-    }
-  };
-
   const doDeleteDoc = (name: string) => {
     setDocs((prev) => {
       const next = prev.filter((d) => d !== name);
@@ -1865,15 +2228,12 @@ export default function DocumentAssistant() {
   };
 
   const handleDelete = (name: string) => {
-    const childCount = getDocChildCount(name);
-    setDocDeleteConfirm({
-      message: buildDeleteMessage("doc", name, childCount),
-      onConfirm: () => doDeleteDoc(name),
-    });
+    requestDelete(name);
   };
 
   const handleDocListExport = async (name: string) => {
     const doc = docStore[name] ?? createStoredDoc(name, getOutlineTree(name));
+    const exportBase = openFileInfoRef.current?.docName === name ? String(name).replace(/\.[^.]+$/, "") : (doc.name || name);
     const parts = flattenOutlineNodes(doc.children).map((node) => ({
       name: node.name,
       html: doc.content?.[node.id] || emptyParagraph,
@@ -1884,14 +2244,14 @@ export default function DocumentAssistant() {
     const sections = buildPreviewSections(doc.children, doc.content);
     const fullHtml = buildPreviewHtml(doc.name || name, sections.length > 0 ? sections : [{ id: "root", name: doc.name || name, html: bodyHtml }], doc.children, sections[0]?.id, doc.content);
     if (isElectron) {
-      await (window as any).electronAPI.exportHtml(fullHtml, `${doc.name || name}.html`);
+      await (window as any).electronAPI.exportHtml(fullHtml, `${exportBase}.html`);
       return;
     }
     const blob = new Blob([fullHtml], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${doc.name || name}.html`;
+    a.download = `${exportBase}.html`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -1920,11 +2280,7 @@ export default function DocumentAssistant() {
 
   const handleTopBarDelete = () => {
     if (!selectedDoc) return;
-    const childCount = getDocChildCount(selectedDoc);
-    setDocDeleteConfirm({
-      message: buildDeleteMessage("doc", selectedDoc, childCount),
-      onConfirm: () => doDeleteDoc(selectedDoc),
-    });
+    requestDelete(selectedDoc);
   };
 
   const handleEnterOutline = () => {
@@ -1943,12 +2299,176 @@ export default function DocumentAssistant() {
     }
   };
 
+  // Project management handlers
+  const handleSelectProject = useCallback(async (project: Project) => {
+    setSelectedProject(project);
+    setLevel("project");
+    setSubmode("files");
+    setSelectedFileNode(null);
+    // Scan project folder
+    const api = (window as any).electronAPI;
+    if (project.folderPath && api?.scanFolderTree) {
+      try {
+        const tree = await api.scanFolderTree(project.folderPath);
+        setFolderTree(tree || []);
+        // Set active folder and scan for supported files
+        setActiveFolder(project.folderPath);
+        if (api.scanFolder) {
+          const files = await api.scanFolder(project.folderPath);
+          setFolderFiles(Array.isArray(files) ? files : []);
+        }
+      } catch (error) {
+        console.error("scan folder tree failed:", error);
+        setFolderTree([]);
+        setActiveFolder(null);
+        setFolderFiles([]);
+      }
+    } else {
+      setFolderTree([]);
+      setActiveFolder(null);
+      setFolderFiles([]);
+    }
+  }, []);
+
+  const handleCreateProject = useCallback(async (name: string, folderPath?: string) => {
+    const api = (window as any).electronAPI;
+    try {
+      let result;
+      if (folderPath && api?.createProjectAt) {
+        result = await api.createProjectAt(name, folderPath);
+      } else if (api?.createProject) {
+        result = await api.createProject(name);
+      } else {
+        return;
+      }
+      if (result?.ok && result.project) {
+        setProjects((prev) => [...prev, result.project]);
+        handleSelectProject(result.project);
+      } else if (result?.error) {
+        setToast({ message: result.error, type: "error" });
+      }
+    } catch (error) {
+      setToast({ message: "创建项目失败", type: "error" });
+    }
+  }, [handleSelectProject]);
+
+  const handleImportFolder = useCallback(async () => {
+    const api = (window as any).electronAPI;
+    if (!api?.importFolder) return;
+    try {
+      const result = await api.importFolder();
+      if (result?.canceled) return;
+      if (result?.name && result?.path) {
+        // Create project from imported folder
+        const createResult = await api.createProject(result.name);
+        if (createResult?.ok && createResult.project) {
+          // Update project with folder path
+          const updatedProject = { ...createResult.project, folderPath: result.path };
+          const saveResult = await api.saveProjects([...projects, updatedProject]);
+          if (saveResult) {
+            setProjects((prev) => [...prev, updatedProject]);
+            handleSelectProject(updatedProject);
+          }
+        }
+      }
+    } catch (error) {
+      setToast({ message: "导入文件夹失败", type: "error" });
+    }
+  }, [projects, handleSelectProject]);
+
+  const handleImportFolderDrop = useCallback(async (folderPath: string) => {
+    const api = (window as any).electronAPI;
+    try {
+      const folderName = folderPath.split(/[\\/]/).pop() || "导入的项目";
+      const createResult = await api.createProject(folderName);
+      if (createResult?.ok && createResult.project) {
+        const updatedProject = { ...createResult.project, folderPath };
+        const saveResult = await api.saveProjects([...projects, updatedProject]);
+        if (saveResult) {
+          setProjects((prev) => [...prev, updatedProject]);
+          handleSelectProject(updatedProject);
+        }
+      }
+    } catch (error) {
+      setToast({ message: "导入文件夹失败", type: "error" });
+    }
+  }, [projects, handleSelectProject]);
+
+  const handleFileSelect = useCallback(async (node: FolderTreeNode) => {
+    setSelectedFileNode(node);
+    if (node.isDirectory) {
+      setSubmode("files");
+    } else {
+      // Load document content and switch to outline mode
+      setSubmode("outline");
+      const api = (window as any).electronAPI;
+      if (api?.readFolderFile) {
+        try {
+          const doc = await api.readFolderFile(node.path);
+          if (doc) {
+            const normalized = normalizeStoredDoc(node.name, doc);
+            setSelectedDoc(node.name);
+            setDocStore((prev) => ({ ...prev, [node.name]: normalized }));
+            setOutlineNodes(normalized.children || []);
+            setSelectedNodeId(normalized.children?.[0]?.id ?? "");
+            setMode("outline");
+          }
+        } catch (error) {
+          console.error("read folder file failed:", error);
+        }
+      }
+    }
+  }, []);
+
+  const handleSwitchSubmode = useCallback(() => {
+    setSubmode((prev) => (prev === "files" ? "outline" : "files"));
+  }, []);
+
+  const handleNewFileInFolder = useCallback(async (folderPath: string) => {
+    const api = (window as any).electronAPI;
+    if (!api?.createFileInFolder) return;
+    try {
+      const result = await api.createFileInFolder(folderPath, "新建文件");
+      if (result?.ok) {
+        // Refresh folder tree
+        if (selectedProject?.folderPath) {
+          const tree = await api.scanFolderTree(selectedProject.folderPath);
+          setFolderTree(tree || []);
+        }
+        setToast({ message: "文件已创建", type: "success" });
+      } else if (result?.error) {
+        setToast({ message: result.error, type: "error" });
+      }
+    } catch (error) {
+      setToast({ message: "创建文件失败", type: "error" });
+    }
+  }, [selectedProject]);
+
+  const handleBackToProjects = useCallback(() => {
+    setLevel("projects");
+    setSelectedProject(null);
+    setFolderTree([]);
+    setSelectedFileNode(null);
+    setSubmode("files");
+    setActiveFolder(null);
+    setFolderFiles([]);
+    setSelectedDoc("");
+    setOutlineNodes([]);
+    setSelectedNodeId("");
+    setMode("document");
+  }, []);
+
   const handleSearchEnter = () => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return;
     if (mode === "document") {
-      const matches = docs.filter(d => d.toLowerCase().includes(q));
-      if (matches.length === 1) handleSelectDoc(matches[0]);
+      if (activeFolder) {
+        const matches = folderFiles.filter(f => f.relPath.toLowerCase().includes(q));
+        if (matches.length === 1) void openFolderFile(matches[0]);
+      } else {
+        const matches = docs.filter(d => d.toLowerCase().includes(q));
+        if (matches.length === 1) handleSelectDoc(matches[0]);
+      }
     } else {
       setOutlineSearchEnter(t => t + 1);
     }
@@ -1977,29 +2497,86 @@ export default function DocumentAssistant() {
     }));
   };
 
+  const searchQueryLower = searchQuery.trim().toLowerCase();
+  const sidebarItems: SidebarItem[] = activeFolder
+    ? folderFiles
+        .filter((f) => !searchQueryLower || f.relPath.toLowerCase().includes(searchQueryLower))
+        .map((f) => ({ key: f.relPath, label: f.relPath, isFolderFile: true }))
+    : (searchQueryLower ? docs.filter((d) => d.toLowerCase().includes(searchQueryLower)) : docs)
+        .map((name) => ({ key: name, label: name }));
+
   return (
     <div className="bg-[#f7f8fa] relative size-full" data-name="首页-文档模式">
-      <EditorWorkspace docName={selectedDoc} mode={mode} selectedNode={selectedNode} nodeDepth={selectedNodeDepth} nodeContent={selectedNode ? getNodeContent(selectedDoc, selectedNode.id) : emptyParagraph} onTitleChange={handleTitleChange} theme={theme} fontSize={fontSize} lineHeight={lineHeight} sidebarWidth={276}
-        onContentChange={handleNodeContentChange} />
-      <Frame11 onOpenShare={() => setShowShareModal(true)} onOpenExport={() => setShowExportModal(true)} onDelete={handleTopBarDelete} onImport={() => importInputRef.current?.click()} onSave={handleSaveToFolder} onOpenHelp={() => setShowHelpModal(true)} />
-      <input ref={importInputRef} type="file" accept=".mdoc,.md,.txt,.docx" className="hidden" onChange={handleImport} />
-      <Group1 value={searchQuery} onChange={setSearchQuery} mode={mode} onEnter={handleSearchEnter} />
-      {mode === "document" ? (
-        <Frame16
-          docs={searchQuery.trim() ? docs.filter(d => d.toLowerCase().includes(searchQuery.trim().toLowerCase())) : docs}
-          selected={selectedDoc}
-          onSelect={handleSelectDoc}
-          onRename={(name) => setModal({ type: "rename", target: name })}
-          onDelete={handleDelete}
-          onExport={handleDocListExport}
-          onEnterOutline={handleEnterOutline}
+      {level === "projects" ? (
+        <ProjectListView
+          projects={projects}
+          viewMode={projectViewMode}
+          searchQuery={searchQuery}
+          isElectron={!!isElectron}
+          onSelectProject={handleSelectProject}
+          onCreateProject={handleCreateProject}
+          onImportFolder={handleImportFolder}
+          onImportFolderDrop={handleImportFolderDrop}
+          onDeleteProject={async (project) => {
+            const newProjects = projects.filter((p) => p.id !== project.id);
+            setProjects(newProjects);
+            const api = (window as any).electronAPI;
+            if (api?.saveProjects) {
+              await api.saveProjects(newProjects);
+            }
+          }}
+          onRenameProject={(project, newName) => {
+            setProjects((prev) => prev.map((p) => p.id === project.id ? { ...p, name: newName } : p));
+          }}
+          onViewModeChange={setProjectViewMode}
+          onSearchChange={setSearchQuery}
         />
       ) : (
-        <OutlineTree nodes={outlineNodes} selectedId={selectedNodeId} contentMap={docStore[selectedDoc]?.content ?? {}} onSelect={setSelectedNodeId} onUpdateNodes={(nodes) => updateOutlineTree(selectedDoc, nodes)} filter={searchQuery} enterTick={outlineSearchEnter} />
-      )}
-      <Frame27 onNewDoc={() => setModal({ type: "new" })} onNewFile={() => setModal({ type: "new-file" })} mode={mode} onSwitchMode={handleSwitchMode} />
-      <Frame4 folderName={mode === "outline" ? (selectedDoc || folderName) : folderName} />
-      <SidebarShareStatus shared={shared} onClick={() => setShowShareModal(true)} />
+        <>
+          <EditorWorkspace docName={selectedDoc} mode={mode} selectedNode={selectedNode} nodeDepth={selectedNodeDepth} nodeContent={selectedNode ? getNodeContent(selectedDoc, selectedNode.id) : emptyParagraph} onTitleChange={handleTitleChange} theme={theme} fontSize={fontSize} lineHeight={lineHeight} sidebarWidth={276}
+            onContentChange={handleNodeContentChange} />
+          <Frame11
+            onOpenShare={() => setShowShareModal(true)}
+            onOpenExport={() => setShowExportModal(true)}
+            onDelete={handleTopBarDelete}
+            onImport={() => importInputRef.current?.click()}
+            onSave={handleSave}
+            onOpenHelp={() => setShowHelpModal(true)}
+            level={level}
+            projectName={selectedProject?.name || ""}
+            onBack={handleBackToProjects}
+          />
+          <input ref={importInputRef} type="file" accept=".mdoc,.md,.txt,.docx" className="hidden" onChange={handleImport} />
+          <Group1 value={searchQuery} onChange={setSearchQuery} mode={mode} onEnter={handleSearchEnter} />
+          {mode === "outline" && selectedDoc && (
+            <div className="absolute left-[20px] top-[170px] w-[274px] flex items-center gap-[8px] px-[8px] py-[9.5px]">
+              <svg className="size-[16px] shrink-0" viewBox="0 0 16 16" fill="none">
+                <path d="M4 2H10L12 4V14H4V2Z" stroke="#8d8e99" strokeWidth="1.2" strokeLinejoin="round"/>
+                <path d="M10 2V4H12" stroke="#8d8e99" strokeWidth="1.2" strokeLinejoin="round"/>
+              </svg>
+              <span className="text-[12px] text-[#8d8e99] font-medium truncate">{selectedDoc}</span>
+            </div>
+          )}
+          {mode === "document" ? (
+            <FileTreeView
+              nodes={folderTree}
+              selectedPath={selectedFileNode?.path || null}
+              onSelect={handleFileSelect}
+              searchQuery={searchQuery}
+              onNewFile={handleNewFileInFolder}
+              onOpenLocation={(path) => (window as any).electronAPI?.openFolderLocation(path)}
+            />
+          ) : (
+            <OutlineTree nodes={outlineNodes} selectedId={selectedNodeId} contentMap={docStore[selectedDoc]?.content ?? {}} onSelect={setSelectedNodeId} onUpdateNodes={(nodes) => updateOutlineTree(selectedDoc, nodes)} filter={searchQuery} enterTick={outlineSearchEnter} />
+          )}
+          <Frame27 onNewDoc={() => setModal({ type: "new" })} onNewFile={() => {
+            if (mode === "document" && selectedProject?.folderPath) {
+              handleNewFileInFolder(selectedProject.folderPath);
+            } else {
+              setModal({ type: "new-file" });
+            }
+          }} mode={mode} onSwitchMode={handleSwitchMode} />
+          <SidebarShareStatus shared={shared} onClick={() => setShowShareModal(true)} />
       {docDeleteConfirm && (
         <DeleteConfirmModal
           message={docDeleteConfirm.message}
@@ -2065,6 +2642,116 @@ export default function DocumentAssistant() {
         />
       )}
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ===== Settings Modal =====
+function SettingsModal({
+  open,
+  onClose,
+  settings,
+  onSave,
+}: {
+  open: boolean;
+  onClose: () => void;
+  settings: { closeBehavior?: string };
+  onSave: (settings: { closeBehavior: string }) => void;
+}) {
+  const [closeBehavior, setCloseBehavior] = useState(settings.closeBehavior || 'ask');
+
+  useEffect(() => {
+    if (open) {
+      setCloseBehavior(settings.closeBehavior || 'ask');
+    }
+  }, [open, settings]);
+
+  if (!open) return null;
+
+  const handleSave = () => {
+    onSave({ closeBehavior });
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/36" onClick={onClose} />
+      <div className="relative bg-white rounded-[16px] shadow-[0_8px_32px_rgba(0,0,0,0.16)] w-[400px] overflow-hidden">
+        <div className="flex items-center justify-between px-[20px] py-[16px] border-b border-[#EBECF0]">
+          <h2 className="text-[16px] font-medium text-[#131212]">设置</h2>
+          <button
+            className="size-[28px] flex items-center justify-center rounded-[6px] text-[#131212] hover:bg-[#EBECF0] transition-colors"
+            onClick={onClose}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M13.3333 2.66667L2.66667 13.3333M13.3333 13.3333L2.66667 2.66667" stroke="currentColor" strokeLinecap="round" strokeWidth="1.2" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="p-[20px]">
+          <div className="mb-[20px]">
+            <h3 className="text-[14px] font-medium text-[#131212] mb-[12px]">通用</h3>
+            <div className="flex flex-col gap-[12px]">
+              <div>
+                <p className="text-[13px] text-[#606266] mb-[8px]">关闭窗口时</p>
+                <div className="flex flex-col gap-[8px]">
+                  <label className="flex items-center gap-[8px] cursor-pointer">
+                    <input
+                      type="radio"
+                      name="closeBehavior"
+                      value="ask"
+                      checked={closeBehavior === 'ask'}
+                      onChange={() => setCloseBehavior('ask')}
+                      className="size-[16px] accent-[#131212]"
+                    />
+                    <span className="text-[13px] text-[#303133]">询问我</span>
+                  </label>
+                  <label className="flex items-center gap-[8px] cursor-pointer">
+                    <input
+                      type="radio"
+                      name="closeBehavior"
+                      value="tray"
+                      checked={closeBehavior === 'tray'}
+                      onChange={() => setCloseBehavior('tray')}
+                      className="size-[16px] accent-[#131212]"
+                    />
+                    <span className="text-[13px] text-[#303133]">最小化到托盘</span>
+                  </label>
+                  <label className="flex items-center gap-[8px] cursor-pointer">
+                    <input
+                      type="radio"
+                      name="closeBehavior"
+                      value="quit"
+                      checked={closeBehavior === 'quit'}
+                      onChange={() => setCloseBehavior('quit')}
+                      className="size-[16px] accent-[#131212]"
+                    />
+                    <span className="text-[13px] text-[#303133]">直接退出</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-[8px] px-[20px] pb-[16px]">
+          <button
+            className="h-[32px] px-[16px] rounded-[6px] border border-[#ececec] text-[14px] text-[#606266] hover:bg-[#f5f6f8] transition-colors"
+            onClick={onClose}
+          >
+            取消
+          </button>
+          <button
+            className="h-[32px] px-[16px] rounded-[6px] bg-black text-white text-[14px] hover:bg-[#333] transition-colors"
+            onClick={handleSave}
+          >
+            保存
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

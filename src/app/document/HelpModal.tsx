@@ -22,9 +22,9 @@ const SECTIONS: HelpSection[] = [
     title: "快速开始",
     body: (
       <ol>
-        <li>左侧点 <strong>新建文档</strong>，输入名称并确定。</li>
-        <li>进入 <strong>大纲</strong> 模式，默认带有同名根节点。</li>
-        <li>用 <strong>新建文件 / 添加子文档</strong> 搭好章节结构。</li>
+        <li>左侧点 <strong>新建文件</strong>，输入名称并确定。</li>
+        <li>进入 <strong>大纲树</strong> 模式，默认带有同名根节点。</li>
+        <li>用 <strong>新建层级 / 添加子文档</strong> 搭好章节结构。</li>
         <li>选中节点后在右侧编辑器写作（工具栏、斜杠命令 <code>/</code>、Markdown 快捷输入）。</li>
         <li>内容会自动保存；可用顶栏 <strong>保存 / 分享 / 导出</strong>。</li>
       </ol>
@@ -36,8 +36,8 @@ const SECTIONS: HelpSection[] = [
     body: (
       <ul>
         <li><strong>顶栏</strong>：保存、导入、导出、分享、删除、帮助</li>
-        <li><strong>左侧</strong>：搜索、文档/大纲切换、文档列表或大纲树、分享状态</li>
-        <li><strong>右侧</strong>：标题 + 富文本编辑器（大纲模式）</li>
+        <li><strong>左侧</strong>：搜索、文件树/大纲树切换、文件树或大纲树、分享状态</li>
+        <li><strong>右侧</strong>：标题 + 富文本编辑器（大纲树模式）</li>
         <li><strong>底栏</strong>：保存状态、字数统计、页内大纲</li>
       </ul>
     ),
@@ -47,7 +47,7 @@ const SECTIONS: HelpSection[] = [
     title: "文档管理",
     body: (
       <ul>
-        <li><strong>文档模式</strong>：管理文档列表；<strong>大纲模式</strong>：编辑结构与正文。</li>
+        <li><strong>文件树</strong>：管理项目文件列表；<strong>大纲树</strong>：编辑结构与正文。</li>
         <li><strong>导入</strong>：支持 <code>.mdoc</code> / <code>.md</code> / <code>.txt</code> / <code>.docx</code>。</li>
         <li><strong>保存</strong>：桌面端可选文件夹另存 <code>.mdoc</code>；Web 端下载文件。</li>
         <li>桌面端默认目录：用户「文档」下的 <code>DocAssistant</code> 文件夹。</li>

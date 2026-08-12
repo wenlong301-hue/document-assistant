@@ -59,4 +59,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('viewport-change', handler);
     return () => ipcRenderer.removeListener('viewport-change', handler);
   },
+  openFolder: () => ipcRenderer.invoke('open-folder'),
+  scanFolder: (dir) => ipcRenderer.invoke('scan-folder', dir),
+  getFolderState: () => ipcRenderer.invoke('get-folder-state'),
+  closeFolder: () => ipcRenderer.invoke('close-folder'),
+  readFolderFile: (filePath) => ipcRenderer.invoke('read-folder-file', filePath),
+  writeFolderFile: (filePath, payload) => ipcRenderer.invoke('write-folder-file', filePath, payload),
+  renameFolderFile: (filePath, newName) => ipcRenderer.invoke('rename-folder-file', filePath, newName),
+  trashFolderFile: (filePath) => ipcRenderer.invoke('trash-folder-file', filePath),
+  onFolderChanged: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('folder-changed', handler);
+    return () => ipcRenderer.removeListener('folder-changed', handler);
+  },
+  // Project management
+  getProjects: () => ipcRenderer.invoke('get-projects'),
+  saveProjects: (projects) => ipcRenderer.invoke('save-projects', projects),
+  createProject: (name) => ipcRenderer.invoke('create-project', name),
+  importFolder: () => ipcRenderer.invoke('import-folder'),
+  selectFolder: () => ipcRenderer.invoke('select-folder'),
+  createProjectAt: (name, folderPath) => ipcRenderer.invoke('create-project-at', name, folderPath),
+  scanFolderTree: (dir) => ipcRenderer.invoke('scan-folder-tree', dir),
+  createFileInFolder: (folderPath, fileName) => ipcRenderer.invoke('create-file-in-folder', folderPath, fileName),
+  openFolderLocation: (folderPath) => ipcRenderer.invoke('open-folder-location', folderPath),
 });

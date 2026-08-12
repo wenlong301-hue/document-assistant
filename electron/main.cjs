@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, nativeImage, Tray, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -12,10 +12,12 @@ const { autoUpdater } = require('electron-updater');
 const execFileAsync = promisify(execFile);
 
 let mainWindow;
+let tray = null;
 let shareServer = null;
 let activeShareDocId = null;
 let updateCheckInFlight = false;
 let lastDownloadedUpdatePath = null;
+let closeBehavior = 'ask'; // 'ask', 'tray', 'quit'
 const RELEASE_PAGE_URL = 'https://github.com/wenlong301-hue/document-assistant/releases/latest';
 const DOCS_DIR = path.join(app.getPath('documents'), 'DocAssistant');
 const RECENT_FILE = path.join(DOCS_DIR, 'recent.json');
@@ -462,6 +464,118 @@ function deleteDoc(docId) {
   if (fs.existsSync(fp)) fs.unlinkSync(fp);
 }
 
+const FOLDER_SUPPORTED_EXTS = new Set(['.mdoc', '.md', '.txt', '.docx', '.html']);
+const FOLDER_SKIP_DIRS = new Set(['node_modules', '.git', '.svn', '.hg', 'dist', 'build', '.next', '.nuxt', '.cache', '.idea', '.vscode', '__pycache__', '.DS_Store', 'Pods', '.venv', 'venv', '.trash', '$RECYCLE.BIN']);
+let activeFolderWatcher = null;
+let activeFolderPath = null;
+let folderScanDebounceTimer = null;
+
+async function scanFolder(dir) {
+  if (!dir || !fs.existsSync(dir)) return [];
+  const results = [];
+  const walk = async (current, rel) => {
+    let entries;
+    try {
+      entries = await fs.promises.readdir(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    await Promise.all(entries.map(async (entry) => {
+      const name = String(entry.name || '');
+      if (name.startsWith('.')) return;
+      const full = path.join(current, entry.name);
+      const relPath = rel ? path.join(rel, entry.name) : entry.name;
+      if (entry.isDirectory()) {
+        if (FOLDER_SKIP_DIRS.has(name.toLowerCase())) return;
+        await walk(full, relPath);
+      } else if (entry.isFile()) {
+        const ext = path.extname(entry.name).toLowerCase();
+        if (!FOLDER_SUPPORTED_EXTS.has(ext)) return;
+        try {
+          const stat = await fs.promises.stat(full);
+          results.push({ path: full, relPath, name: entry.name, ext, size: stat.size, mtimeMs: stat.mtimeMs });
+        } catch {}
+      }
+    }));
+  };
+  await walk(dir, '');
+  results.sort((a, b) => String(a.relPath).localeCompare(String(b.relPath), 'zh-CN'));
+  return results;
+}
+
+function stopFolderWatcher() {
+  if (folderScanDebounceTimer) {
+    clearTimeout(folderScanDebounceTimer);
+    folderScanDebounceTimer = null;
+  }
+  if (activeFolderWatcher) {
+    try { activeFolderWatcher.close(); } catch {}
+    activeFolderWatcher = null;
+  }
+  activeFolderPath = null;
+}
+
+function watchFolder(dir) {
+  stopFolderWatcher();
+  if (!dir || !fs.existsSync(dir)) return;
+  activeFolderPath = dir;
+  try {
+    activeFolderWatcher = fs.watch(dir, { recursive: true }, () => {
+      if (folderScanDebounceTimer) clearTimeout(folderScanDebounceTimer);
+      folderScanDebounceTimer = setTimeout(async () => {
+        folderScanDebounceTimer = null;
+        if (!fs.existsSync(dir)) {
+          sendToRenderer('folder-changed', { path: dir, files: [], gone: true });
+          return;
+        }
+        sendToRenderer('folder-changed', { path: dir, files: await scanFolder(dir) });
+      }, 300);
+    });
+  } catch (error) {
+    console.error('watch folder failed:', error);
+  }
+}
+
+function readFolderFile(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.docx') {
+    try {
+      return { ext, base64: fs.readFileSync(filePath).toString('base64') };
+    } catch { return null; }
+  }
+  try {
+    return { ext, text: fs.readFileSync(filePath, 'utf-8') };
+  } catch { return null; }
+}
+
+async function writeFolderFile(filePath, payload) {
+  try {
+    const ext = String(payload?.ext || path.extname(filePath || '') || '').toLowerCase();
+    if (ext === '.docx') {
+      const fullHtml = wordHtmlDocument(payload?.title || '未命名文档', payload?.html || '', {});
+      const buffer = await htmlToDocx(fullHtml, null, {
+        orientation: 'portrait',
+        margins: { top: 720, right: 720, bottom: 720, left: 720 },
+      });
+      fs.writeFileSync(filePath, buffer);
+    } else if (ext === '.mdoc') {
+      const data = typeof payload?.content === 'string' ? JSON.parse(payload.content) : payload?.content;
+      if (!data || typeof data !== 'object') throw new Error('mdoc 内容无效');
+      data.updatedAt = new Date().toISOString();
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    } else if (ext === '.md') {
+      const markdown = contentHtmlToMarkdown(payload?.html || '', createMarkdownImageWriter(filePath));
+      fs.writeFileSync(filePath, markdown, 'utf-8');
+    } else {
+      fs.writeFileSync(filePath, String(payload?.content ?? ''), 'utf-8');
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : '写入失败' };
+  }
+}
+
 function buildSharePage(docs) {
   return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>文档助手 - 分享</title><style>
 :root{--primary:#134CFF;--gray-50:#F3F5FA;--gray-100:#EEF0F5;--gray-200:#DFE0E6;--gray-400:#9FA0A6;--gray-500:#707277}*{box-sizing:border-box}body{margin:0;font-family:'PingFang SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f8fa;color:#131212;line-height:1.6}.header{background:#fff;border-bottom:1px solid #ebecf0;height:56px;display:flex;align-items:center}.header-inner{max-width:920px;width:100%;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:12px}.brand{font-size:15px;font-weight:600;color:#131212}.status{font-size:12px;color:#8d8e99;padding-left:12px;border-left:1px solid #ebecf0}.wrap{max-width:920px;margin:0 auto;padding:40px 24px}.page-title{font-size:22px;font-weight:600;margin:0 0 24px;color:#131212}.doc-list{display:flex;flex-direction:column;gap:8px}.doc{display:flex;align-items:center;justify-content:space-between;border:1px solid #ebecf0;border-radius:10px;padding:18px 20px;background:#fff;cursor:pointer;transition:border-color .2s,box-shadow .2s;text-decoration:none}.doc:hover{border-color:#dfe1e8;box-shadow:0 2px 8px rgba(0,0,0,.04)}.doc-info{min-width:0}.doc-name{font-size:15px;font-weight:500;color:#131212;margin:0 0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.doc-meta{font-size:13px;color:#8d8e99;margin:0}.doc-arrow{color:#c0c4cc;font-size:20px;flex-shrink:0;margin-left:12px}.footer{color:#8d8e99;font-size:13px;margin-top:28px;padding:16px 0 0;border-top:1px solid #ebecf0}@media(max-width:640px){.wrap{padding:24px 16px}.doc{padding:14px 16px}}
@@ -793,12 +907,49 @@ function createWindow() {
     icon: fs.existsSync(appIconPath) ? appIconPath : undefined,
     show: false,
   });
+
+  // Load close behavior from settings
+  const settings = readAppSettings();
+  closeBehavior = settings.closeBehavior || 'ask';
+
+  // Handle window close
+  mainWindow.on('close', (e) => {
+    if (closeBehavior === 'tray') {
+      e.preventDefault();
+      mainWindow.hide();
+      return;
+    }
+    if (closeBehavior === 'ask') {
+      e.preventDefault();
+      dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        buttons: ['最小化到托盘', '退出应用'],
+        defaultId: 0,
+        title: '关闭确认',
+        message: '选择关闭时的行为',
+        detail: '您可以选择最小化到系统托盘或直接退出应用',
+      }).then(({ response }) => {
+        if (response === 0) {
+          // Minimize to tray
+          mainWindow.hide();
+        } else {
+          // Quit app
+          mainWindow.destroy();
+          app.quit();
+        }
+      });
+      return;
+    }
+    // closeBehavior === 'quit' — default behavior
+  });
   const isDev = process.argv.includes('--dev');
   if (isDev) {
     const devUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
+    // dev 模式立即显示窗口，避免页面加载期间“看起来没打开”
+    mainWindow.show();
     const loadDevUrl = (attempt = 0) => {
       mainWindow.loadURL(devUrl).catch(() => {
-        if (attempt < 40) setTimeout(() => loadDevUrl(attempt + 1), 500);
+        if (attempt < 100) setTimeout(() => loadDevUrl(attempt + 1), 500);
       });
     };
     loadDevUrl();
@@ -821,10 +972,57 @@ function createWindow() {
   mainWindow.on('resize', () => notifyViewportChange('resize'));
 }
 
+function createTray() {
+  const appIconPath = path.join(__dirname, '..', 'build', 'icon.png');
+  if (!fs.existsSync(appIconPath)) return;
+
+  const icon = nativeImage.createFromPath(appIconPath);
+  tray = new Tray(icon);
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: '显示窗口',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      },
+    },
+    { type: 'separator' },
+    {
+      label: '退出',
+      click: () => {
+        app.quit();
+      },
+    },
+  ]);
+
+  tray.setToolTip('文档助手');
+  tray.setContextMenu(contextMenu);
+
+  tray.on('click', () => {
+    if (mainWindow) {
+      if (mainWindow.isVisible()) {
+        mainWindow.focus();
+      } else {
+        mainWindow.show();
+      }
+    }
+  });
+}
+
 app.whenReady().then(() => {
   setupAutoUpdater();
   createWindow();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  createTray();
+  app.on('activate', () => {
+    if (mainWindow) {
+      mainWindow.show();
+    } else if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
   // 启动后延迟静默检查，避免抢启动焦点
   setTimeout(() => {
     checkForAppUpdates({ silent: true }).catch((error) => {
@@ -832,7 +1030,7 @@ app.whenReady().then(() => {
     });
   }, 4000);
 });
-app.on('window-all-closed', () => { stopShareServer(); if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => { stopShareServer(); stopFolderWatcher(); if (process.platform !== 'darwin') app.quit(); });
 
 ipcMain.handle('get-docs', () => getAllDocs());
 ipcMain.handle('get-doc', (_e, id) => getDocContent(id));
@@ -1000,10 +1198,258 @@ ipcMain.handle('export-pdf', async (_e, payloadOrContent, defaultName) => {
 
 ipcMain.handle('settings-read', () => readAppSettings());
 
-ipcMain.handle('settings-write', (_e, settings) => writeAppSettings(settings || {}));
+ipcMain.handle('settings-write', (_e, settings) => {
+  const result = writeAppSettings(settings || {});
+  if (settings && settings.closeBehavior) {
+    closeBehavior = settings.closeBehavior;
+  }
+  return result;
+});
 
 ipcMain.handle('get-doc-html', (_e, docName) => {
   const doc = getDocContent(docName);
   if (!doc) return null;
   return { name: doc.name, html: doc.html || doc.content || '', updatedAt: doc.updatedAt };
+});
+
+ipcMain.handle('open-folder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: '选择文件夹',
+    buttonLabel: '打开',
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || !result.filePaths?.[0]) return { canceled: true };
+  const dir = result.filePaths[0];
+  const settings = readAppSettings();
+  settings.lastFolder = dir;
+  writeAppSettings(settings);
+  watchFolder(dir);
+  return { canceled: false, path: dir, files: await scanFolder(dir) };
+});
+
+ipcMain.handle('scan-folder', async (_e, dir) => scanFolder(dir));
+
+ipcMain.handle('get-folder-state', async () => {
+  const settings = readAppSettings();
+  const dir = settings.lastFolder || null;
+  if (!dir) return { path: null, files: [] };
+  if (fs.existsSync(dir)) {
+    watchFolder(dir);
+    return { path: dir, files: await scanFolder(dir) };
+  }
+  return { path: dir, files: [], gone: true };
+});
+
+ipcMain.handle('close-folder', () => {
+  stopFolderWatcher();
+  const settings = readAppSettings();
+  if (settings.lastFolder) {
+    settings.lastFolder = '';
+    writeAppSettings(settings);
+  }
+  return true;
+});
+
+ipcMain.handle('read-folder-file', (_e, filePath) => readFolderFile(filePath));
+
+ipcMain.handle('write-folder-file', (_e, filePath, payload) => writeFolderFile(filePath, payload));
+
+ipcMain.handle('rename-folder-file', (_e, filePath, newName) => {
+  try {
+    const safe = sanitizeFileName(newName);
+    if (!safe) return { ok: false, error: '名称不能为空' };
+    const newPath = path.join(path.dirname(filePath), safe);
+    if (newPath === filePath) return { ok: true, path: filePath, unchanged: true };
+    fs.renameSync(filePath, newPath);
+    return { ok: true, path: newPath };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : '重命名失败' };
+  }
+});
+
+ipcMain.handle('trash-folder-file', async (_e, filePath) => {
+  try {
+    await shell.trashItem(filePath);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : '删除失败' };
+  }
+});
+
+// ===== Project Management =====
+const PROJECTS_FILE = path.join(DOCS_DIR, 'projects.json');
+
+function readProjects() {
+  ensureDir(DOCS_DIR);
+  if (!fs.existsSync(PROJECTS_FILE)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(PROJECTS_FILE, 'utf-8'));
+  } catch { return []; }
+}
+
+function writeProjects(projects) {
+  ensureDir(DOCS_DIR);
+  fs.writeFileSync(PROJECTS_FILE, JSON.stringify(projects, null, 2), 'utf-8');
+}
+
+async function scanFolderTree(dir) {
+  if (!dir || !fs.existsSync(dir)) return [];
+  const results = [];
+  const walk = async (current, rel) => {
+    let entries;
+    try {
+      entries = await fs.promises.readdir(current, { withFileTypes: true });
+    } catch { return; }
+    for (const entry of entries) {
+      const name = String(entry.name || '');
+      if (name.startsWith('.')) continue;
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (FOLDER_SKIP_DIRS.has(name.toLowerCase())) continue;
+        // Build tree for this directory
+        const subEntries = [];
+        try {
+          const raw = await fs.promises.readdir(full, { withFileTypes: true });
+          for (const se of raw) {
+            const sname = String(se.name || '');
+            if (sname.startsWith('.') || FOLDER_SKIP_DIRS.has(sname.toLowerCase())) continue;
+            const sfull = path.join(full, se.name);
+            const srel = rel ? path.join(rel, se.name) : se.name;
+            if (se.isDirectory()) {
+              const subChildren = await scanFolderTree_single(sfull, srel);
+              subEntries.push({ name: se.name, path: sfull, isDirectory: true, children: subChildren });
+            } else {
+              subEntries.push({ name: se.name, path: sfull, isDirectory: false });
+            }
+          }
+        } catch {}
+        results.push({ name: entry.name, path: full, isDirectory: true, children: subEntries });
+      } else if (entry.isFile()) {
+        results.push({ name: entry.name, path: full, isDirectory: false });
+      }
+    }
+  };
+  // Sort: directories first, then files, alphabetical
+  await walk(dir, '');
+  results.sort((a, b) => {
+    if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+    return String(a.name).localeCompare(String(b.name), 'zh-CN');
+  });
+  return results;
+}
+
+async function scanFolderTree_single(dir, rel) {
+  const results = [];
+  try {
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const name = String(entry.name || '');
+      if (name.startsWith('.') || FOLDER_SKIP_DIRS.has(name.toLowerCase())) continue;
+      const full = path.join(dir, entry.name);
+      const relPath = rel ? path.join(rel, entry.name) : entry.name;
+      if (entry.isDirectory()) {
+        const children = await scanFolderTree_single(full, relPath);
+        results.push({ name: entry.name, path: full, isDirectory: true, children });
+      } else if (entry.isFile()) {
+        results.push({ name: entry.name, path: full, isDirectory: false });
+      }
+    }
+  } catch {}
+  results.sort((a, b) => {
+    if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+    return String(a.name).localeCompare(String(b.name), 'zh-CN');
+  });
+  return results;
+}
+
+ipcMain.handle('get-projects', () => readProjects());
+
+ipcMain.handle('save-projects', (_e, projects) => {
+  writeProjects(projects || []);
+  return true;
+});
+
+ipcMain.handle('create-project', async (_e, name) => {
+  const safeName = sanitizeFileName(name || '未命名项目');
+  if (!safeName) return { ok: false, error: '名称不能为空' };
+  const projects = readProjects();
+  if (projects.find(p => p.name === safeName)) return { ok: false, error: '项目已存在' };
+  const projectDir = path.join(DOCS_DIR, safeName);
+  ensureDir(projectDir);
+  const project = {
+    id: `project-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    name: safeName,
+    folderPath: projectDir,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  projects.push(project);
+  writeProjects(projects);
+  return { ok: true, project };
+});
+
+ipcMain.handle('import-folder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: '选择要导入的文件夹',
+    buttonLabel: '导入',
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || !result.filePaths?.[0]) return { canceled: true };
+  const folderPath = result.filePaths[0];
+  const folderName = path.basename(folderPath);
+  return { canceled: false, name: folderName, path: folderPath };
+});
+
+ipcMain.handle('select-folder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: '选择项目存放位置',
+    buttonLabel: '选择',
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || !result.filePaths?.[0]) return { canceled: true };
+  return { canceled: false, path: result.filePaths[0] };
+});
+
+ipcMain.handle('create-project-at', async (_e, name, folderPath) => {
+  const safeName = sanitizeFileName(name || '未命名项目');
+  if (!safeName) return { ok: false, error: '名称不能为空' };
+  const projects = readProjects();
+  if (projects.find(p => p.name === safeName)) return { ok: false, error: '项目已存在' };
+  const projectDir = path.join(folderPath, safeName);
+  ensureDir(projectDir);
+  const project = {
+    id: `project-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    name: safeName,
+    folderPath: projectDir,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  projects.push(project);
+  writeProjects(projects);
+  return { ok: true, project };
+});
+
+ipcMain.handle('scan-folder-tree', async (_e, dir) => scanFolderTree(dir));
+
+ipcMain.handle('create-file-in-folder', async (_e, folderPath, fileName) => {
+  try {
+    const safeName = sanitizeFileName(fileName || '新建文件');
+    if (!safeName) return { ok: false, error: '名称不能为空' };
+    const filePath = path.join(folderPath, `${safeName}.mdoc`);
+    if (fs.existsSync(filePath)) return { ok: false, error: '文件已存在' };
+    const doc = { name: safeName, children: [], content: {}, updatedAt: new Date().toISOString() };
+    fs.writeFileSync(filePath, JSON.stringify(doc, null, 2), 'utf-8');
+    return { ok: true, path: filePath, name: safeName };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : '创建失败' };
+  }
+});
+
+ipcMain.handle('open-folder-location', async (_e, folderPath) => {
+  try {
+    if (fs.existsSync(folderPath)) {
+      await shell.showItemInFolder(folderPath);
+    }
+  } catch {}
+  return true;
 });
