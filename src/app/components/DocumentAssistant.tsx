@@ -2339,6 +2339,17 @@ export default function DocumentAssistant() {
     setLevel("project");
     setSubmode("files");
     setSelectedFileNode(null);
+    if (project.filePath) {
+      const name = project.filePath.split(/[\\/]/).pop() || project.name;
+      const fileNode: FolderTreeNode = { name, path: project.filePath, isDirectory: false };
+      setFolderTree([fileNode]);
+      setActiveFolder(null);
+      setFolderFiles([{ path: project.filePath, relPath: name, name, ext: name.includes(".") ? `.${name.split(".").pop()?.toLowerCase()}` : "", size: 0, mtimeMs: 0 }]);
+      setSelectedFileNode(fileNode);
+      await openFolderFile({ path: project.filePath, relPath: name, name, ext: name.includes(".") ? `.${name.split(".").pop()?.toLowerCase()}` : "", size: 0, mtimeMs: 0 });
+      setSubmode("outline");
+      return;
+    }
     // Scan project folder
     const api = (window as any).electronAPI;
     if (project.folderPath && api?.scanFolderTree) {
@@ -2362,7 +2373,7 @@ export default function DocumentAssistant() {
       setActiveFolder(null);
       setFolderFiles([]);
     }
-  }, []);
+  }, [openFolderFile]);
 
   const handleCreateProject = useCallback(async (name: string, folderPath?: string) => {
     const api = (window as any).electronAPI;
@@ -2392,39 +2403,60 @@ export default function DocumentAssistant() {
     try {
       const result = await api.importFolder();
       if (result?.canceled) return;
-      if (result?.name && result?.path) {
-        // Create project from imported folder
-        const createResult = await api.createProject(result.name);
-        if (createResult?.ok && createResult.project) {
-          // Update project with folder path
-          const updatedProject = { ...createResult.project, folderPath: result.path };
-          const saveResult = await api.saveProjects([...projects, updatedProject]);
-          if (saveResult) {
-            setProjects((prev) => [...prev, updatedProject]);
-            handleSelectProject(updatedProject);
-          }
-        }
+      if (result?.error) {
+        setToast({ message: result.error, type: "error" });
+        return;
+      }
+      if (!result?.name || !result?.path) return;
+      if (projects.some((project) => project.filePath === result.path || project.folderPath === result.path)) {
+        setToast({ message: "项目已存在", type: "info" });
+        return;
+      }
+      const now = new Date().toISOString();
+      const project: Project = {
+        id: `project-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        name: result.name,
+        ...(result.isFile ? { filePath: result.path } : { folderPath: result.path }),
+        createdAt: now,
+        updatedAt: now,
+      };
+      const nextProjects = [...projects, project];
+      const saveResult = await api.saveProjects(nextProjects);
+      if (saveResult) {
+        setProjects(nextProjects);
+        handleSelectProject(project);
       }
     } catch (error) {
-      setToast({ message: "导入文件夹失败", type: "error" });
+      setToast({ message: "导入项目失败", type: "error" });
     }
   }, [projects, handleSelectProject]);
 
   const handleImportFolderDrop = useCallback(async (folderPath: string) => {
     const api = (window as any).electronAPI;
     try {
-      const folderName = folderPath.split(/[\\/]/).pop() || "导入的项目";
-      const createResult = await api.createProject(folderName);
-      if (createResult?.ok && createResult.project) {
-        const updatedProject = { ...createResult.project, folderPath };
-        const saveResult = await api.saveProjects([...projects, updatedProject]);
-        if (saveResult) {
-          setProjects((prev) => [...prev, updatedProject]);
-          handleSelectProject(updatedProject);
-        }
+      const projectName = folderPath.split(/[\\/]/).pop() || "导入的项目";
+      if (projects.some((project) => project.filePath === folderPath || project.folderPath === folderPath)) {
+        setToast({ message: "项目已存在", type: "info" });
+        return;
+      }
+      const ext = projectName.includes(".") ? `.${projectName.split(".").pop()?.toLowerCase()}` : "";
+      const isFile = [".mdoc", ".md", ".txt", ".docx", ".html", ".htm"].includes(ext);
+      const now = new Date().toISOString();
+      const project: Project = {
+        id: `project-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        name: projectName,
+        ...(isFile ? { filePath: folderPath } : { folderPath }),
+        createdAt: now,
+        updatedAt: now,
+      };
+      const nextProjects = [...projects, project];
+      const saveResult = await api.saveProjects(nextProjects);
+      if (saveResult) {
+        setProjects(nextProjects);
+        handleSelectProject(project);
       }
     } catch (error) {
-      setToast({ message: "导入文件夹失败", type: "error" });
+      setToast({ message: "导入项目失败", type: "error" });
     }
   }, [projects, handleSelectProject]);
 

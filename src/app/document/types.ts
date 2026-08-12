@@ -17,6 +17,7 @@ export type Project = {
   id: string;
   name: string;
   folderPath?: string;
+  filePath?: string;
   createdAt: string;
   updatedAt: string;
 };

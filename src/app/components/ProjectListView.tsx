@@ -21,6 +21,22 @@ function FolderIconDefault() {
   return <img src={assetUrl("icons/folder-icon.svg")} alt="" className="w-[52px] h-[48px]" />;
 }
 
+function FileProjectIcon({ className = "w-[52px] h-[52px]" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 68 68" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M14 18C14 13.5817 17.5817 10 22 10H38.1863C40.308 10 42.3429 10.8429 43.8431 12.3431L51.6569 20.1569C53.1571 21.6571 54 23.692 54 25.8137V50C54 54.4183 50.4183 58 46 58H22C17.5817 58 14 54.4183 14 50V18Z" fill="url(#fileProjectIconGradient)" />
+      <path d="M22 27.5C22 26.6716 22.6716 26 23.5 26H36.5C37.3284 26 38 26.6716 38 27.5C38 28.3284 37.3284 29 36.5 29H23.5C22.6716 29 22 28.3284 22 27.5Z" fill="white" />
+      <path d="M22 37.5C22 36.6716 22.6716 36 23.5 36H42.5C43.3284 36 44 36.6716 44 37.5C44 38.3284 43.3284 39 42.5 39H23.5C22.6716 39 22 38.3284 22 37.5Z" fill="white" />
+      <defs>
+        <linearGradient id="fileProjectIconGradient" x1="34" y1="58" x2="34" y2="10" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#131212" />
+          <stop offset="1" stopColor="#535353" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
 function MoreIcon() {
   return <img src={assetUrl("icons/more-icon.svg")} alt="" className="size-[16px]" />;
 }
@@ -127,7 +143,7 @@ function ProjectGridCard({
         className="flex items-center justify-center shrink-0"
         style={{ paddingBottom: 20, paddingLeft: 8, paddingRight: 8 }}
       >
-        {isSelected ? <FolderIconActive /> : <FolderIconDefault />}
+        {project.filePath ? <FileProjectIcon /> : isSelected ? <FolderIconActive /> : <FolderIconDefault />}
       </div>
 
       {/* Text content - path text 12px from bottom */}
@@ -139,7 +155,7 @@ function ProjectGridCard({
           {project.name}
         </p>
         <p className="w-full text-center text-[10px] text-[#8D8E99] truncate" style={{ fontWeight: 300, lineHeight: '14px' }}>
-          {project.folderPath || "本地项目"}
+          {project.filePath || project.folderPath || "本地项目"}
         </p>
       </div>
 
@@ -224,13 +240,13 @@ function ProjectListRow({
     >
       <div className="flex items-center gap-[12px] flex-[3] min-w-0">
         <div className="flex items-center justify-center w-[24px] h-[24px] shrink-0">
-          <img src={assetUrl("icons/folder-icon.svg")} alt="" className="w-[24px] h-[24px] shrink-0" />
+          {project.filePath ? <FileProjectIcon className="w-[24px] h-[24px] shrink-0" /> : <img src={assetUrl("icons/folder-icon.svg")} alt="" className="w-[24px] h-[24px] shrink-0" />}
         </div>
         <span className="text-[14px] text-[#131212] truncate">{project.name}</span>
       </div>
       <div className="flex items-center flex-[2] min-w-0">
         <span className="text-[14px] text-[#8D8E99] truncate" style={{ fontWeight: 300 }}>
-          {project.folderPath || "-"}
+          {project.filePath || project.folderPath || "-"}
         </span>
       </div>
       <div className="relative shrink-0" ref={menuRef}>
@@ -410,7 +426,7 @@ function AddProjectModal({
             }`}
             onClick={() => setTab("import")}
           >
-            导入文件夹
+            导入项目
           </button>
         </div>
         <div className="p-[24px]">
@@ -474,9 +490,9 @@ function AddProjectModal({
                 </svg>
               </div>
               <p className="text-[14px] text-[#606266] mb-[4px]">
-                {isDragOver ? "松开以导入文件夹" : "拖拽文件夹到此处，或点击选择"}
+                {isDragOver ? "松开以导入项目" : "拖拽文件或文件夹到此处，或点击选择"}
               </p>
-              <p className="text-[12px] text-[#8d8e99]">文件夹中的文档将显示在项目文件树中</p>
+              <p className="text-[12px] text-[#8d8e99]">支持 .mdoc / .md / .txt / .html / .htm / .docx 或文件夹</p>
             </div>
           )}
         </div>
@@ -492,7 +508,7 @@ function AddProjectModal({
             onClick={tab === "create" ? handleCreate : handleImport}
             disabled={tab === "create" && !projectName.trim()}
           >
-            {tab === "create" ? "确定" : "选择文件夹"}
+            {tab === "create" ? "确定" : "选择项目"}
           </button>
         </div>
       </div>
@@ -536,14 +552,15 @@ export function ProjectListView({
   );
 
   const handleNewFile = useCallback((project: Project) => {
-    if (project.folderPath && isElectron) {
+    if (!project.filePath && project.folderPath && isElectron) {
       (window as any).electronAPI?.createFileInFolder(project.folderPath, "新建文件");
     }
   }, [isElectron]);
 
   const handleOpenLocation = useCallback((project: Project) => {
-    if (project.folderPath && isElectron) {
-      (window as any).electronAPI?.openFolderLocation(project.folderPath);
+    const location = project.filePath || project.folderPath;
+    if (location && isElectron) {
+      (window as any).electronAPI?.openFolderLocation(location);
     }
   }, [isElectron]);
 

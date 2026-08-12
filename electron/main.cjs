@@ -1410,14 +1410,24 @@ ipcMain.handle('create-project', async (_e, name) => {
 
 ipcMain.handle('import-folder', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: '选择要导入的文件夹',
+    title: '选择要导入的项目文件或文件夹',
     buttonLabel: '导入',
-    properties: ['openDirectory', 'createDirectory'],
+    properties: ['openFile', 'openDirectory', 'createDirectory'],
+    filters: [
+      { name: '支持的文档', extensions: ['mdoc', 'md', 'txt', 'docx', 'html', 'htm'] },
+      { name: '所有文件', extensions: ['*'] },
+    ],
   });
   if (result.canceled || !result.filePaths?.[0]) return { canceled: true };
-  const folderPath = result.filePaths[0];
-  const folderName = path.basename(folderPath);
-  return { canceled: false, name: folderName, path: folderPath };
+  const selectedPath = result.filePaths[0];
+  const stat = fs.statSync(selectedPath);
+  if (stat.isFile()) {
+    const ext = path.extname(selectedPath).toLowerCase();
+    if (!FOLDER_SUPPORTED_EXTS.has(ext)) return { canceled: false, error: '不支持的文件格式' };
+    return { canceled: false, name: path.basename(selectedPath), path: selectedPath, isFile: true, ext, size: stat.size, mtimeMs: stat.mtimeMs };
+  }
+  const folderName = path.basename(selectedPath);
+  return { canceled: false, name: folderName, path: selectedPath, isFile: false };
 });
 
 ipcMain.handle('select-folder', async () => {
