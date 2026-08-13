@@ -581,6 +581,7 @@ type OutlineMenuHandlers = {
   onMenuClose: () => void;
   onAddChild: (id: string) => void;
   onRename: (id: string) => void;
+  onCopyLink: (id: string) => void;
   onTogglePreview: (id: string) => void;
   onExportHtml: (id: string) => void;
   onClone: (id: string) => void;
@@ -672,6 +673,7 @@ function OutlineTreeNode({ node, depth, selectedId, expandedIds, dragState, onSe
           onClose={menuHandlers.onMenuClose}
           onAddChild={menuHandlers.onAddChild}
           onRename={menuHandlers.onRename}
+          onCopyLink={menuHandlers.onCopyLink}
           onTogglePreview={menuHandlers.onTogglePreview}
           onExportHtml={menuHandlers.onExportHtml}
           onClone={menuHandlers.onClone}
@@ -688,9 +690,9 @@ function OutlineTreeNode({ node, depth, selectedId, expandedIds, dragState, onSe
   );
 }
 
-function OutlineNodeMenu({ nodeId, includeInPreview, position, onClose, onAddChild, onRename, onTogglePreview, onExportHtml, onClone, onDelete }: {
+function OutlineNodeMenu({ nodeId, includeInPreview, position, onClose, onAddChild, onRename, onCopyLink, onTogglePreview, onExportHtml, onClone, onDelete }: {
   nodeId: string; includeInPreview: boolean; position: { x: number; y: number }; onClose: () => void;
-  onAddChild: (id: string) => void; onRename: (id: string) => void; onTogglePreview: (id: string) => void;
+  onAddChild: (id: string) => void; onRename: (id: string) => void; onCopyLink: (id: string) => void; onTogglePreview: (id: string) => void;
   onExportHtml: (id: string) => void; onClone: (id: string) => void; onDelete: (id: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -710,6 +712,11 @@ function OutlineNodeMenu({ nodeId, includeInPreview, position, onClose, onAddChi
       label: "重命名", highlighted: false,
       icon: <path d={outlineMenuSvg.pb1c0600} stroke="#131212" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" />,
       action: () => { onRename(nodeId); onClose(); },
+    },
+    {
+      label: "复制层级链接", highlighted: false,
+      icon: <path d="M6.00004 8.66659C6.28635 9.04936 6.65166 9.36598 7.07158 9.5953C7.4915 9.82462 7.95636 9.96137 8.43333 9.996C8.9103 10.0306 9.38839 9.96232 9.83386 9.79598C10.2793 9.62964 10.682 9.36912 11.0126 9.03279L12.9692 7.07618C13.5634 6.46098 13.8922 5.63681 13.8848 4.78141C13.8773 3.92602 13.5342 3.10796 12.9294 2.5032C12.3247 1.89843 11.5066 1.5553 10.6512 1.54785C9.79581 1.54041 8.97164 1.86925 8.35644 2.46338L7.23332 3.57997M10 7.33325C9.71373 6.95049 9.34842 6.63386 8.9285 6.40454C8.50858 6.17522 8.04372 6.03847 7.56675 6.00384C7.08978 5.96921 6.61169 6.03752 6.16622 6.20386C5.72075 6.3702 5.31809 6.63072 4.98746 6.96705L3.03085 8.92366C2.43672 9.53886 2.10788 10.363 2.11532 11.2184C2.12277 12.0738 2.4659 12.8919 3.07067 13.4966C3.67543 14.1014 4.49349 14.4445 5.34888 14.452C6.20428 14.4594 7.02845 14.1306 7.64365 13.5365L8.76024 12.4199" stroke="#131212" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" />,
+      action: () => { onCopyLink(nodeId); onClose(); },
     },
     {
       label: includeInPreview ? "预览时隐藏本层" : "预览时显示本层", highlighted: false,
@@ -759,9 +766,9 @@ function OutlineNodeMenu({ nodeId, includeInPreview, position, onClose, onAddChi
   );
 }
 
-function OutlineTree({ nodes, selectedId, contentMap, onSelect, onUpdateNodes, filter = "", enterTick = 0 }: {
+function OutlineTree({ nodes, selectedId, docName, contentMap, onSelect, onUpdateNodes, onToast, filter = "", enterTick = 0 }: {
   nodes: OutlineNode[]; selectedId: string; contentMap?: DocContentMap;
-  onSelect: (id: string) => void; onUpdateNodes: (nodes: OutlineNode[]) => void;
+  docName: string; onSelect: (id: string) => void; onUpdateNodes: (nodes: OutlineNode[]) => void; onToast?: (message: string, type: "success" | "error" | "info") => void;
   filter?: string; enterTick?: number;
 }) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(["root", "1.1", "1.1.1", "1.1.1.1"]));
@@ -837,6 +844,20 @@ function OutlineTree({ nodes, selectedId, contentMap, onSelect, onUpdateNodes, f
     onUpdateNodes(toggleInTree(nodes));
   };
 
+  const handleCopyLink = async (id: string) => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("doc", docName);
+      url.searchParams.set("node", id);
+      url.hash = "";
+      await navigator.clipboard.writeText(url.toString());
+      onToast?.("层级链接已复制到剪贴板", "success");
+    } catch (error) {
+      console.error("Failed to copy outline link:", error);
+      onToast?.("无法访问剪贴板，请检查浏览器权限", "error");
+    }
+  };
+
   const handleExportHtml = (id: string) => {
     const node = findNode(nodes, id);
     if (!node) return;
@@ -870,6 +891,7 @@ function OutlineTree({ nodes, selectedId, contentMap, onSelect, onUpdateNodes, f
       setMenuState(null);
       if (n) setRenameState({ id, currentName: n.name });
     },
+    onCopyLink: handleCopyLink,
     onTogglePreview: handleTogglePreview,
     onExportHtml: handleExportHtml,
     onClone: handleClone,
@@ -2659,7 +2681,7 @@ export default function DocumentAssistant() {
               onOpenLocation={(path) => (window as any).electronAPI?.openFolderLocation(path)}
             />
           ) : (
-            <OutlineTree nodes={outlineNodes} selectedId={selectedNodeId} contentMap={docStore[selectedDoc]?.content ?? {}} onSelect={setSelectedNodeId} onUpdateNodes={(nodes) => updateOutlineTree(selectedDoc, nodes)} filter={searchQuery} enterTick={outlineSearchEnter} />
+            <OutlineTree nodes={outlineNodes} selectedId={selectedNodeId} docName={selectedDoc} contentMap={docStore[selectedDoc]?.content ?? {}} onSelect={setSelectedNodeId} onUpdateNodes={(nodes) => updateOutlineTree(selectedDoc, nodes)} onToast={(message, type) => setToast({ message, type })} filter={searchQuery} enterTick={outlineSearchEnter} />
           )}
           <Frame27 onNewDoc={() => setModal({ type: "new-file" })} onNewFile={() => setModal({ type: "new-level" })} mode={mode} onSwitchMode={handleSwitchMode} />
           <SidebarShareStatus shared={shared} onClick={() => setShowShareModal(true)} />
