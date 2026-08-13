@@ -1412,11 +1412,16 @@ ipcMain.handle('create-project', async (_e, name) => {
   return { ok: true, project };
 });
 
-ipcMain.handle('import-folder', async () => {
+ipcMain.handle('import-folder', async (_e, kind) => {
+  const properties = kind === 'file'
+    ? ['openFile']
+    : kind === 'folder'
+      ? ['openDirectory', 'createDirectory']
+      : ['openFile', 'openDirectory', 'createDirectory'];
   const result = await dialog.showOpenDialog(mainWindow, {
     title: '选择要导入的项目文件或文件夹',
     buttonLabel: '导入',
-    properties: ['openFile', 'openDirectory', 'createDirectory'],
+    properties,
     filters: [
       { name: '支持的文档', extensions: ['mdoc', 'md', 'txt', 'docx', 'html', 'htm'] },
       { name: '所有文件', extensions: ['*'] },
@@ -1471,9 +1476,16 @@ ipcMain.handle('create-file-in-folder', async (_e, folderPath, fileName) => {
     if (!safeName) return { ok: false, error: '名称不能为空' };
     const filePath = path.join(folderPath, `${safeName}.mdoc`);
     if (fs.existsSync(filePath)) return { ok: false, error: '文件已存在' };
-    const doc = { name: safeName, children: [], content: {}, updatedAt: new Date().toISOString() };
+    const rootId = `file-${Date.now()}`;
+    const doc = {
+      name: safeName,
+      children: [{ id: rootId, name: safeName, children: [] }],
+      content: { [rootId]: '<p></p>' },
+      updatedAt: new Date().toISOString(),
+    };
     fs.writeFileSync(filePath, JSON.stringify(doc, null, 2), 'utf-8');
-    return { ok: true, path: filePath, name: safeName };
+    const stat = fs.statSync(filePath);
+    return { ok: true, path: filePath, name: `${safeName}.mdoc`, ext: '.mdoc', size: stat.size, mtimeMs: stat.mtimeMs };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : '创建失败' };
   }

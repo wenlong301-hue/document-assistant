@@ -2076,25 +2076,25 @@ export default function DocumentAssistant() {
         const html = result.value;
         const tree = buildOutlineTree(docName);
         const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
-        apply(createStoredDoc(docName, tree, { [leaf.id]: html || emptyParagraph }), tree, leaf.id, false);
+        apply(createStoredDoc(docName, tree, { [leaf.id]: html || emptyParagraph }), tree, leaf.id);
       } else if (fileExt === "mdoc") {
         const doc = { ...normalizeStoredDoc(docName, JSON.parse(raw.text || "{}")), name: docName };
         const firstNode = findDisplayNodeForFile(doc) ?? flattenOutlineNodes(doc.children)[0];
-        apply(doc, doc.children, firstNode?.id ?? "", false);
+        apply(doc, doc.children, firstNode?.id ?? "");
       } else if (fileExt === "md") {
         const doc = { ...importMarkdownAsStoredDoc(docName, raw.text || ""), name: docName };
         const firstNode = flattenOutlineNodes(doc.children).find((node) => doc.content[node.id]?.replace(/<[^>]*>/g, "").trim()) ?? flattenOutlineNodes(doc.children)[0];
-        apply(doc, doc.children, firstNode?.id ?? "", false);
+        apply(doc, doc.children, firstNode?.id ?? "");
       } else if (fileExt === "html" || fileExt === "htm") {
         if (!raw.text?.trim()) throw new Error("HTML 文件内容为空");
         const doc = importHtmlAsStoredDoc(docName, raw.text);
         const firstNode = flattenOutlineNodes(doc.children).find((node) => doc.content[node.id]?.replace(/<[^>]*>/g, "").trim()) ?? flattenOutlineNodes(doc.children)[0];
-        apply({ ...doc, name: docName }, doc.children, firstNode?.id ?? "", false);
+        apply({ ...doc, name: docName }, doc.children, firstNode?.id ?? "");
       } else {
         const html = textToHtml(raw.text || "");
         const tree = buildOutlineTree(docName);
         const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
-        apply(createStoredDoc(docName, tree, { [leaf.id]: html }), tree, leaf.id, false);
+        apply(createStoredDoc(docName, tree, { [leaf.id]: html }), tree, leaf.id);
       }
     } catch (error) {
       console.error("open folder file failed:", error);
@@ -2442,11 +2442,11 @@ export default function DocumentAssistant() {
     }
   }, [handleSelectProject]);
 
-  const handleImportFolder = useCallback(async () => {
+  const handleImportFolder = useCallback(async (kind?: "file" | "folder") => {
     const api = (window as any).electronAPI;
     if (!api?.importFolder) return;
     try {
-      const result = await api.importFolder();
+      const result = await api.importFolder(kind);
       if (result?.canceled) return;
       if (result?.error) {
         setToast({ message: result.error, type: "error" });
@@ -2533,11 +2533,25 @@ export default function DocumentAssistant() {
     try {
       const result = await api.createFileInFolder(folderPath, fileName);
       if (result?.ok) {
+        const fileName = result.name || result.path.split(/[\\/]/).pop() || "新建文件.mdoc";
+        const fileItem = {
+          path: result.path,
+          relPath: selectedProject?.folderPath && result.path.startsWith(selectedProject.folderPath)
+            ? result.path.slice(selectedProject.folderPath.length).replace(/^[\\/]/, "")
+            : fileName,
+          name: fileName,
+          ext: result.ext || ".mdoc",
+          size: result.size || 0,
+          mtimeMs: result.mtimeMs || Date.now(),
+        };
         // Refresh folder tree
         if (selectedProject?.folderPath) {
           const tree = await api.scanFolderTree(selectedProject.folderPath);
           setFolderTree(tree || []);
         }
+        setFolderFiles((prev) => [...prev.filter((item) => item.path !== fileItem.path), fileItem]);
+        setSelectedFileNode({ name: fileItem.name, path: fileItem.path, isDirectory: false });
+        await openFolderFile(fileItem);
         setToast({ message: "文件已创建", type: "success" });
       } else if (result?.error) {
         setToast({ message: result.error, type: "error" });
@@ -2545,7 +2559,7 @@ export default function DocumentAssistant() {
     } catch (error) {
       setToast({ message: "创建文件失败", type: "error" });
     }
-  }, [selectedProject]);
+  }, [selectedProject, openFolderFile]);
 
   const handleBackToProjects = useCallback(() => {
     setLevel("projects");
@@ -2625,6 +2639,7 @@ export default function DocumentAssistant() {
           onCreateProject={handleCreateProject}
           onImportFolder={handleImportFolder}
           onImportFolderDrop={handleImportFolderDrop}
+          onNewFileInFolder={handleNewFileInFolder}
           onDeleteProject={async (project) => {
             const newProjects = projects.filter((p) => p.id !== project.id);
             setProjects(newProjects);

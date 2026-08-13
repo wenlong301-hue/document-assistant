@@ -339,7 +339,7 @@ function AddProjectModal({
   open: boolean;
   onClose: () => void;
   onCreateProject: (name: string, folderPath?: string) => void;
-  onImportFolder: () => void;
+  onImportFolder: (kind?: "file" | "folder") => void;
   onImportFolderDrop: (folderPath: string) => void;
   isElectron: boolean;
 }) {
@@ -369,8 +369,8 @@ function AddProjectModal({
     }
   };
 
-  const handleImport = () => {
-    onImportFolder();
+  const handleImport = (kind?: "file" | "folder") => {
+    onImportFolder(kind);
     onClose();
   };
 
@@ -423,9 +423,10 @@ function AddProjectModal({
     dragCounterRef.current = 0;
     setIsDragOver(false);
 
-    const files = e.dataTransfer.files;
+    const files = Array.from(e.dataTransfer.files || []);
     if (files.length > 0) {
-      const path = files[0].path;
+      const api = (window as any).electronAPI;
+      const path = api?.getPathForFile?.(files[0]) || (files[0] as File & { path?: string }).path;
       if (path) {
         onImportFolderDrop(path);
         onClose();
@@ -506,7 +507,7 @@ function AddProjectModal({
               onDragLeave={handleDragLeave}
               onDragOver={handleDragOver}
               onDrop={handleDrop}
-              onClick={() => isElectron && onImportFolder()}
+              onClick={() => isElectron && handleImport("file")}
             >
               <div className="mb-[16px]">
                 <svg className="size-[48px] mx-auto" viewBox="0 0 48 48" fill="none">
@@ -529,13 +530,32 @@ function AddProjectModal({
           >
             取消
           </button>
-          <button
-            className="h-[32px] px-[16px] rounded-[6px] bg-black text-white text-[14px] hover:bg-[#333] transition-colors disabled:opacity-50"
-            onClick={tab === "create" ? handleCreate : handleImport}
-            disabled={tab === "create" && !projectName.trim()}
-          >
-            {tab === "create" ? "确定" : "选择"}
-          </button>
+          {tab === "create" ? (
+            <button
+              className="h-[32px] px-[16px] rounded-[6px] bg-black text-white text-[14px] hover:bg-[#333] transition-colors disabled:opacity-50"
+              onClick={handleCreate}
+              disabled={!projectName.trim()}
+            >
+              确定
+            </button>
+          ) : (
+            <>
+              <button
+                className="h-[32px] px-[16px] rounded-[6px] border border-[#ececec] text-[#606266] text-[14px] hover:bg-[#f5f6f8] transition-colors disabled:opacity-50"
+                onClick={() => handleImport("file")}
+                disabled={!isElectron}
+              >
+                选择文件
+              </button>
+              <button
+                className="h-[32px] px-[16px] rounded-[6px] bg-black text-white text-[14px] hover:bg-[#333] transition-colors disabled:opacity-50"
+                onClick={() => handleImport("folder")}
+                disabled={!isElectron}
+              >
+                选择文件夹
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -552,6 +572,7 @@ export function ProjectListView({
   onCreateProject,
   onImportFolder,
   onImportFolderDrop,
+  onNewFileInFolder,
   onDeleteProject,
   onRenameProject,
   onViewModeChange,
@@ -563,8 +584,9 @@ export function ProjectListView({
   isElectron: boolean;
   onSelectProject: (project: Project) => void;
   onCreateProject: (name: string, folderPath?: string) => void;
-  onImportFolder: () => void;
+  onImportFolder: (kind?: "file" | "folder") => void;
   onImportFolderDrop: (folderPath: string) => void;
+  onNewFileInFolder: (folderPath: string) => void;
   onDeleteProject: (project: Project) => void;
   onRenameProject: (project: Project, newName: string) => void;
   onViewModeChange: (mode: "grid" | "list") => void;
@@ -579,9 +601,9 @@ export function ProjectListView({
 
   const handleNewFile = useCallback((project: Project) => {
     if (!project.filePath && project.folderPath && isElectron) {
-      (window as any).electronAPI?.createFileInFolder(project.folderPath, "新建文件");
+      onNewFileInFolder(project.folderPath);
     }
-  }, [isElectron]);
+  }, [isElectron, onNewFileInFolder]);
 
   const handleOpenLocation = useCallback((project: Project) => {
     const location = project.filePath || project.folderPath;
@@ -618,7 +640,7 @@ export function ProjectListView({
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="搜索项目"
+              placeholder="搜索"
               className="w-full h-full pl-[32px] pr-[12px] bg-white border border-[#EBECF0] rounded-[8px] text-[14px] text-[#131212] outline-none focus:border-[#134CFF] transition-colors placeholder:text-[#C0C4CC]"
             />
           </div>
@@ -669,7 +691,7 @@ export function ProjectListView({
           <div className="flex flex-col bg-white">
             {/* Table Header */}
             <div className="flex items-center px-[12px] py-[11.5px] border-b border-[#EBECF0]">
-              <div className="flex-[3] text-[12px] font-medium text-[#8D8E99] whitespace-nowrap">项目名称</div>
+              <div className="flex-[3] text-[12px] font-medium text-[#8D8E99] whitespace-nowrap">文件/文件夹名称</div>
               <div className="flex-[2] text-[12px] font-medium text-[#8D8E99] whitespace-nowrap">文件位置</div>
               <div className="w-[16px] shrink-0" />
             </div>
