@@ -145,6 +145,7 @@ rm -f ${JSON.stringify(scriptPath)}
   });
   child.unref();
   setTimeout(() => {
+    forceQuit = true;
     app.quit();
   }, 200);
   return { ok: true, mode: 'replace-in-place', appPath: currentApp };
@@ -1081,6 +1082,7 @@ ipcMain.handle('install-update', async () => {
     await shell.openExternal(RELEASE_PAGE_URL);
     return { ok: true, mode: 'open-release' };
   }
+  forceQuit = true;
   setImmediate(() => {
     try {
       autoUpdater.quitAndInstall(false, true);

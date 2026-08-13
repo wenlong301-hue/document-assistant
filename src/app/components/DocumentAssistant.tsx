@@ -1656,6 +1656,7 @@ export default function DocumentAssistant() {
 
   const handleInstallUpdate = useCallback(async () => {
     try {
+      setShowCloseConfirm(false);
       await flushCurrentDoc();
       const result = await (window as any).electronAPI?.installUpdate?.();
       if (result?.mode === "replace-in-place") {
