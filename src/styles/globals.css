@@ -69,3 +69,15 @@
 .scroll-auto-hide.sb-scrolling {
   scrollbar-color: rgba(0, 0, 0, 0.18) transparent;
 }
+
+.prose-preview p:empty,
+.prose-preview p:has(> br:only-child),
+.doc-tiptap-content p:empty,
+.doc-tiptap-content p:has(> br:only-child) {
+  min-height: 1.8em;
+}
+
+.prose-preview p:empty::before,
+.doc-tiptap-content p:empty::before {
+  content: "\00a0";
+}

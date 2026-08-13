@@ -604,14 +604,6 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   }, [nodeId, updateTableToolbar, updateImageToolbar, syncSlashMenu, ensureHeadingAnchors]);
   editorInstanceRef.current = editor;
 
-  useEffect(() => {
-    return () => {
-      const activeEditor = editorInstanceRef.current;
-      if (!activeEditor || activeEditor.isDestroyed) return;
-      onContentChangeRef.current?.(sanitizeHtml(activeEditor.getHTML()), activeEditor.getText());
-    };
-  }, []);
-
   const refreshToc = useCallback((activeEditor: any) => {
     if (!activeEditor || activeEditor.isDestroyed) return;
     const headings: { tag: string; text: string; id: string }[] = [];

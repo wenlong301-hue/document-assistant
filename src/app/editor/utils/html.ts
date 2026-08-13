@@ -71,9 +71,21 @@ export const mergeHtmlAttrs = (...attrsList: Record<string, any>[]) => attrsList
   return merged;
 }, {} as Record<string, any>);
 
-export const getPlainTextFromHtml = (html: string) => new DOMParser()
-  .parseFromString(html || "", "text/html")
-  .body.textContent || "";
+export const getPlainTextFromHtml = (html: string, options: { preserveWhitespace?: boolean } = {}) => {
+  const doc = new DOMParser().parseFromString(html || "", "text/html");
+  if (options.preserveWhitespace) {
+    const preBlocks = Array.from(doc.body.querySelectorAll("pre"));
+    if (preBlocks.length > 0) return preBlocks.map((node) => node.textContent || "").join("\n\n");
+  }
+  doc.body.querySelectorAll("br").forEach((node) => node.replaceWith("\n"));
+  doc.body.querySelectorAll("p,div,h1,h2,h3,h4,h5,h6,li,blockquote,pre,tr").forEach((node) => {
+    node.appendChild(doc.createTextNode("\n"));
+  });
+  const text = (doc.body.textContent || "").replace(/\u00a0/g, " ");
+  return options.preserveWhitespace
+    ? text.replace(/\n$/, "")
+    : text.replace(/[ \t]+\n/g, "\n").trim();
+};
 
 export const escapeHtml = (value: string) => value
   .replace(/&/g, "&amp;")
@@ -89,8 +101,10 @@ export const escapeScriptJson = (value: unknown) => JSON.stringify(value)
 
 export const textToHtml = (text: string) => text
   .split(/\n/)
-  .map((line) => `<p>${escapeHtml(line) || "<br>"}</p>`)
+  .map((line) => `<p>${escapeHtml(line) || "&nbsp;"}</p>`)
   .join("") || emptyParagraph;
+
+export const textToPlainTextHtml = (text: string) => `<pre><code>${escapeHtml(String(text || "").replace(/^\uFEFF/, ""))}</code></pre>`;
 
 export const markdownToSimpleHtml = (text: string) => sanitizeHtml(marked.parse(text, { async: false }) as string || emptyParagraph);
 

@@ -40,6 +40,7 @@ import {
   resolvePreviewNodeId,
   sanitizeFileName,
   textToHtml,
+  textToPlainTextHtml,
   WEB_STORAGE_KEY,
   wordHtmlDocument,
   writeWebState,
@@ -56,6 +57,33 @@ const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^
 
 const turndownService = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
 turndownService.keep(["table", "thead", "tbody", "tr", "th", "td", "video"]);
+const mammothStyleMap = [
+  "p[style-name='Title'] => h1:fresh",
+  "p[style-name='标题'] => h1:fresh",
+  "p[style-name='Heading 1'] => h1:fresh",
+  "p[style-name='标题 1'] => h1:fresh",
+  "p[style-name='Heading 2'] => h2:fresh",
+  "p[style-name='标题 2'] => h2:fresh",
+  "p[style-name='Heading 3'] => h3:fresh",
+  "p[style-name='标题 3'] => h3:fresh",
+].join("\n");
+
+const normalizeLineEndings = (text: string) => String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+const getDominantLineEnding = (text: string) => {
+  const crlf = (String(text || "").match(/\r\n/g) || []).length;
+  const lf = (String(text || "").replace(/\r\n/g, "").match(/\n/g) || []).length;
+  return crlf > lf ? "\r\n" : "\n";
+};
+const applyLineEnding = (text: string, lineEnding = "\n") => normalizeLineEndings(text).replace(/\n/g, lineEnding);
+const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+};
 
 function useAutoHideScrollbar(ref: React.RefObject<HTMLDivElement | null>) {
   useEffect(() => {
@@ -696,11 +724,26 @@ function OutlineNodeMenu({ nodeId, includeInPreview, position, onClose, onAddChi
   onExportHtml: (id: string) => void; onClone: (id: string) => void; onDelete: (id: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [menuPosition, setMenuPosition] = useState(position);
   useEffect(() => {
     const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) {
+      setMenuPosition(position);
+      return;
+    }
+    const margin = 8;
+    const rect = el.getBoundingClientRect();
+    setMenuPosition({
+      x: Math.max(margin, Math.min(position.x, window.innerWidth - rect.width - margin)),
+      y: Math.max(margin, Math.min(position.y, window.innerHeight - rect.height - margin)),
+    });
+  }, [position]);
 
   const items = [
     {
@@ -744,7 +787,7 @@ function OutlineNodeMenu({ nodeId, includeInPreview, position, onClose, onAddChi
     <div
       ref={ref}
       className="fixed z-50 min-w-[180px] bg-white border border-[#ebecf0] rounded-[8px] shadow-[0px_12px_16px_-4px_rgba(36,36,36,0.08)] p-[4px] flex flex-col gap-[4px]"
-      style={{ left: position.x, top: position.y }}
+      style={{ left: menuPosition.x, top: menuPosition.y }}
       onClick={(e) => e.stopPropagation()}
     >
       {items.map(({ label, highlighted, danger, icon, action }) => (
@@ -1375,7 +1418,7 @@ export default function DocumentAssistant() {
   const [activeFolder, setActiveFolder] = useState<string | null>(null);
   const [folderFiles, setFolderFiles] = useState<FolderFileItem[]>([]);
   const [folderGone, setFolderGone] = useState(false);
-  const openFileInfoRef = useRef<{ docName: string; filePath: string; ext: string } | null>(null);
+  const openFileInfoRef = useRef<{ docName: string; filePath: string; ext: string; originalText?: string; lineEnding?: string } | null>(null);
 
   // Project-level navigation state
   const [level, setLevel] = useState<"projects" | "project">("projects");
@@ -1426,10 +1469,20 @@ export default function DocumentAssistant() {
       if (!markdownContentHtml.trim()) return false;
       payload = { ext: "md", html: markdownContentHtml, title: getDisplayFileName(doc.name || docName) };
     } else if (info.ext === "txt") {
-      const text = parts.length > 0 ? parts.map((n) => getPlainTextFromHtml(doc.content?.[n.id] || "")).join("\n\n") : "";
-      payload = { ext: "txt", content: text };
+      const text = parts.length > 0 ? parts.map((n) => getPlainTextFromHtml(doc.content?.[n.id] || "", { preserveWhitespace: true })).join("\n\n") : "";
+      const content = info.originalText != null && normalizeLineEndings(text) === normalizeLineEndings(info.originalText)
+        ? info.originalText
+        : applyLineEnding(text, info.lineEnding || "\n");
+      payload = { ext: "txt", content };
     } else if (info.ext === "docx") {
-      payload = { ext: "docx", html: contentHtml, title: getDisplayFileName(doc.name || docName) };
+      payload = {
+        ext: "docx",
+        html: contentHtml,
+        title: getDisplayFileName(doc.name || docName),
+        options: { skipTitle: true },
+        sourceBase64: doc.source?.ext === "docx" ? doc.source.base64 : undefined,
+        sourceDirty: doc.source?.ext === "docx" ? !!doc.source.dirty : undefined,
+      };
     } else if (info.ext === "html" || info.ext === "htm") {
       payload = { ext: info.ext, content: contentHtml };
     } else {
@@ -1956,13 +2009,14 @@ export default function DocumentAssistant() {
     if (ext === "docx") {
       try {
         const buffer = await file.arrayBuffer();
-        const result = await mammoth.convertToHtml({ arrayBuffer: buffer });
+        const result = await mammoth.convertToHtml({ arrayBuffer: buffer }, { styleMap: mammothStyleMap, includeDefaultStyleMap: true });
         const html = result.value;
         const titleMatch = html.match(/<h1[^>]*>([^<]+)<\/h1>/);
         const title = titleMatch ? titleMatch[1].trim() : name;
         const tree = buildOutlineTree(title);
         const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
-        const doc = createStoredDoc(title, tree, { [leaf.id]: html || emptyParagraph });
+        const parsedText = new DOMParser().parseFromString(html || "", "text/html").body.textContent || "";
+        const doc = { ...createStoredDoc(title, tree, { [leaf.id]: html || emptyParagraph }), source: { ext: "docx" as const, base64: arrayBufferToBase64(buffer), originalText: parsedText, dirty: false } };
         setDocs((prev) => [...new Set([...prev, title])]);
         setSelectedDoc(title);
         setDocStore((prev) => ({ ...prev, [title]: doc }));
@@ -1970,7 +2024,7 @@ export default function DocumentAssistant() {
         setOutlineNodes(tree);
         setSelectedNodeId(leaf.id);
         setMode("outline");
-        editorContentRef.current = { html, text: new DOMParser().parseFromString(html, "text/html").body.textContent || "" };
+        editorContentRef.current = { html, text: parsedText };
         persistDoc(title, doc, 0);
       } catch { setToast({ message: "导入失败", type: "error" }); }
     } else {
@@ -2015,7 +2069,7 @@ export default function DocumentAssistant() {
           setSelectedNodeId(firstNode?.id ?? "");
           persistDoc(doc.name, doc, 0);
         } else {
-          const html = textToHtml(text);
+          const html = ext === "txt" ? textToPlainTextHtml(text) : textToHtml(text);
           const tree = buildOutlineTree(name);
           const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
           const doc = createStoredDoc(name, tree, { [leaf.id]: html });
@@ -2126,8 +2180,8 @@ export default function DocumentAssistant() {
     }
     const docName = file.relPath;
     const fileExt = file.ext.replace(/^\./, "").toLowerCase();
-    const apply = (doc: StoredDoc, tree: OutlineNode[], nodeId: string, enterOutline = true, writeInfo?: { filePath: string; ext: string }) => {
-      openFileInfoRef.current = { docName, filePath: writeInfo?.filePath || file.path, ext: writeInfo?.ext || fileExt };
+    const apply = (doc: StoredDoc, tree: OutlineNode[], nodeId: string, enterOutline = true, writeInfo?: { filePath: string; ext: string; originalText?: string; lineEnding?: string }) => {
+      openFileInfoRef.current = { docName, filePath: writeInfo?.filePath || file.path, ext: writeInfo?.ext || fileExt, originalText: writeInfo?.originalText, lineEnding: writeInfo?.lineEnding };
       setSelectedDoc(docName);
       setDocStore((prev) => ({ ...prev, [docName]: doc }));
       setOutlineTrees((prev) => ({ ...prev, [docName]: tree }));
@@ -2139,11 +2193,12 @@ export default function DocumentAssistant() {
       if (fileExt === "docx") {
         const binary = atob(raw.base64 || "");
         const arrayBuffer = Uint8Array.from(binary, (c) => c.charCodeAt(0)).buffer;
-        const result = await mammoth.convertToHtml({ arrayBuffer });
+        const result = await mammoth.convertToHtml({ arrayBuffer }, { styleMap: mammothStyleMap, includeDefaultStyleMap: true });
         const html = result.value;
         const tree = buildOutlineTree(docName);
         const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
-        apply(createStoredDoc(docName, tree, { [leaf.id]: html || emptyParagraph }), tree, leaf.id);
+        const text = new DOMParser().parseFromString(html || "", "text/html").body.textContent || "";
+        apply({ ...createStoredDoc(docName, tree, { [leaf.id]: html || emptyParagraph }), source: { ext: "docx", base64: raw.base64 || "", originalText: text, dirty: false } }, tree, leaf.id);
       } else if (fileExt === "mdoc") {
         const doc = { ...normalizeStoredDoc(docName, JSON.parse(raw.text || "{}")), name: docName };
         const firstNode = findDisplayNodeForFile(doc) ?? flattenOutlineNodes(doc.children)[0];
@@ -2158,10 +2213,10 @@ export default function DocumentAssistant() {
         const firstNode = flattenOutlineNodes(doc.children).find((node) => doc.content[node.id]?.replace(/<[^>]*>/g, "").trim()) ?? flattenOutlineNodes(doc.children)[0];
         apply({ ...doc, name: docName }, doc.children, firstNode?.id ?? "");
       } else {
-        const html = textToHtml(raw.text || "");
+        const html = fileExt === "txt" ? textToPlainTextHtml(raw.text || "") : textToHtml(raw.text || "");
         const tree = buildOutlineTree(docName);
         const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
-        apply(createStoredDoc(docName, tree, { [leaf.id]: html }), tree, leaf.id);
+        apply(createStoredDoc(docName, tree, { [leaf.id]: html }), tree, leaf.id, true, fileExt === "txt" ? { filePath: file.path, ext: fileExt, originalText: raw.text || "", lineEnding: getDominantLineEnding(raw.text || "") } : undefined);
       }
     } catch (error) {
       console.error("open folder file failed:", error);
@@ -2302,7 +2357,7 @@ export default function DocumentAssistant() {
       const newRel = dir ? `${dir}/${safe}` : safe;
       const info = openFileInfoRef.current;
       if (info?.docName === oldName) {
-        const newInfo = { docName: newRel, filePath: result?.path || fileItem.path, ext: fileItem.ext };
+        const newInfo = { ...info, docName: newRel, filePath: result?.path || fileItem.path, ext: fileItem.ext.replace(/^\./, "") };
         openFileInfoRef.current = newInfo;
         setSelectedDoc(newRel);
       }
@@ -2681,6 +2736,7 @@ export default function DocumentAssistant() {
     editorContentRef.current = { html, text };
     setAndPersistDoc(selectedDoc, (doc) => ({
       ...doc,
+      source: doc.source?.ext === "docx" ? { ...doc.source, dirty: true } : doc.source,
       children: getOutlineTree(selectedDoc),
       content: { ...doc.content, [selectedNode.id]: html },
     }));

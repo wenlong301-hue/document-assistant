@@ -8,6 +8,7 @@ const { promisify } = require('util');
 const htmlToDocx = require('html-to-docx');
 const TurndownService = require('turndown');
 const { autoUpdater } = require('electron-updater');
+const JSZip = require('jszip');
 
 const execFileAsync = promisify(execFile);
 
@@ -293,6 +294,84 @@ function exportResultFromError(error) {
   return { canceled: false, error: error instanceof Error ? error.message : '导出失败' };
 }
 
+function escapeXmlText(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function htmlToPlainText(html) {
+  return String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|h[1-6]|li|blockquote|pre|tr)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function splitEditableText(text) {
+  return String(text || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+async function patchDocxText(sourceBase64, editedHtml) {
+  const zip = await JSZip.loadAsync(Buffer.from(String(sourceBase64 || ''), 'base64'));
+  const documentFile = zip.file('word/document.xml');
+  if (!documentFile) throw new Error('docx 缺少 word/document.xml');
+  const xml = await documentFile.async('string');
+  const nextLines = splitEditableText(htmlToPlainText(editedHtml));
+  if (nextLines.length === 0) throw new Error('编辑内容为空，无法 patch docx');
+
+  const paragraphs = [...xml.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)].map((match) => ({ start: match.index || 0, end: (match.index || 0) + match[0].length, xml: match[0] }));
+  const textParagraphs = paragraphs
+    .map((paragraph) => {
+      const textMatches = [...paragraph.xml.matchAll(/<w:t(\s[^>]*)?>[\s\S]*?<\/w:t>/g)];
+      const text = textMatches.map((match) => match[0].replace(/^<w:t(?:\s[^>]*)?>|<\/w:t>$/g, '')).join('').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      return { ...paragraph, textMatches, text: text.trim() };
+    })
+    .filter((paragraph) => paragraph.textMatches.length > 0 && paragraph.text);
+
+  if (textParagraphs.length !== nextLines.length) {
+    throw new Error('段落数量变化，跳过原包 patch');
+  }
+
+  const replacements = new Map();
+  textParagraphs.forEach((paragraph, index) => {
+    const replacementText = nextLines[index];
+    let replacedFirst = false;
+    const nextParagraphXml = paragraph.xml.replace(/<w:t(\s[^>]*)?>[\s\S]*?<\/w:t>/g, (full, attrs = '') => {
+      if (replacedFirst) return full.replace(/>[^<]*</, '><');
+      replacedFirst = true;
+      const preserveSpace = /^\s|\s$/.test(replacementText) ? ' xml:space="preserve"' : '';
+      const nextAttrs = String(attrs || '').includes('xml:space=') ? attrs : `${attrs || ''}${preserveSpace}`;
+      return `<w:t${nextAttrs}>${escapeXmlText(replacementText)}</w:t>`;
+    });
+    replacements.set(paragraph.start, { end: paragraph.end, xml: nextParagraphXml });
+  });
+
+  let patched = '';
+  let cursor = 0;
+  paragraphs.forEach((paragraph) => {
+    const replacement = replacements.get(paragraph.start);
+    if (!replacement) return;
+    patched += xml.slice(cursor, paragraph.start) + replacement.xml;
+    cursor = replacement.end;
+  });
+  patched += xml.slice(cursor);
+  zip.file('word/document.xml', patched);
+  return zip.generateAsync({ type: 'nodebuffer' });
+}
+
 function markdownImageExtension(mime) {
   const normalized = String(mime || '').toLowerCase();
   if (normalized === 'image/jpeg') return 'jpg';
@@ -336,15 +415,21 @@ function contentHtmlToMarkdown(content, imageWriter) {
 
 function cleanExportHtml(content) {
   return String(content || '')
-    .replace(/<p>(\s*<br\s*\/?>\s*)+<\/p>/gi, '')
-    .replace(/<p>(&nbsp;|\s)*<\/p>/gi, '')
-    .replace(/<p><\/p>/gi, '');
+    .replace(/<p>(\s*<br\s*\/?>\s*)+<\/p>/gi, '<p>&nbsp;</p>')
+    .replace(/<p>(\s|&nbsp;)*<\/p>/gi, '<p>&nbsp;</p>');
 }
 
 function headingsToWordParagraphs(html) {
   const sizes = { 1: 22, 2: 18, 3: 15, 4: 14, 5: 14, 6: 14 };
   return String(html || '')
-    .replace(/<h([1-6])(\s[^>]*)?>/gi, (_full, level) => `<p style="font-size:${sizes[level] || 14}px;font-weight:700;margin-top:6px!important;margin-bottom:3px!important;line-height:1.3">`)
+    .replace(/<h([1-6])(\s[^>]*)?>/gi, (_full, level, attrs = '') => {
+      const attrText = String(attrs || '');
+      const styleMatch = attrText.match(/\sstyle=("[^"]*"|'[^']*')/i);
+      const existingStyle = styleMatch ? styleMatch[1].slice(1, -1) : '';
+      const otherAttrs = attrText.replace(/\sstyle=("[^"]*"|'[^']*')/i, '');
+      const style = `${existingStyle}${existingStyle && !existingStyle.trim().endsWith(';') ? ';' : ''}font-size:${sizes[level] || 14}px;font-weight:700;margin-top:6px!important;margin-bottom:3px!important;line-height:1.3`;
+      return `<p${otherAttrs} style="${style}">`;
+    })
     .replace(/<\/h[1-6]>/gi, '</p>');
 }
 
@@ -558,7 +643,20 @@ async function writeFolderFile(filePath, payload) {
     const ext = rawExt.startsWith('.') ? rawExt : `.${rawExt}`;
     ensureDir(path.dirname(filePath));
     if (ext === '.docx') {
-      const fullHtml = wordHtmlDocument(payload?.title || '未命名文档', payload?.html || '', {});
+      if (payload?.sourceBase64 && payload?.sourceDirty === false) {
+        fs.writeFileSync(filePath, Buffer.from(String(payload.sourceBase64), 'base64'));
+        return { ok: true, preserved: true };
+      }
+      if (payload?.sourceBase64 && payload?.sourceDirty === true) {
+        try {
+          const patched = await patchDocxText(payload.sourceBase64, payload?.html || '');
+          fs.writeFileSync(filePath, patched);
+          return { ok: true, patched: true };
+        } catch (error) {
+          console.warn('docx patch failed, fallback to rebuild:', error instanceof Error ? error.message : error);
+        }
+      }
+      const fullHtml = wordHtmlDocument(payload?.title || '未命名文档', payload?.html || '', payload?.options || {});
       const buffer = await htmlToDocx(fullHtml, null, {
         orientation: 'portrait',
         margins: { top: 720, right: 720, bottom: 720, left: 720 },

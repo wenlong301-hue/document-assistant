@@ -7,6 +7,7 @@ import {
   sanitizeHtml,
   sanitizeFileName,
   textToHtml,
+  textToPlainTextHtml,
 } from "../editor/utils/html";
 import outlineSvg from "../../imports/首页大纲模式根节点/svg-4qt61e0wiv";
 
@@ -15,7 +16,7 @@ export const WEB_STORAGE_DB = "doc-assistant-db";
 export const WEB_STORAGE_STORE = "state";
 export const WEB_STORAGE_STATE_ID = "current";
 
-export { textToHtml, markdownToSimpleHtml, sanitizeFileName };
+export { textToHtml, textToPlainTextHtml, markdownToSimpleHtml, sanitizeFileName };
 
 export const openWebStoreDb = () => new Promise<IDBDatabase>((resolve, reject) => {
   const request = indexedDB.open(WEB_STORAGE_DB, 1);
@@ -382,14 +383,20 @@ selectNode(window.__DOC_INITIAL__,{skipScroll:true,keepNav:true});
 };
 
 export const cleanExportHtml = (html: string) => String(html || "")
-  .replace(/<p>(\s*<br\s*\/?>\s*)+<\/p>/gi, "")
-  .replace(/<p>(&nbsp;|\s)*<\/p>/gi, "")
-  .replace(/<p><\/p>/gi, "");
+  .replace(/<p>(\s*<br\s*\/?>\s*)+<\/p>/gi, "<p>&nbsp;</p>")
+  .replace(/<p>(\s|&nbsp;)*<\/p>/gi, "<p>&nbsp;</p>");
 
 export const headingsToWordParagraphs = (html: string) => {
   const sizes: Record<string, number> = { "1": 22, "2": 18, "3": 15, "4": 14, "5": 14, "6": 14 };
   return String(html || "")
-    .replace(/<h([1-6])(\s[^>]*)?>/gi, (_full, level) => `<p style="font-size:${sizes[level] || 14}px;font-weight:700;margin-top:6px!important;margin-bottom:3px!important;line-height:1.3">`)
+    .replace(/<h([1-6])(\s[^>]*)?>/gi, (_full, level, attrs = "") => {
+      const attrText = String(attrs || "");
+      const styleMatch = attrText.match(/\sstyle=("[^"]*"|'[^']*')/i);
+      const existingStyle = styleMatch ? styleMatch[1].slice(1, -1) : "";
+      const otherAttrs = attrText.replace(/\sstyle=("[^"]*"|'[^']*')/i, "");
+      const style = `${existingStyle}${existingStyle && !existingStyle.trim().endsWith(";") ? ";" : ""}font-size:${sizes[level] || 14}px;font-weight:700;margin-top:6px!important;margin-bottom:3px!important;line-height:1.3`;
+      return `<p${otherAttrs} style="${style}">`;
+    })
     .replace(/<\/h[1-6]>/gi, "</p>");
 };
 
