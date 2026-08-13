@@ -124,8 +124,13 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   const tocButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const tocScrollRafRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
+  const onContentChangeRef = useRef(onContentChange);
   slashMenuRef.current = slashMenu;
   slashActiveRef.current = slashActive;
+
+  useEffect(() => {
+    onContentChangeRef.current = onContentChange;
+  }, [onContentChange]);
 
   const saveEditorSelection = useCallback(() => {
     const activeEditor = editorInstanceRef.current;
@@ -598,6 +603,14 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     },
   }, [nodeId, updateTableToolbar, updateImageToolbar, syncSlashMenu, ensureHeadingAnchors]);
   editorInstanceRef.current = editor;
+
+  useEffect(() => {
+    return () => {
+      const activeEditor = editorInstanceRef.current;
+      if (!activeEditor || activeEditor.isDestroyed) return;
+      onContentChangeRef.current?.(sanitizeHtml(activeEditor.getHTML()), activeEditor.getText());
+    };
+  }, []);
 
   const refreshToc = useCallback((activeEditor: any) => {
     if (!activeEditor || activeEditor.isDestroyed) return;
@@ -1630,7 +1643,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       </div>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       <div className="flex items-center justify-between px-[24px] py-[10px] border-t border-[#EBECF0] bg-white flex-shrink-0">
-        <div className="flex items-center gap-[8px]"><div className="relative shrink-0 size-[8px]"><svg className="absolute block inset-0 size-full" fill="none" viewBox="0 0 8 8"><circle cx="4" cy="4" fill={saveStatus === "saving" ? "#F59E0B" : saveStatus === "saved" ? "#15803D" : "#8D8E99"} r="4" /></svg></div><p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[14px] whitespace-nowrap">{saveStatus === "saving" ? "保存中..." : savedAt ? `已保存，更新于${savedAt}` : "未保存"}</p></div>
+        <div className="flex items-center gap-[8px]"><div className="relative shrink-0 size-[8px]"><svg className="absolute block inset-0 size-full" fill="none" viewBox="0 0 8 8"><circle cx="4" cy="4" fill={saveStatus === "saving" ? "#F59E0B" : saveStatus === "saved" ? "#15803D" : "#8D8E99"} r="4" /></svg></div><p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[14px] whitespace-nowrap">{saveStatus === "saving" ? "自动保存中..." : savedAt ? `已自动保存，更新于${savedAt}` : "等待自动保存"}</p></div>
         <div className="flex items-center gap-[25px]"><div className="flex items-center gap-[8px]"><div className="relative shrink-0 size-[14px]"><svg className="absolute block inset-0 size-full" fill="none" viewBox="0 0 14 14"><path d={editorSvg.p2ce2bc00} stroke="#8D8E99" strokeLinecap="round" strokeWidth="1.2" /></svg></div><p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[14px]">大纲</p></div><p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[14px]">{charCount}字符 {wordCount}字</p></div>
       </div>
     </div>

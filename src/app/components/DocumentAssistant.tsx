@@ -1386,6 +1386,11 @@ export default function DocumentAssistant() {
   const [folderTree, setFolderTree] = useState<FolderTreeNode[]>([]);
   const [selectedFileNode, setSelectedFileNode] = useState<FolderTreeNode | null>(null);
   const [appSettings, setAppSettings] = useState<{ closeBehavior?: string }>({});
+  const docStoreRef = useRef<DocStore>({});
+  const selectedDocRef = useRef("");
+
+  useEffect(() => { docStoreRef.current = docStore; }, [docStore]);
+  useEffect(() => { selectedDocRef.current = selectedDoc; }, [selectedDoc]);
 
   const writeFolderDocBack = useCallback(async (docName: string, doc: StoredDoc) => {
     const info = openFileInfoRef.current;
@@ -1474,6 +1479,35 @@ export default function DocumentAssistant() {
       return { ...prev, [docName]: nextDoc };
     });
   }, [persistDoc]);
+
+  const flushDoc = useCallback(async (docName: string) => {
+    if (!isElectron || !docName) return false;
+    clearTimeout(saveTimersRef.current[docName]);
+    const doc = docStoreRef.current[docName];
+    if (!doc) return false;
+    if (openFileInfoRef.current?.docName === docName) {
+      return writeFolderDocBack(docName, doc);
+    }
+    try {
+      await (window as any).electronAPI?.saveDoc?.(docName, { ...doc, updatedAt: new Date().toISOString() });
+      return true;
+    } catch (error) {
+      console.error("auto save doc failed:", error);
+      return false;
+    }
+  }, [isElectron, writeFolderDocBack]);
+
+  const flushCurrentDoc = useCallback(async () => {
+    return flushDoc(selectedDocRef.current);
+  }, [flushDoc]);
+
+  useEffect(() => {
+    if (!isElectron) return;
+    const timer = window.setInterval(() => {
+      void flushCurrentDoc();
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [isElectron, flushCurrentDoc]);
 
   useEffect(() => {
     const handler = () => setModal({ type: "new" });
@@ -1622,6 +1656,7 @@ export default function DocumentAssistant() {
 
   const handleInstallUpdate = useCallback(async () => {
     try {
+      await flushCurrentDoc();
       const result = await (window as any).electronAPI?.installUpdate?.();
       if (result?.mode === "replace-in-place") {
         setToast({ message: "正在安装新版本并重启…", type: "info" });
@@ -1639,6 +1674,7 @@ export default function DocumentAssistant() {
 
   const handleCloseWindowChoice = useCallback(async (action: "tray" | "quit", remember: boolean) => {
     setShowCloseConfirm(false);
+    await flushCurrentDoc();
     if (remember) setAppSettings((prev) => ({ ...prev, closeBehavior: action }));
     try {
       await (window as any).electronAPI?.respondCloseWindow?.({ action, remember });
