@@ -19,6 +19,7 @@ let activeShareHtml = null;
 let updateCheckInFlight = false;
 let lastDownloadedUpdatePath = null;
 let closeBehavior = 'ask'; // 'ask', 'tray', 'quit'
+let forceQuit = false;
 const RELEASE_PAGE_URL = 'https://github.com/wenlong301-hue/document-assistant/releases/latest';
 const DOCS_DIR = path.join(app.getPath('documents'), 'DocAssistant');
 const RECENT_FILE = path.join(DOCS_DIR, 'recent.json');
@@ -936,6 +937,7 @@ function createWindow() {
 
   // Handle window close
   mainWindow.on('close', (e) => {
+    if (forceQuit) return;
     if (closeBehavior === 'tray') {
       e.preventDefault();
       mainWindow.hide();
@@ -943,23 +945,7 @@ function createWindow() {
     }
     if (closeBehavior === 'ask') {
       e.preventDefault();
-      dialog.showMessageBox(mainWindow, {
-        type: 'question',
-        buttons: ['最小化到托盘', '退出应用'],
-        defaultId: 0,
-        title: '关闭确认',
-        message: '选择关闭时的行为',
-        detail: '您可以选择最小化到系统托盘或直接退出应用',
-      }).then(({ response }) => {
-        if (response === 0) {
-          // Minimize to tray
-          mainWindow.hide();
-        } else {
-          // Quit app
-          mainWindow.destroy();
-          app.quit();
-        }
-      });
+      mainWindow.webContents.send('request-close-window');
       return;
     }
     // closeBehavior === 'quit' — default behavior
@@ -1015,6 +1001,7 @@ function createTray() {
     {
       label: '退出',
       click: () => {
+        forceQuit = true;
         app.quit();
       },
     },
@@ -1045,12 +1032,6 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
-  // 启动后延迟静默检查，避免抢启动焦点
-  setTimeout(() => {
-    checkForAppUpdates({ silent: true }).catch((error) => {
-      console.error('startup update check failed:', error);
-    });
-  }, 4000);
 });
 app.on('window-all-closed', () => { stopShareServer(); stopFolderWatcher(); if (process.platform !== 'darwin') app.quit(); });
 
@@ -1226,6 +1207,25 @@ ipcMain.handle('settings-write', (_e, settings) => {
     closeBehavior = settings.closeBehavior;
   }
   return result;
+});
+
+ipcMain.handle('respond-close-window', (_e, payload = {}) => {
+  const action = payload?.action;
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (action !== 'tray' && action !== 'quit') return false;
+  if (payload?.remember) {
+    const settings = readAppSettings();
+    settings.closeBehavior = action;
+    writeAppSettings(settings);
+    closeBehavior = action;
+  }
+  if (action === 'tray') {
+    mainWindow.hide();
+    return true;
+  }
+  forceQuit = true;
+  app.quit();
+  return true;
 });
 
 ipcMain.handle('get-doc-html', (_e, docName) => {

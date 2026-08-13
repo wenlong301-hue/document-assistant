@@ -1333,16 +1333,19 @@ export default function DocumentAssistant() {
   const [docs, setDocs] = useState<string[]>([]);
   const [modal, setModal] = useState<{ type: "new" } | { type: "new-file" } | { type: "new-level" } | { type: "rename"; target: string } | null>(null);
   const [docDeleteConfirm, setDocDeleteConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [shared, setShared] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [updateDownloading, setUpdateDownloading] = useState(false);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null);
   const [updateError, setUpdateError] = useState("");
   const [updateCheckBusy, setUpdateCheckBusy] = useState(false);
   const manualUpdateCheckRef = useRef(false);
+  const startupUpdateCheckRef = useRef(false);
   const [shareBusy, setShareBusy] = useState(false);
   const [shareError, setShareError] = useState("");
   const [showExportModal, setShowExportModal] = useState(false);
@@ -1382,6 +1385,7 @@ export default function DocumentAssistant() {
   const [submode, setSubmode] = useState<"files" | "outline">("files");
   const [folderTree, setFolderTree] = useState<FolderTreeNode[]>([]);
   const [selectedFileNode, setSelectedFileNode] = useState<FolderTreeNode | null>(null);
+  const [appSettings, setAppSettings] = useState<{ closeBehavior?: string }>({});
 
   const writeFolderDocBack = useCallback(async (docName: string, doc: StoredDoc) => {
     const info = openFileInfoRef.current;
@@ -1491,12 +1495,14 @@ export default function DocumentAssistant() {
       manualUpdateCheckRef.current = false;
       const skipped = api.getSkippedUpdateVersion ? await api.getSkippedUpdateVersion() : "";
       if (!isManual && skipped && payload?.version && skipped === payload.version) return;
-      setUpdateInfo({
+      const nextUpdateInfo = {
         version: payload?.version || "",
         currentVersion: payload?.currentVersion,
         releaseDate: payload?.releaseDate,
         platform: payload?.platform,
-      });
+      };
+      setUpdateInfo(nextUpdateInfo);
+      setShowUpdateModal(isManual);
     });
     const unsubNotAvailable = api.onUpdateNotAvailable?.((payload: { currentVersion?: string; reason?: string }) => {
       setUpdateCheckBusy(false);
@@ -1530,6 +1536,15 @@ export default function DocumentAssistant() {
       manualUpdateCheckRef.current = false;
     });
 
+    if (!startupUpdateCheckRef.current && api.checkForUpdates) {
+      startupUpdateCheckRef.current = true;
+      window.setTimeout(() => {
+        api.checkForUpdates({ manual: false }).catch((error: unknown) => {
+          console.error("startup update check failed:", error);
+        });
+      }, 1200);
+    }
+
     return () => {
       unsubAvailable?.();
       unsubNotAvailable?.();
@@ -1537,6 +1552,14 @@ export default function DocumentAssistant() {
       unsubDownloaded?.();
       unsubError?.();
     };
+  }, [isElectron]);
+
+  useEffect(() => {
+    if (!isElectron) return;
+    const api = (window as any).electronAPI;
+    if (!api?.onRequestCloseWindow) return;
+    const unsub = api.onRequestCloseWindow(() => setShowCloseConfirm(true));
+    return () => unsub?.();
   }, [isElectron]);
 
   const handleCheckForUpdates = useCallback(async () => {
@@ -1562,15 +1585,12 @@ export default function DocumentAssistant() {
   }, [isElectron]);
 
   const handleUpdateLater = useCallback(async () => {
-    if (updateInfo?.version && (window as any).electronAPI?.skipUpdateVersion) {
-      try { await (window as any).electronAPI.skipUpdateVersion(updateInfo.version); } catch {}
-    }
-    setUpdateInfo(null);
+    setShowUpdateModal(false);
     setUpdateDownloading(false);
     setUpdateDownloaded(false);
     setUpdateProgress(null);
     setUpdateError("");
-  }, [updateInfo]);
+  }, []);
 
   const handleOpenReleasePage = useCallback(async () => {
     try {
@@ -1614,6 +1634,16 @@ export default function DocumentAssistant() {
     } catch (error) {
       setUpdateError(error instanceof Error ? error.message : "安装更新失败");
       setToast({ message: "安装失败，请打开下载页手动安装", type: "error" });
+    }
+  }, []);
+
+  const handleCloseWindowChoice = useCallback(async (action: "tray" | "quit", remember: boolean) => {
+    setShowCloseConfirm(false);
+    if (remember) setAppSettings((prev) => ({ ...prev, closeBehavior: action }));
+    try {
+      await (window as any).electronAPI?.respondCloseWindow?.({ action, remember });
+    } catch (error) {
+      setToast({ message: error instanceof Error ? error.message : "关闭应用失败", type: "error" });
     }
   }, []);
 
@@ -2630,30 +2660,62 @@ export default function DocumentAssistant() {
   return (
     <div className="bg-[#f7f8fa] relative size-full" data-name="首页-文档模式">
       {level === "projects" ? (
-        <ProjectListView
-          projects={projects}
-          viewMode={projectViewMode}
-          searchQuery={searchQuery}
-          isElectron={!!isElectron}
-          onSelectProject={handleSelectProject}
-          onCreateProject={handleCreateProject}
-          onImportFolder={handleImportFolder}
-          onImportFolderDrop={handleImportFolderDrop}
-          onNewFileInFolder={handleNewFileInFolder}
-          onDeleteProject={async (project) => {
-            const newProjects = projects.filter((p) => p.id !== project.id);
-            setProjects(newProjects);
-            const api = (window as any).electronAPI;
-            if (api?.saveProjects) {
-              await api.saveProjects(newProjects);
-            }
-          }}
-          onRenameProject={(project, newName) => {
-            setProjects((prev) => prev.map((p) => p.id === project.id ? { ...p, name: newName } : p));
-          }}
-          onViewModeChange={setProjectViewMode}
-          onSearchChange={setSearchQuery}
-        />
+        <>
+          <ProjectListView
+            projects={projects}
+            viewMode={projectViewMode}
+            searchQuery={searchQuery}
+            isElectron={!!isElectron}
+            onSelectProject={handleSelectProject}
+            onCreateProject={handleCreateProject}
+            onImportFolder={handleImportFolder}
+            onImportFolderDrop={handleImportFolderDrop}
+            onNewFileInFolder={handleNewFileInFolder}
+            onOpenHelp={() => setShowHelpModal(true)}
+            onOpenUpdate={updateInfo ? () => setShowUpdateModal(true) : undefined}
+            updateVersion={updateInfo?.version}
+            onDeleteProject={async (project) => {
+              const newProjects = projects.filter((p) => p.id !== project.id);
+              setProjects(newProjects);
+              const api = (window as any).electronAPI;
+              if (api?.saveProjects) {
+                await api.saveProjects(newProjects);
+              }
+            }}
+            onRenameProject={(project, newName) => {
+              setProjects((prev) => prev.map((p) => p.id === project.id ? { ...p, name: newName } : p));
+            }}
+            onViewModeChange={setProjectViewMode}
+            onSearchChange={setSearchQuery}
+          />
+          {showHelpModal && (
+            <HelpModal
+              onClose={() => setShowHelpModal(false)}
+              onCheckUpdate={isElectron ? handleCheckForUpdates : undefined}
+              updateCheckBusy={updateCheckBusy}
+            />
+          )}
+          {updateInfo && showUpdateModal && (
+            <UpdateModal
+              info={updateInfo}
+              downloading={updateDownloading}
+              downloaded={updateDownloaded}
+              progress={updateProgress}
+              errorMessage={updateError}
+              onLater={handleUpdateLater}
+              onOpenRelease={handleOpenReleasePage}
+              onDownload={handleDownloadUpdate}
+              onInstall={handleInstallUpdate}
+            />
+          )}
+          {showCloseConfirm && (
+            <CloseConfirmModal
+              onClose={() => setShowCloseConfirm(false)}
+              onConfirm={handleCloseWindowChoice}
+            />
+          )}
+          {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+        </>
       ) : (
         <>
           <EditorWorkspace docName={workspaceDocName} mode={mode} selectedNode={selectedNode} nodeDepth={selectedNodeDepth} nodeContent={selectedNode ? getNodeContent(selectedDoc, selectedNode.id) : emptyParagraph} previewHtml={filePreviewHtml} onTitleChange={handleTitleChange} theme={theme} fontSize={fontSize} lineHeight={lineHeight} sidebarWidth={276}
@@ -2729,7 +2791,7 @@ export default function DocumentAssistant() {
           updateCheckBusy={updateCheckBusy}
         />
       )}
-      {updateInfo && (
+      {updateInfo && showUpdateModal && (
         <UpdateModal
           info={updateInfo}
           downloading={updateDownloading}
@@ -2740,6 +2802,12 @@ export default function DocumentAssistant() {
           onOpenRelease={handleOpenReleasePage}
           onDownload={handleDownloadUpdate}
           onInstall={handleInstallUpdate}
+        />
+      )}
+      {showCloseConfirm && (
+        <CloseConfirmModal
+          onClose={() => setShowCloseConfirm(false)}
+          onConfirm={handleCloseWindowChoice}
         />
       )}
       {modal?.type === "new" && (
@@ -2778,6 +2846,54 @@ export default function DocumentAssistant() {
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
         </>
       )}
+    </div>
+  );
+}
+
+function CloseConfirmModal({ onClose, onConfirm }: {
+  onClose: () => void;
+  onConfirm: (action: "tray" | "quit", remember: boolean) => void;
+}) {
+  const [remember, setRemember] = useState(false);
+
+  return (
+    <div className="fixed inset-0 z-[500] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/20" onClick={onClose} />
+      <div className="relative bg-white rounded-[16px] w-[480px] max-w-[92vw] shadow-[0px_16px_32px_-8px_rgba(36,36,36,0.12)] border border-[#e0e0e0] overflow-hidden">
+        <div className="flex items-center justify-between px-[24px] h-[56px] border-b border-[#EBECF0]">
+          <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[16px] font-medium">关闭应用</p>
+          <button
+            className="size-[28px] flex items-center justify-center rounded-[6px] text-[#131212] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors cursor-pointer"
+            onClick={onClose}
+            aria-label="关闭"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M13.3333 2.66667L2.66667 13.3333M13.3333 13.3333L2.66667 2.66667" stroke="currentColor" strokeLinecap="round" strokeWidth="1.2" />
+            </svg>
+          </button>
+        </div>
+        <div className="px-[24px] py-[20px]">
+          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#303133] text-[14px] leading-[1.7] mb-[14px]">请选择关闭窗口后的行为：</p>
+          <div className="flex flex-col gap-[8px] text-[14px] text-[#606266] leading-[1.7] mb-[18px]">
+            <p><span className="font-medium text-[#131212]">最小化到托盘：</span>后台继续运行，可以从托盘恢复</p>
+            <p><span className="font-medium text-[#131212]">退出应用：</span>结束所有任务并完全退出</p>
+          </div>
+          <label className="inline-flex items-center gap-[8px] text-[14px] text-[#606266] cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              className="size-[16px] accent-[#131212]"
+            />
+            记住我的选择，下次不再询问
+          </label>
+        </div>
+        <div className="flex justify-end gap-[10px] px-[24px] pb-[20px]">
+          <button className="h-[36px] px-[16px] rounded-[8px] border border-[#ebecf0] bg-white text-[14px] text-[#131212] hover:bg-[#f5f6f8] transition-colors" onClick={onClose}>取消</button>
+          <button className="h-[36px] px-[16px] rounded-[8px] bg-[#131212] text-white text-[14px] hover:opacity-90 transition-opacity" onClick={() => onConfirm("tray", remember)}>最小化到托盘</button>
+          <button className="h-[36px] px-[16px] rounded-[8px] bg-[#E53E3E] text-white text-[14px] hover:opacity-90 transition-opacity" onClick={() => onConfirm("quit", remember)}>退出应用</button>
+        </div>
+      </div>
     </div>
   );
 }

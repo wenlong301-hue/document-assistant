@@ -59,6 +59,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('viewport-change', handler);
     return () => ipcRenderer.removeListener('viewport-change', handler);
   },
+  onRequestCloseWindow: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('request-close-window', handler);
+    return () => ipcRenderer.removeListener('request-close-window', handler);
+  },
+  respondCloseWindow: (payload) => ipcRenderer.invoke('respond-close-window', payload || {}),
   openFolder: () => ipcRenderer.invoke('open-folder'),
   scanFolder: (dir) => ipcRenderer.invoke('scan-folder', dir),
   getFolderState: () => ipcRenderer.invoke('get-folder-state'),

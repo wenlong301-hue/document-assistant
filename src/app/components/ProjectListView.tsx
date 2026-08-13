@@ -65,6 +65,16 @@ function FolderPlusIcon() {
   return <img src={assetUrl("icons/folder-plus.svg")} alt="" className="size-[16px]" />;
 }
 
+function HelpIcon() {
+  return (
+    <svg className="size-[16px]" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M6.6 6.2c0-1 .8-1.8 1.8-1.8s1.8.7 1.8 1.7c0 .9-.6 1.3-1.2 1.7-.4.2-.6.4-.6.8v.4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.2" />
+      <path d="M8 12h.01" stroke="currentColor" strokeLinecap="round" strokeWidth="1.6" />
+      <path d="M8 14.4A6.4 6.4 0 1 0 8 1.6a6.4 6.4 0 0 0 0 12.8Z" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
 function SearchIcon() {
   return <img src={assetUrl("icons/search.svg")} alt="" className="size-[16px] shrink-0" />;
 }
@@ -573,6 +583,9 @@ export function ProjectListView({
   onImportFolder,
   onImportFolderDrop,
   onNewFileInFolder,
+  onOpenHelp,
+  onOpenUpdate,
+  updateVersion,
   onDeleteProject,
   onRenameProject,
   onViewModeChange,
@@ -587,6 +600,9 @@ export function ProjectListView({
   onImportFolder: (kind?: "file" | "folder") => void;
   onImportFolderDrop: (folderPath: string) => void;
   onNewFileInFolder: (folderPath: string) => void;
+  onOpenHelp: () => void;
+  onOpenUpdate?: () => void;
+  updateVersion?: string;
   onDeleteProject: (project: Project) => void;
   onRenameProject: (project: Project, newName: string) => void;
   onViewModeChange: (mode: "grid" | "list") => void;
@@ -621,6 +637,15 @@ export function ProjectListView({
           <span className="text-[18px] font-semibold text-[#131212]" style={{ fontFamily: "'Alimama_FangYuanTi_VF', sans-serif" }}>
             文档助手
           </span>
+          {updateVersion && onOpenUpdate && (
+            <button
+              className="h-[20px] px-[5px] rounded-[8px] bg-[#15803D] text-white text-[10px] font-normal leading-none hover:bg-[#166534] transition-colors"
+              onClick={onOpenUpdate}
+              title={`发现新版本 v${updateVersion}`}
+            >
+              发现新版本!
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-[12px]">
           {/* Add button - supports both folders/projects and standalone files. */}
@@ -630,6 +655,13 @@ export function ProjectListView({
           >
             <FolderPlusIcon />
             <span>添加</span>
+          </button>
+          <button
+            className="h-[32px] px-[12px] bg-white text-[#131212] rounded-[6px] border border-[#EBECF0] flex items-center gap-[8px] text-[14px] hover:bg-[#f5f6f8] transition-colors"
+            onClick={onOpenHelp}
+          >
+            <HelpIcon />
+            <span>帮助</span>
           </button>
           {/* Search Input - 276x32, bordered */}
           <div className="relative w-[276px] h-[32px]">
