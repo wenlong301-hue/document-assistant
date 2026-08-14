@@ -13,7 +13,8 @@ const SECTIONS: HelpSection[] = [
     body: (
       <>
         <p>文档助手是一款多级文档写作工具：左侧管理文档与大纲树，右侧富文本编辑，支持局域网分享预览，以及 HTML / Markdown / Word / PDF 导出。</p>
-        <p>原生格式为 <code>.mdoc</code>（JSON）。适合产品说明、会议纪要、技术方案、分层知识库等场景。</p>
+        <p><strong>精编格式</strong>为 <code>.mdoc</code>（JSON：大纲树 + 节点 HTML）。适合产品说明、会议纪要、技术方案、分层知识库等需长期往返编辑的场景。</p>
+        <p>格式分层：<strong>L1</strong> <code>.mdoc</code> 权威存储（无损）→ <strong>L2</strong> 项目原文件打开什么存什么（未编辑原样写回）→ <strong>L3</strong> 导出 HTML/MD/Word/PDF（尽力而为，可能有损）。</p>
       </>
     ),
   },
@@ -35,7 +36,7 @@ const SECTIONS: HelpSection[] = [
     title: "界面说明",
     body: (
       <ul>
-        <li><strong>顶栏</strong>：保存、导入、导出、分享、删除、帮助</li>
+        <li><strong>顶栏</strong>：保存、导入、导出、分享、删除、帮助、更多（另存为 .mdoc）</li>
         <li><strong>左侧</strong>：搜索、文件树/大纲树切换、文件树或大纲树、分享状态</li>
         <li><strong>右侧</strong>：标题 + 富文本编辑器（大纲树模式）</li>
         <li><strong>底栏</strong>：保存状态、字数统计、页内大纲</li>
@@ -48,9 +49,11 @@ const SECTIONS: HelpSection[] = [
     body: (
       <ul>
         <li><strong>文件树</strong>：管理项目文件列表；<strong>大纲树</strong>：编辑结构与正文。</li>
-        <li><strong>导入</strong>：支持 <code>.mdoc</code> / <code>.md</code> / <code>.txt</code> / <code>.docx</code>。</li>
-        <li><strong>保存</strong>：桌面端可选文件夹另存 <code>.mdoc</code>；Web 端下载文件。</li>
-        <li>桌面端默认目录：用户「文档」下的 <code>DocAssistant</code> 文件夹。</li>
+        <li><strong>导入</strong>：支持 <code>.mdoc</code> / <code>.md</code> / <code>.txt</code> / <code>.html</code> / <code>.docx</code>。</li>
+        <li><strong>保存</strong>：项目文件写回原路径；库内文档可另存。</li>
+        <li><strong>更多 → 另存为 .mdoc</strong>：始终导出 L1 无损格式（桌面选目录 / Web 下载），适合从 md/docx 转入长期精编。</li>
+        <li>项目中打开 <code>.md</code>/<code>.txt</code>/<code>.docx</code> 等：未编辑原样写回；编辑后按该格式最优策略写回（可能有损）。</li>
+        <li>桌面端默认库：用户「文档」下的 <code>DocAssistant/*.mdoc</code>。</li>
         <li>删除不可撤销，请谨慎操作。</li>
       </ul>
     ),
@@ -111,8 +114,9 @@ const SECTIONS: HelpSection[] = [
     body: (
       <ul>
         <li>范围：<strong>当前页</strong>（当前节点及子集）或 <strong>整个文档</strong>。</li>
-        <li>格式：HTML（带导航预览页）、Markdown、Word（.docx）、PDF。</li>
+        <li>格式：HTML（带导航预览页）、Markdown、Word（.docx）、PDF——均为 <strong>L3 交换格式</strong>，复杂排版/空格/样式可能有损。</li>
         <li>列表/大纲菜单可快捷「导出 HTML」。</li>
+        <li>需要无损往返时请用顶栏 <strong>保存</strong> 写出 <code>.mdoc</code>，不要仅依赖导出。</li>
       </ul>
     ),
   },
@@ -121,7 +125,8 @@ const SECTIONS: HelpSection[] = [
     title: "常用快捷键",
     body: (
       <ul>
-        <li><code>Ctrl/Cmd + S</code>：保存状态提示</li>
+        <li><code>Ctrl/Cmd + S</code>：保存（写回原文件）</li>
+        <li><code>Ctrl/Cmd + Shift + S</code>：另存为 .mdoc 并切换到新文件</li>
         <li><code>Ctrl/Cmd + K</code>：插入链接</li>
         <li><code>/</code>（行首）：斜杠命令</li>
         <li>Markdown 行首 + 空格：标题/列表/引用/代码块</li>
@@ -139,6 +144,7 @@ const SECTIONS: HelpSection[] = [
         <li><strong>手机打不开分享链接？</strong> 确认桌面端已开启分享、同一 Wi-Fi、防火墙放行 6535、链接为局域网 IP。</li>
         <li><strong>预览缺章节？</strong> 节点可能为空或设置了「预览时隐藏本层」；请重新分享/导出。</li>
         <li><strong>浏览器存储失败？</strong> 媒体过大，请减少图片视频或改用桌面端并导出备份。</li>
+        <li><strong>导入 md/docx 后样式或空格变了？</strong> 跨格式转换为「尽力而为」。未编辑再保存会原样写回；长期精编请另存 <code>.mdoc</code>。</li>
         <li><strong>如何更新软件？</strong> 启动会自动提示；也可在帮助页点「检查更新」。安装包来自 GitHub Releases。</li>
       </ul>
     ),

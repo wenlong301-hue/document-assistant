@@ -525,26 +525,51 @@ function getDocContent(docId) {
   } catch { return null; }
 }
 
+/** L1 .mdoc 序列化：剥离运行时 source 字段，只保留权威结构 */
+function toMdocPayload(data, nameFallback) {
+  const raw = data && typeof data === 'object' ? { ...data } : {};
+  delete raw.source;
+  raw.name = raw.name || nameFallback || '未命名文档';
+  raw.updatedAt = new Date().toISOString();
+  return raw;
+}
+
 function saveDoc(docId, data) {
   ensureDir(DOCS_DIR);
   const fp = path.join(DOCS_DIR, `${docId}.mdoc`);
-  data.updatedAt = new Date().toISOString();
-  fs.writeFileSync(fp, JSON.stringify(data, null, 2), 'utf-8');
+  fs.writeFileSync(fp, JSON.stringify(toMdocPayload(data, docId), null, 2), 'utf-8');
   return fp;
 }
 
-async function saveDocToFolder(docId, data) {
+async function saveDocToFolder(docId, data, options = {}) {
+  const defaultDir = typeof options?.defaultDir === 'string' && options.defaultDir && fs.existsSync(options.defaultDir)
+    ? options.defaultDir
+    : undefined;
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: '选择文档保存位置',
-    properties: ['openDirectory', 'createDirectory']
+    title: '选择 .mdoc 保存位置',
+    properties: ['openDirectory', 'createDirectory'],
+    defaultPath: defaultDir,
   });
   if (result.canceled || !result.filePaths?.[0]) return { canceled: true };
   const targetDir = result.filePaths[0];
-  const safeName = String(docId || data?.name || '未命名文档').replace(/[\\/:*?"<>|]/g, '_');
-  const filePath = path.join(targetDir, `${safeName}.mdoc`);
-  const payload = { ...data, name: data?.name || docId, updatedAt: new Date().toISOString() };
+  const safeName = String(data?.name || docId || '未命名文档').replace(/[\\/:*?"<>|]/g, '_').replace(/\.mdoc$/i, '');
+  let filePath = path.join(targetDir, `${safeName}.mdoc`);
+  if (fs.existsSync(filePath)) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    filePath = path.join(targetDir, `${safeName}-${stamp}.mdoc`);
+  }
+  const payload = toMdocPayload(data, safeName);
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
-  return { canceled: false, filePath };
+  const stat = fs.statSync(filePath);
+  return {
+    canceled: false,
+    filePath,
+    name: path.basename(filePath),
+    ext: '.mdoc',
+    size: stat.size,
+    mtimeMs: stat.mtimeMs,
+    dir: targetDir,
+  };
 }
 
 function deleteDoc(docId) {
@@ -637,16 +662,31 @@ function readFolderFile(filePath) {
   } catch { return null; }
 }
 
+/**
+ * L2 项目原文件写回：
+ * - 未编辑（sourceDirty === false）：原样写回 base64 / 原文，避免规范化损耗
+ * - 已编辑：按扩展名走最优策略（docx patch → rebuild；md turndown；txt/html 文本）
+ * L1 .mdoc 始终 JSON 序列化，无损往返
+ */
 async function writeFolderFile(filePath, payload) {
   try {
     const rawExt = String(payload?.ext || path.extname(filePath || '') || '').toLowerCase();
     const ext = rawExt.startsWith('.') ? rawExt : `.${rawExt}`;
     ensureDir(path.dirname(filePath));
-    if (ext === '.docx') {
-      if (payload?.sourceBase64 && payload?.sourceDirty === false) {
+
+    // 未编辑：优先原样写回（txt/md/html 用 content；docx 用 sourceBase64）
+    if (payload?.sourceDirty === false) {
+      if (ext === '.docx' && payload?.sourceBase64) {
         fs.writeFileSync(filePath, Buffer.from(String(payload.sourceBase64), 'base64'));
         return { ok: true, preserved: true };
       }
+      if (ext !== '.docx' && ext !== '.mdoc' && typeof payload?.content === 'string') {
+        fs.writeFileSync(filePath, payload.content, 'utf-8');
+        return { ok: true, preserved: true };
+      }
+    }
+
+    if (ext === '.docx') {
       if (payload?.sourceBase64 && payload?.sourceDirty === true) {
         try {
           const patched = await patchDocxText(payload.sourceBase64, payload?.html || '');
@@ -656,6 +696,7 @@ async function writeFolderFile(filePath, payload) {
           console.warn('docx patch failed, fallback to rebuild:', error instanceof Error ? error.message : error);
         }
       }
+      // 无原包或 patch 失败：html-to-docx 尽力重建（L3 交换级，可能有损）
       const fullHtml = wordHtmlDocument(payload?.title || '未命名文档', payload?.html || '', payload?.options || {});
       const buffer = await htmlToDocx(fullHtml, null, {
         orientation: 'portrait',
@@ -665,14 +706,15 @@ async function writeFolderFile(filePath, payload) {
     } else if (ext === '.mdoc') {
       const data = typeof payload?.content === 'string' ? JSON.parse(payload.content) : payload?.content;
       if (!data || typeof data !== 'object') throw new Error('mdoc 内容无效');
-      data.updatedAt = new Date().toISOString();
-      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+      fs.writeFileSync(filePath, JSON.stringify(toMdocPayload(data, data.name), null, 2), 'utf-8');
     } else if (ext === '.md') {
       const markdown = contentHtmlToMarkdown(payload?.html || '', createMarkdownImageWriter(filePath));
       if (!markdown.trim() && fs.existsSync(filePath) && fs.readFileSync(filePath, 'utf-8').trim()) {
         throw new Error('内容为空，已阻止覆盖原 Markdown 文件');
       }
       fs.writeFileSync(filePath, markdown, 'utf-8');
+    } else if (ext === '.txt' || ext === '.html' || ext === '.htm') {
+      fs.writeFileSync(filePath, String(payload?.content ?? ''), 'utf-8');
     } else {
       fs.writeFileSync(filePath, String(payload?.content ?? ''), 'utf-8');
     }
@@ -1137,7 +1179,7 @@ app.on('window-all-closed', () => { stopShareServer(); stopFolderWatcher(); if (
 ipcMain.handle('get-docs', () => getAllDocs());
 ipcMain.handle('get-doc', (_e, id) => getDocContent(id));
 ipcMain.handle('save-doc', (_e, id, data) => saveDoc(id, data));
-ipcMain.handle('save-doc-to-folder', (_e, id, data) => saveDocToFolder(id, data));
+ipcMain.handle('save-doc-to-folder', (_e, id, data, options) => saveDocToFolder(id, data, options || {}));
 ipcMain.handle('delete-doc', (_e, id) => deleteDoc(id));
 ipcMain.handle('start-share', async (_e, port, docId, html) => {
   const sharePort = port || 6535;

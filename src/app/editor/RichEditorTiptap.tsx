@@ -49,7 +49,8 @@ import { fitImageSize, imageRatioLockedRef, syncContainerToImage } from "./utils
 import { ColorPicker } from "./ui/ColorPicker";
 import { Dropdown } from "./ui/Dropdown";
 import { EditorToolBtn } from "./ui/EditorToolBtn";
-import { IconSvg, InlineIconSvg } from "./ui/IconSvg";
+import { IconSvg } from "./ui/IconSvg";
+import { InlineIconSvg } from "./ui/InlineIconSvg";
 import { LinkModal } from "./ui/LinkModal";
 import { Toast } from "./ui/Toast";
 

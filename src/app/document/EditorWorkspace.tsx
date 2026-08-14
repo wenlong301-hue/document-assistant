@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import type { OutlineNode } from "../document/types";
 import { ErrorBoundary } from "../editor/ui/ErrorBoundary";
 import { RichEditorTiptap } from "../editor/RichEditorTiptap";
-import { IllustrationSvg, OutlineIllustration } from "./Illustrations";
+import { IllustrationSvg, OutlineIllustration } from "./illustrations";
 
 export function EditorWorkspace({ docName, mode, selectedNode, nodeDepth, nodeContent, previewHtml, onTitleChange, onContentChange, fontSize, lineHeight, theme, sidebarWidth }: {
   docName: string; mode: "document" | "outline"; selectedNode: OutlineNode | null; nodeDepth: number;
@@ -22,26 +22,28 @@ export function EditorWorkspace({ docName, mode, selectedNode, nodeDepth, nodeCo
 
   return (
     <div className="absolute bg-white overflow-hidden rounded-[12px] z-[1]" style={{ left: (sidebarWidth ?? 276) + 32, right: 8, top: 66, bottom: 8 }}>
-      <p
-        contentEditable
-        suppressContentEditableWarning
-        className="[word-break:break-word] absolute font-['PingFang_SC:Medium',sans-serif] leading-[28px] left-[24px] not-italic text-[#131212] text-[20px] top-[16px] whitespace-nowrap cursor-text outline-none px-[2px]"
-        onFocus={(e) => {
-          setTitleDraft(titleName);
-          const range = document.createRange();
-          range.selectNodeContents(e.currentTarget);
-          range.collapse(false);
-          const sel = window.getSelection();
-          sel?.removeAllRanges();
-          sel?.addRange(range);
-        }}
-        onInput={(e) => setTitleDraft(e.currentTarget.textContent || "")}
-        onBlur={(e) => commitTitle(e.currentTarget.textContent || "")}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); }
-          if (e.key === "Escape") { e.preventDefault(); e.currentTarget.textContent = titleName; setTitleDraft(titleName); (e.currentTarget as HTMLElement).blur(); }
-        }}
-      >{titleName}</p>
+      <div className="absolute left-[24px] right-[24px] top-[16px] flex items-center gap-[10px] min-w-0">
+        <p
+          contentEditable
+          suppressContentEditableWarning
+          className="[word-break:break-word] font-['PingFang_SC:Medium',sans-serif] leading-[28px] not-italic text-[#131212] text-[20px] whitespace-nowrap cursor-text outline-none px-[2px] min-w-0 truncate"
+          onFocus={(e) => {
+            setTitleDraft(titleName);
+            const range = document.createRange();
+            range.selectNodeContents(e.currentTarget);
+            range.collapse(false);
+            const sel = window.getSelection();
+            sel?.removeAllRanges();
+            sel?.addRange(range);
+          }}
+          onInput={(e) => setTitleDraft(e.currentTarget.textContent || "")}
+          onBlur={(e) => commitTitle(e.currentTarget.textContent || "")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); }
+            if (e.key === "Escape") { e.preventDefault(); e.currentTarget.textContent = titleName; setTitleDraft(titleName); (e.currentTarget as HTMLElement).blur(); }
+          }}
+        >{titleName}</p>
+      </div>
       <div className="absolute left-0 right-0 top-[60px] h-[0.6px] bg-[#EBECF0]" />
       {mode === "document" ? previewHtml ? (
         <div className="absolute left-[68px] right-[68px] top-[84px] bottom-[32px] overflow-auto prose-preview" style={{ fontSize: fontSize || "15px", lineHeight: lineHeight || "1.8", color: "#131212" }}>

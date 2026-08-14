@@ -7,6 +7,7 @@ export { ColorPicker } from "./ui/ColorPicker";
 export { Dropdown } from "./ui/Dropdown";
 export { EditorToolBtn } from "./ui/EditorToolBtn";
 export { ErrorBoundary } from "./ui/ErrorBoundary";
-export { IconSvg, InlineIconSvg } from "./ui/IconSvg";
+export { IconSvg } from "./ui/IconSvg";
+export { InlineIconSvg } from "./ui/InlineIconSvg";
 export { LinkModal } from "./ui/LinkModal";
 export { Toast } from "./ui/Toast";
