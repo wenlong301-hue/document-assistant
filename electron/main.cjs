@@ -21,6 +21,18 @@ let updateCheckInFlight = false;
 let lastDownloadedUpdatePath = null;
 let closeBehavior = 'ask'; // 'ask', 'tray', 'quit'
 let forceQuit = false;
+let closeAskPending = false;
+let closeAskAwaitingAck = false;
+let closeAskTimer = null;
+
+function clearCloseAsk() {
+  closeAskPending = false;
+  closeAskAwaitingAck = false;
+  if (closeAskTimer) {
+    clearTimeout(closeAskTimer);
+    closeAskTimer = null;
+  }
+}
 const RELEASE_PAGE_URL = 'https://github.com/wenlong301-hue/document-assistant/releases/latest';
 const DOCS_DIR = path.join(app.getPath('documents'), 'DocAssistant');
 const RECENT_FILE = path.join(DOCS_DIR, 'recent.json');
@@ -1077,6 +1089,7 @@ function createWindow() {
   closeBehavior = settings.closeBehavior || 'ask';
 
   // Handle window close
+  // 白屏/页面未加载完成时渲染进程无法弹确认框，直接退出，避免关不掉
   mainWindow.on('close', (e) => {
     if (forceQuit) return;
     if (closeBehavior === 'tray') {
@@ -1085,11 +1098,46 @@ function createWindow() {
       return;
     }
     if (closeBehavior === 'ask') {
+      const wc = mainWindow.webContents;
+      const url = wc && !wc.isDestroyed() ? wc.getURL() : '';
+      const canAsk =
+        wc &&
+        !wc.isDestroyed() &&
+        !wc.isLoading() &&
+        url &&
+        !url.startsWith('about:') &&
+        !url.startsWith('chrome-error:') &&
+        !url.startsWith('data:');
+      if (!canAsk) {
+        forceQuit = true;
+        return;
+      }
       e.preventDefault();
+      if (closeAskPending) return;
+      closeAskPending = true;
+      closeAskAwaitingAck = true;
       mainWindow.webContents.send('request-close-window');
+      // 渲染进程未 ACK（白屏/崩溃）时 2s 后强制退出；正常弹窗后会 ACK，不再强制
+      closeAskTimer = setTimeout(() => {
+        if (!closeAskAwaitingAck || forceQuit) return;
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        clearCloseAsk();
+        forceQuit = true;
+        app.quit();
+      }, 2000);
       return;
     }
     // closeBehavior === 'quit' — default behavior
+  });
+  mainWindow.webContents.on('did-finish-load', () => {
+    clearCloseAsk();
+  });
+  mainWindow.webContents.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL) => {
+    console.error('[window] did-fail-load', errorCode, errorDescription, validatedURL);
+  });
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    console.error('[window] render-process-gone', details);
+    clearCloseAsk();
   });
   const isDev = process.argv.includes('--dev');
   if (isDev) {
@@ -1351,8 +1399,23 @@ ipcMain.handle('settings-write', (_e, settings) => {
   return result;
 });
 
+ipcMain.handle('ack-close-window', () => {
+  // 渲染进程已收到关闭请求并准备弹窗，取消强制退出计时
+  closeAskAwaitingAck = false;
+  if (closeAskTimer) {
+    clearTimeout(closeAskTimer);
+    closeAskTimer = null;
+  }
+  return true;
+});
+
 ipcMain.handle('respond-close-window', (_e, payload = {}) => {
   const action = payload?.action;
+  if (action === 'cancel' || action === undefined || action === null) {
+    clearCloseAsk();
+    return false;
+  }
+  clearCloseAsk();
   if (!mainWindow || mainWindow.isDestroyed()) return false;
   if (action !== 'tray' && action !== 'quit') return false;
   if (payload?.remember) {

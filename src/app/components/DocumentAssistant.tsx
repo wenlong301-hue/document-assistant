@@ -376,7 +376,11 @@ export default function DocumentAssistant() {
     if (!isElectron) return;
     const api = (window as any).electronAPI;
     if (!api?.onRequestCloseWindow) return;
-    const unsub = api.onRequestCloseWindow(() => setShowCloseConfirm(true));
+    const unsub = api.onRequestCloseWindow(() => {
+      // 立即 ACK，避免主进程误判白屏并强制退出
+      void api.ackCloseWindow?.();
+      setShowCloseConfirm(true);
+    });
     return () => unsub?.();
   }, [isElectron]);
 
@@ -466,6 +470,12 @@ export default function DocumentAssistant() {
     } catch (error) {
       setToast({ message: error instanceof Error ? error.message : "关闭应用失败", type: "error" });
     }
+  }, []);
+
+  const handleCancelCloseWindow = useCallback(() => {
+    setShowCloseConfirm(false);
+    // 通知主进程取消关闭确认，避免 2s 强制退出
+    void (window as any).electronAPI?.respondCloseWindow?.({ action: "cancel" });
   }, []);
 
   useEffect(() => {
@@ -1655,7 +1665,7 @@ export default function DocumentAssistant() {
           )}
           {showCloseConfirm && (
             <CloseConfirmModal
-              onClose={() => setShowCloseConfirm(false)}
+              onClose={handleCancelCloseWindow}
               onConfirm={handleCloseWindowChoice}
             />
           )}
@@ -1754,7 +1764,7 @@ export default function DocumentAssistant() {
       )}
       {showCloseConfirm && (
         <CloseConfirmModal
-          onClose={() => setShowCloseConfirm(false)}
+          onClose={handleCancelCloseWindow}
           onConfirm={handleCloseWindowChoice}
         />
       )}

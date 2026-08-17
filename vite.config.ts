@@ -45,13 +45,13 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes('node_modules')) return;
           if (id.includes('@tiptap') || id.includes('prosemirror')) return 'editor';
+          // 仅拆「动态 import」重库。勿把启动静态依赖（dompurify/marked/turndown）
+          // 与 html-to-docx 打进同一 chunk，否则启动加载时会执行 html-to-docx
+          // 并触发 Class extends value undefined（EventEmitter）导致白屏。
           if (
             id.includes('html-to-docx')
             || id.includes('mammoth')
-            || id.includes('turndown')
             || id.includes('jszip')
-            || id.includes('marked')
-            || id.includes('dompurify')
           ) return 'document-export';
           if (
             id.includes('node_modules/react-dom')

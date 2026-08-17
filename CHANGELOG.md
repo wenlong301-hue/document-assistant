@@ -11,6 +11,15 @@
 
 ---
 
+## [0.1.8] - 2026-08-17
+
+### 修复
+
+- **安装包启动白屏**：`manualChunks` 将启动静态依赖（dompurify/marked/turndown）与 `html-to-docx` 打入同一 chunk，导致加载时 `EventEmitter` 为 undefined 崩溃；现仅对动态 import 的重库（html-to-docx/mammoth/jszip）拆包
+- **白屏时无法关闭窗口**：关闭确认依赖渲染进程；页面未就绪或 2s 内无 ACK 时强制退出；正常弹窗会 ACK，取消会清除 pending
+
+---
+
 ## [0.1.7] - 2026-08-17
 
 ### 新增

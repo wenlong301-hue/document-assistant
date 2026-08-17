@@ -64,6 +64,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('request-close-window', handler);
     return () => ipcRenderer.removeListener('request-close-window', handler);
   },
+  ackCloseWindow: () => ipcRenderer.invoke('ack-close-window'),
   respondCloseWindow: (payload) => ipcRenderer.invoke('respond-close-window', payload || {}),
   openFolder: () => ipcRenderer.invoke('open-folder'),
   scanFolder: (dir) => ipcRenderer.invoke('scan-folder', dir),
