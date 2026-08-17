@@ -42,7 +42,7 @@ export function EditorToolBtn({ label, cmd, exec, activeFormats, children, actio
         type="button"
         aria-label={label}
         title={label}
-        className={`rounded-[4px] shrink-0 size-[28px] cursor-pointer transition-colors relative bg-transparent border-0 p-[2px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#134CFF] focus-visible:outline-offset-1 ${hover || (cmd && activeFormats?.has(cmd)) ? "bg-[#f5f6f8]" : ""} active:bg-[#ebecf0]`}
+        className={`rounded-[4px] shrink-0 size-[24px] cursor-pointer transition-colors relative border-0 p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#134CFF] focus-visible:outline-offset-1 hover:bg-[#EBECF0] active:bg-[#EBECF0] ${cmd && activeFormats?.has(cmd) ? "bg-[#EBECF0]" : "bg-transparent"}`}
         onMouseEnter={handleEnter}
         onMouseLeave={() => setHover(false)}
         onMouseDown={handleMouseDown}
@@ -52,8 +52,13 @@ export function EditorToolBtn({ label, cmd, exec, activeFormats, children, actio
       </button>
       {hover && createPortal(
         <div
-          className="fixed z-[290] bg-white border border-[#ebecf0] shadow-[0px_12px_16px_-4px_rgba(36,36,36,0.08)] text-[#131212] text-[14px] px-[8px] py-[8px] rounded-[8px] pointer-events-none whitespace-nowrap"
-          style={{ left: tipPos.x, top: tipPos.y, transform: "translate(-50%, -100%)" }}
+          className="fixed z-[290] box-border w-max max-w-[min(280px,calc(100vw-16px))] bg-white border border-[#ebecf0] shadow-[0px_12px_16px_-4px_rgba(36,36,36,0.08)] text-[#131212] text-[14px] leading-[20px] px-[8px] py-[8px] rounded-[8px] pointer-events-none whitespace-nowrap"
+          style={{
+            left: tipPos.x,
+            top: tipPos.y,
+            transform: "translate(-50%, -100%)",
+            width: "max-content",
+          }}
         >
           {label}
         </div>,

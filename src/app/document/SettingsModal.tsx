@@ -33,7 +33,7 @@ export function SettingsModal({
         <div className="flex items-center justify-between px-[20px] py-[16px] border-b border-[#EBECF0]">
           <h2 className="text-[16px] font-medium text-[#131212]">设置</h2>
           <button
-            className="size-[28px] flex items-center justify-center rounded-[6px] text-[#131212] hover:bg-[#EBECF0] transition-colors"
+            className="size-[28px] flex items-center justify-center rounded-[6px] border-0 p-0 bg-transparent text-[#131212] hover:bg-[#EBECF0] transition-colors outline-none appearance-none"
             onClick={onClose}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -90,13 +90,13 @@ export function SettingsModal({
 
         <div className="flex justify-end gap-[8px] px-[20px] pb-[16px]">
           <button
-            className="h-[32px] px-[16px] rounded-[6px] border border-[#ececec] text-[14px] text-[#606266] hover:bg-[#f5f6f8] transition-colors"
+            className="h-[32px] px-[16px] rounded-[8px] border border-[#EBECF0] bg-white text-[14px] text-[#131212] hover:bg-[#F7F8FA] transition-colors"
             onClick={onClose}
           >
             取消
           </button>
           <button
-            className="h-[32px] px-[16px] rounded-[6px] bg-black text-white text-[14px] hover:bg-[#333] transition-colors"
+            className="h-[32px] px-[16px] rounded-[8px] bg-[#131212] text-white text-[14px] hover:opacity-90 transition-opacity"
             onClick={handleSave}
           >
             保存

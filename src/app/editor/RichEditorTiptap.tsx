@@ -43,11 +43,13 @@ import {
   formatFileSize,
   MAX_ATTACHMENT_BYTES,
   MAX_VIDEO_BYTES,
+  normalizeEditorHtml,
   sanitizeHtml,
 } from "./utils/html";
 import { fitImageSize, imageRatioLockedRef, syncContainerToImage } from "./utils/image";
 import { ColorPicker } from "./ui/ColorPicker";
 import { Dropdown } from "./ui/Dropdown";
+import { ContextMenuPanel } from "../components/shared/ContextMenu";
 import { EditorToolBtn } from "./ui/EditorToolBtn";
 import { IconSvg } from "./ui/IconSvg";
 import { InlineIconSvg } from "./ui/InlineIconSvg";
@@ -112,6 +114,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   const [tocActiveId, setTocActiveId] = useState<string | null>(null);
   const [slashMenu, setSlashMenu] = useState<{ top: number; left: number; maxHeight?: number } | null>(null);
   const [slashActive, setSlashActive] = useState(-1);
+  const [slashPressIdx, setSlashPressIdx] = useState<number | null>(null);
   const slashMenuRef = useRef<typeof slashMenu>(null);
   const slashActiveRef = useRef(-1);
   const slashMenuElRef = useRef<HTMLDivElement | null>(null);
@@ -363,7 +366,14 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       LineHeight,
       IndentExtension,
       TextAlign.configure({ types: ["heading", "paragraph"], alignments: ["left", "center", "right", "justify"] }),
-      Placeholder.configure({ placeholder: "输入 / 呼出命令，或直接开始写作" }),
+      Placeholder.configure({
+        placeholder: "输入 / 呼出命令，或直接开始写作",
+        showOnlyWhenEditable: true,
+        showOnlyCurrent: false,
+        includeChildren: false,
+        emptyNodeClass: "is-empty",
+        emptyEditorClass: "is-editor-empty",
+      }),
       Link.configure({
         openOnClick: false,
         autolink: true,
@@ -391,7 +401,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       TaskList.configure({ HTMLAttributes: { class: "doc-task-list" } }),
       TaskItem.configure({ nested: true, HTMLAttributes: { class: "doc-task-item" } }),
     ],
-    content: sanitizeHtml(initialHtml || emptyParagraph),
+    content: normalizeEditorHtml(initialHtml),
     editorProps: {
       handleDOMEvents: {
         keydown: (view, event) => {
@@ -409,9 +419,10 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
               event.stopImmediatePropagation();
               const count = slashItemsRef.current.length;
               if (count > 0) {
+                const cur = slashActiveRef.current;
                 const next = event.key === "ArrowDown"
-                  ? (slashActiveRef.current + 1 + count) % count
-                  : (slashActiveRef.current - 1 + count) % count;
+                  ? (cur < 0 ? 0 : (cur + 1) % count)
+                  : (cur < 0 ? count - 1 : (cur - 1 + count) % count);
                 slashActiveRef.current = next;
                 setSlashActive(next);
                 requestAnimationFrame(() => {
@@ -467,7 +478,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         },
       },
       attributes: {
-        class: "doc-tiptap-content ProseMirror h-full min-h-0 overflow-y-auto overscroll-contain px-[24px] py-[24px] outline-none",
+        class: "doc-tiptap-content ProseMirror h-full min-h-0 w-full max-w-full overflow-y-auto overflow-x-hidden overscroll-contain px-0 pt-[24px] pb-[12px] outline-none box-border",
         style: `font-size:${propFontSize || "15px"};line-height:${propLineHeight || "1.8"};font-family:PingFang SC, sans-serif;`,
       },
       handleKeyDown(view, event) {
@@ -519,7 +530,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
                 { left: rect.left, top: rect.top, bottom: rect.bottom },
                 { itemCount: slashItemsRef.current.length || 14 },
               ));
-              setSlashActive(0);
+              setSlashActive(-1);
             }, 0);
           }
           return false;
@@ -571,13 +582,13 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       const text = editor.getText();
       setCharCount(getEditorTextCount(text));
       setWordCount(getEditorWordCount(text));
-      lastExternalHtmlRef.current = sanitizeHtml(initialHtml || emptyParagraph);
+      lastExternalHtmlRef.current = normalizeEditorHtml(initialHtml);
       refreshToc(editor);
     },
     onUpdate({ editor }) {
       syncSlashMenu(editor);
       if (ensureHeadingAnchors(editor)) return;
-      const html = sanitizeHtml(editor.getHTML());
+      const html = normalizeEditorHtml(editor.getHTML());
       const text = editor.getText();
       lastExternalHtmlRef.current = html;
       setCharCount(getEditorTextCount(text));
@@ -620,14 +631,14 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    const next = sanitizeHtml(initialHtml || emptyParagraph);
+    const next = normalizeEditorHtml(initialHtml);
     const nodeChanged = lastSyncedNodeIdRef.current !== nodeId;
     const externalChanged = next !== lastExternalHtmlRef.current;
     if (!nodeChanged && !externalChanged) return;
 
     lastSyncedNodeIdRef.current = nodeId;
     lastExternalHtmlRef.current = next;
-    const current = sanitizeHtml(editor.getHTML());
+    const current = normalizeEditorHtml(editor.getHTML());
     if (current !== next) {
       editor.commands.setContent(next, { emitUpdate: false });
     }
@@ -1267,18 +1278,20 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   slashItemsRef.current = slashItems;
 
   return (
-    <div className="absolute left-0 right-0 top-[60px] bottom-0 flex flex-col">
+    <div className="absolute inset-0 flex flex-col">
       <style>{`
-        .doc-tiptap-content p{margin:0 0 10px}.doc-tiptap-content h1{font-size:28px;line-height:1.45;margin:18px 0 12px;font-weight:700}.doc-tiptap-content h2{font-size:24px;line-height:1.45;margin:16px 0 10px;font-weight:700}.doc-tiptap-content h3{font-size:20px;line-height:1.5;margin:14px 0 8px;font-weight:650}.doc-tiptap-content h4,.doc-tiptap-content h5,.doc-tiptap-content h6{font-size:17px;line-height:1.55;margin:12px 0 8px;font-weight:650}
+        .doc-tiptap-content{max-width:100%;box-sizing:border-box;overflow-x:hidden;overflow-wrap:anywhere;word-break:break-word}.doc-tiptap-content p{margin:0 0 10px}.doc-tiptap-content h1{font-size:28px;line-height:1.45;margin:18px 0 12px;font-weight:700}.doc-tiptap-content h2{font-size:24px;line-height:1.45;margin:16px 0 10px;font-weight:700}.doc-tiptap-content h3{font-size:20px;line-height:1.5;margin:14px 0 8px;font-weight:650}.doc-tiptap-content h4,.doc-tiptap-content h5,.doc-tiptap-content h6{font-size:17px;line-height:1.55;margin:12px 0 8px;font-weight:650}.doc-tiptap-content>:first-child{margin-top:0}
         .doc-tiptap-content .doc-blockquote{border-left:3px solid #134CFF;background:#f7f8fa;margin:10px 0;padding:8px 14px;color:#606266;border-radius:0 8px 8px 0}.doc-tiptap-content .doc-blockquote p{margin:0 0 4px;line-height:1.65}.doc-tiptap-content .doc-blockquote p:last-child{margin-bottom:0}
         .doc-tiptap-content .doc-list{margin:8px 0 10px;padding-left:28px}.doc-tiptap-content .doc-ordered-list{list-style:decimal}.doc-tiptap-content .doc-ordered-list .doc-ordered-list{list-style:lower-alpha}.doc-tiptap-content .doc-ordered-list .doc-ordered-list .doc-ordered-list{list-style:lower-roman}.doc-tiptap-content .doc-bullet-list{list-style:disc}.doc-tiptap-content .doc-bullet-list .doc-bullet-list{list-style:circle}.doc-tiptap-content .doc-bullet-list .doc-bullet-list .doc-bullet-list{list-style:square}.doc-tiptap-content li{margin:4px 0;padding-left:2px}.doc-tiptap-content li>p{margin:0}.doc-tiptap-content .doc-task-list{list-style:none;margin:8px 0 10px;padding-left:0}.doc-tiptap-content .doc-task-item{display:flex;gap:8px;align-items:flex-start}.doc-tiptap-content .doc-task-item>label{margin-top:2px}.doc-tiptap-content .doc-task-item>div{flex:1}
         .doc-tiptap-content .doc-code-block{background:#f5f6f8;border:1px solid #ebecf0;border-radius:8px;padding:12px 14px;margin:12px 0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;line-height:1.65;white-space:pre-wrap}
         .doc-tiptap-content .doc-link{color:#134CFF;text-decoration:underline}.doc-tiptap-content .doc-image{display:block;max-width:100%;height:auto;margin:0;border-radius:8px;cursor:pointer}.doc-tiptap-content [data-resize-container][data-node="image"]{display:inline-flex;width:fit-content;margin:12px 0;max-width:100%;outline:none;position:relative}.doc-tiptap-content [data-resize-container][data-node="image"].ProseMirror-selectednode{outline:2px solid #134CFF;outline-offset:2px;border-radius:8px}.doc-tiptap-content [data-resize-wrapper]{display:block;width:fit-content;max-width:100%;height:auto;line-height:0;position:relative}.doc-tiptap-content [data-resize-handle]{background:#fff;border:2px solid #134CFF;border-radius:50%;box-sizing:border-box;height:12px;opacity:0;pointer-events:none;position:absolute;width:12px;z-index:3}.doc-tiptap-content [data-resize-container].ProseMirror-selectednode [data-resize-handle],.doc-tiptap-content [data-resize-container][data-resize-state="true"] [data-resize-handle]{opacity:1;pointer-events:auto}.doc-tiptap-content [data-resize-handle="top-left"]{cursor:nwse-resize;left:0;top:0;transform:translate(-50%,-50%)}.doc-tiptap-content [data-resize-handle="top-right"]{cursor:nesw-resize;right:0;top:0;transform:translate(50%,-50%)}.doc-tiptap-content [data-resize-handle="bottom-left"]{bottom:0;cursor:nesw-resize;left:0;transform:translate(-50%,50%)}.doc-tiptap-content [data-resize-handle="bottom-right"]{bottom:0;cursor:nwse-resize;right:0;transform:translate(50%,50%)}.doc-tiptap-content .doc-video{display:block;max-width:100%;margin:12px 0;border-radius:8px;background:#000}.doc-tiptap-content .doc-attachment{align-items:center;background:#f7f8fa;border:1px solid #ebecf0;border-radius:8px;color:#303133;display:flex;font-size:13px;margin:12px 0;max-width:520px;min-height:42px;padding:10px 12px;text-decoration:none}.doc-tiptap-content .doc-attachment:hover{border-color:#cfd4df;background:#f2f4f7}
         .doc-tiptap-content .tableWrapper{display:block;margin:14px 0;max-width:100%;overflow-x:auto;overflow-y:hidden;padding:2px 0 8px}.doc-tiptap-content .tableWrapper table,.doc-tiptap-content table.doc-table,.doc-tiptap-content table{border:1px solid #EEF0F5;border-collapse:collapse;border-spacing:0;display:table;margin:0;max-width:none;overflow:visible;table-layout:fixed;width:100%}.doc-tiptap-content table td,.doc-tiptap-content table th,.doc-tiptap-content .doc-table td,.doc-tiptap-content .doc-table th{border:1px solid #EEF0F5;box-sizing:border-box;min-width:96px;padding:7px 9px;position:relative;vertical-align:top}.doc-tiptap-content table th,.doc-tiptap-content .doc-table th{background:#f7f8fa;color:#131212;font-weight:600;text-align:left}.doc-tiptap-content table tr:nth-child(odd) td,.doc-tiptap-content .doc-table tr:nth-child(odd) td{background:rgba(238,240,245,0.502)}.doc-tiptap-content table td>*,.doc-tiptap-content table th>*,.doc-tiptap-content .doc-table td>*,.doc-tiptap-content .doc-table th>*{margin-bottom:0!important}.doc-tiptap-content table td p,.doc-tiptap-content table th p{line-height:1.6;margin:0;min-height:20px}.doc-tiptap-content table td p:empty::before,.doc-tiptap-content table th p:empty::before{content:"\\00a0";display:inline-block}.doc-tiptap-content table .selectedCell:after,.doc-tiptap-content .doc-table .selectedCell:after{background:rgba(19,76,255,0.12);content:"";inset:0;pointer-events:none;position:absolute;z-index:2}.doc-tiptap-content table td:focus-within,.doc-tiptap-content table th:focus-within,.doc-tiptap-content .doc-table td:focus-within,.doc-tiptap-content .doc-table th:focus-within{box-shadow:inset 0 0 0 2px rgba(0,94,255,0.18);background:#FAFCFF!important}.doc-tiptap-content .column-resize-handle{background:#134CFF;bottom:-2px;pointer-events:none;position:absolute;right:-3px;top:0;width:3px}.resize-cursor{cursor:col-resize}.table-row-resize-cursor,.table-row-resize-cursor *{cursor:row-resize!important}.doc-table-row-resize-handle{background:transparent;border-radius:0;cursor:row-resize;height:12px;position:fixed;touch-action:none;z-index:280}.doc-table-row-resize-handle::after{background:transparent;border-radius:999px;content:"";height:2px;left:0;position:absolute;right:0;top:5px;transition:background-color .12s ease}.doc-table-row-resize-handle:hover::after{background:rgba(19,76,255,0.18)}.doc-table-row-resize-handle.is-resizing::after{background:rgba(19,76,255,0.42)}
-        .doc-tiptap-content .is-empty::before{color:#b8bbc4;content:attr(data-placeholder);float:left;height:0;pointer-events:none}.doc-tiptap-content:focus{outline:none}
+        .doc-tiptap-content .is-empty::before,.doc-tiptap-content .is-editor-empty::before{color:#b8bbc4;content:attr(data-placeholder);float:left;height:0;pointer-events:none}.doc-tiptap-content p.is-empty:first-child::before{color:#b8bbc4}.doc-tiptap-content:focus{outline:none}
         .doc-tiptap-content p[style*="text-align"],.doc-tiptap-content h1[style*="text-align"],.doc-tiptap-content h2[style*="text-align"],.doc-tiptap-content h3[style*="text-align"],.doc-tiptap-content h4[style*="text-align"],.doc-tiptap-content h5[style*="text-align"],.doc-tiptap-content h6[style*="text-align"]{display:block}
         .doc-editor-toolbar{position:relative;z-index:260;isolation:isolate;pointer-events:auto;scrollbar-gutter:stable both-edges;-webkit-overflow-scrolling:touch}
         .doc-editor-toolbar button,.doc-editor-toolbar [role="button"]{pointer-events:auto;position:relative;z-index:1}
+        .doc-editor-toolbar button:hover{background-color:#EBECF0!important}
+        .doc-editor-toolbar button:active{background-color:#EBECF0!important}
         /* macOS overlay 滚动条会压在内容右缘上抢点击：预留右侧安全区 + 非覆盖式滚动条 */
         .doc-editor-toolbar{padding-right:40px!important}
         .doc-editor-toolbar::-webkit-scrollbar{height:8px}
@@ -1292,32 +1305,32 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         void insertAttachmentFromFile(e.target.files?.[0]);
         e.target.value = "";
       }} />
-      <div ref={toolbarRef} className="doc-editor-toolbar relative z-[260] isolate flex items-center gap-[24px] pl-[24px] pr-[40px] py-[6px] border-b border-[#EBECF0] bg-white flex-shrink-0 overflow-x-auto overscroll-x-contain">
-        <button type="button" className="relative flex items-center gap-[8px] py-[2px] shrink-0 cursor-pointer select-none bg-transparent border-0"
+      <div ref={toolbarRef} className="doc-editor-toolbar relative z-[260] isolate flex h-[62px] items-center gap-[24px] pl-[24px] pr-[40px] border-b border-[#EBECF0] bg-white flex-shrink-0 overflow-x-auto overscroll-x-contain box-border">
+        <button type="button" className="relative flex h-[24px] items-center gap-[8px] px-[4px] rounded-[4px] shrink-0 cursor-pointer select-none bg-transparent border-0 hover:bg-[#EBECF0] transition-colors"
           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); saveEditorSelection(); }}
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             toggleToolbarPanel("heading", { x: r.left, y: r.bottom + 4 });
           }}>
-          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#131212] text-[14px] w-[56px] truncate">{getCurrentHeading()}</p>
+          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#131212] text-[14px] leading-[24px] w-[56px] truncate">{getCurrentHeading()}</p>
           <svg className="block size-[12px] shrink-0" fill="none" viewBox="0 0 12 12"><path d="M3.5 5L6.00041 7.29L8.5 5" stroke="#131212" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2"/></svg>
         </button>
-        <button type="button" className="relative flex items-center gap-[8px] py-[2px] shrink-0 cursor-pointer select-none bg-transparent border-0"
+        <button type="button" className="relative flex h-[24px] items-center gap-[8px] px-[4px] rounded-[4px] shrink-0 cursor-pointer select-none bg-transparent border-0 hover:bg-[#EBECF0] transition-colors"
           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); saveEditorSelection(); }}
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             toggleToolbarPanel("font", { x: r.left, y: r.bottom + 4 });
           }}>
-          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#131212] text-[14px] w-[56px] truncate">{getCurrentFont()}</p>
+          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#131212] text-[14px] leading-[24px] w-[56px] truncate">{getCurrentFont()}</p>
           <svg className="block size-[12px] shrink-0" fill="none" viewBox="0 0 12 12"><path d="M3.5 5L6.00041 7.29L8.5 5" stroke="#131212" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2"/></svg>
         </button>
-        <button type="button" className="relative flex items-center gap-[8px] py-[2px] shrink-0 cursor-pointer select-none bg-transparent border-0"
+        <button type="button" className="relative flex h-[24px] items-center gap-[8px] px-[4px] rounded-[4px] shrink-0 cursor-pointer select-none bg-transparent border-0 hover:bg-[#EBECF0] transition-colors"
           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); saveEditorSelection(); }}
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             toggleToolbarPanel("size", { x: r.left, y: r.bottom + 4 });
           }}>
-          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#131212] text-[14px] w-[46px] truncate">{getCurrentSize()}</p>
+          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#131212] text-[14px] leading-[24px] w-[46px] truncate">{getCurrentSize()}</p>
           <svg className="block size-[12px] shrink-0" fill="none" viewBox="0 0 12 12"><path d="M3.5 5L6.00041 7.29L8.5 5" stroke="#131212" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2"/></svg>
         </button>
         <Btn label="加粗" cmd="bold" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleBold().run())}><IconSvg path={editorSvg.p3290fd80} /></Btn>
@@ -1334,14 +1347,14 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
           const r = e.currentTarget.getBoundingClientRect();
           toggleToolbarPanel("back", { x: r.left, y: r.bottom + 4 });
         }}>
-          <div className="absolute left-[4px] size-[20px] top-[4px]"><svg className="absolute block inset-0 size-full" fill="none" viewBox="0 0 20 20"><rect fill="#FEF0F0" height="20" rx="4" width="20"/><path d={editorSvg.p16c26880} stroke="#131212" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" /></svg></div>
+          <div className="absolute left-[2px] size-[20px] top-[2px]"><svg className="absolute block inset-0 size-full" fill="none" viewBox="0 0 20 20"><rect fill="#FEF0F0" height="20" rx="4" width="20"/><path d={editorSvg.p16c26880} stroke="#131212" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" /></svg></div>
         </Btn>
         <Btn label="任务列表" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleTaskList().run())}><IconSvg path={editorSvg.p30909380} /></Btn>
         <Btn label="有序列表" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleOrderedList().run())}><IconSvg path={editorSvg.p31fc8400} /></Btn>
         <Btn label="无序列表" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleBulletList().run())}><IconSvg path={editorSvg.p1ddeb0c0} /></Btn>
         <Btn label="减少缩进" action={() => applyIndent(-1)}><IconSvg path={editorSvg.p3244ee00} /></Btn>
         <Btn label="增加缩进" action={() => applyIndent(1)}><IconSvg path={editorSvg.p25bdc300} /></Btn>
-        <button type="button" className={`relative flex items-center gap-[8px] py-[2px] shrink-0 cursor-pointer select-none bg-transparent border-0 ${showAlignDropdown || editor?.isActive({ textAlign: "center" }) || editor?.isActive({ textAlign: "right" }) || editor?.isActive({ textAlign: "justify" }) ? "opacity-100" : ""}`}
+        <button type="button" className={`relative flex items-center shrink-0 cursor-pointer select-none bg-transparent border-0 p-0 ${showAlignDropdown || editor?.isActive({ textAlign: "center" }) || editor?.isActive({ textAlign: "right" }) || editor?.isActive({ textAlign: "justify" }) ? "opacity-100" : ""}`}
           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); saveEditorSelection(); }}
           onClick={(e) => {
             e.preventDefault();
@@ -1350,7 +1363,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
             const r = e.currentTarget.getBoundingClientRect();
             toggleToolbarPanel("align", { x: r.left, y: r.bottom + 4 });
           }}>
-          <div className={`size-[28px] rounded-[6px] flex items-center justify-center hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors ${showAlignDropdown || editor?.isActive({ textAlign: "center" }) || editor?.isActive({ textAlign: "right" }) || editor?.isActive({ textAlign: "justify" }) ? "bg-[#f5f6f8]" : ""}`}><IconSvg path={editorSvg.p2c9c5c80} /></div>
+          <div className={`size-[24px] rounded-[4px] flex items-center justify-center relative hover:bg-[#EBECF0] active:bg-[#EBECF0] transition-colors ${showAlignDropdown || editor?.isActive({ textAlign: "center" }) || editor?.isActive({ textAlign: "right" }) || editor?.isActive({ textAlign: "justify" }) ? "bg-[#EBECF0]" : ""}`}><IconSvg path={editorSvg.p2c9c5c80} /></div>
         </button>
         <Btn label="引用块" cmd="blockquote" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleBlockquote().run())}><IconSvg path={[editorSvg.p339d6600, editorSvg.p3a810c00, editorSvg.p27c3d000, editorSvg.p2e7ee0c0]} isFill /></Btn>
         <Btn label="代码块" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleCodeBlock().run())}><IconSvg path={editorSvg.p36d5aa00} /></Btn>
@@ -1413,10 +1426,10 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
           <div className="relative bg-white rounded-[16px] w-[360px] shadow-[0px_16px_32px_-8px_rgba(36,36,36,0.12)] border border-[#e0e0e0] p-[24px] flex flex-col gap-[20px]" onClick={(e) => e.stopPropagation()}>
             <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[16px]">插入表格</p>
             <div className="flex gap-[16px]">
-              <label className="flex-1 flex flex-col gap-[6px] font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[13px]">行数<input type="number" min="1" max="20" value={tableRows} onChange={(e) => setTableRows(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") insertTable(); if (e.key === "Escape") setShowTableModal(false); }} className="h-[36px] rounded-[8px] border border-[#e5e7eb] px-[12px] text-[14px] text-[#131212] outline-none focus:border-[#134CFF]" /></label>
-              <label className="flex-1 flex flex-col gap-[6px] font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[13px]">列数<input type="number" min="1" max="10" value={tableCols} onChange={(e) => setTableCols(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") insertTable(); if (e.key === "Escape") setShowTableModal(false); }} className="h-[36px] rounded-[8px] border border-[#e5e7eb] px-[12px] text-[14px] text-[#131212] outline-none focus:border-[#134CFF]" /></label>
+              <label className="flex-1 flex flex-col gap-[6px] font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[13px]">行数<input type="number" min="1" max="20" value={tableRows} onChange={(e) => setTableRows(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") insertTable(); if (e.key === "Escape") setShowTableModal(false); }} className="h-[36px] rounded-[8px] border border-solid border-[#e5e7eb] px-[12px] text-[14px] text-[#131212] outline-none focus:border-[#131212]" /></label>
+              <label className="flex-1 flex flex-col gap-[6px] font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[13px]">列数<input type="number" min="1" max="10" value={tableCols} onChange={(e) => setTableCols(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") insertTable(); if (e.key === "Escape") setShowTableModal(false); }} className="h-[36px] rounded-[8px] border border-solid border-[#e5e7eb] px-[12px] text-[14px] text-[#131212] outline-none focus:border-[#131212]" /></label>
             </div>
-            <div className="flex justify-end gap-[12px]"><button className="h-[36px] px-[20px] rounded-[8px] border border-[#e5e7eb] bg-white text-[#131212] text-[14px] cursor-pointer hover:bg-[#EBECF0]" onClick={() => setShowTableModal(false)}>取消</button><button className="h-[36px] px-[20px] rounded-[8px] bg-[#131212] text-white text-[14px] cursor-pointer hover:opacity-80" onClick={insertTable}>插入表格</button></div>
+            <div className="flex justify-end gap-[12px]"><button className="h-[36px] px-[20px] rounded-[8px] border border-[#EBECF0] bg-white text-[#131212] text-[14px] cursor-pointer hover:bg-[#F7F8FA]" onClick={() => setShowTableModal(false)}>取消</button><button className="h-[36px] px-[20px] rounded-[8px] bg-[#131212] text-white text-[14px] cursor-pointer hover:opacity-90" onClick={insertTable}>插入表格</button></div>
           </div>
         </div>,
         document.body,
@@ -1503,7 +1516,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
             <div className="w-[1px] h-[20px] bg-[#ebecf0] mx-[2px]" />
             <div className="flex items-center gap-[4px]">
               <input
-                className="w-[40px] h-[32px] rounded-[6px] border border-[#ebecf0] text-[13px] text-[#131212] text-center outline-none focus:border-[#134CFF] bg-white"
+                className="w-[40px] h-[32px] rounded-[6px] border border-solid border-[#ebecf0] text-[13px] text-[#131212] text-center outline-none focus:border-[#131212] bg-white"
                 style={{ fontFamily: "PingFang SC, sans-serif" }}
                 placeholder="%"
                 value={imageCustomPct}
@@ -1582,9 +1595,46 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         );
       })()}
       {slashMenu && createPortal(
-        <div ref={slashMenuElRef} role="menu" className="fixed z-[280] bg-white rounded-[8px] shadow-[0px_12px_16px_-4px_rgba(36,36,36,0.08)] border border-[#ebecf0] py-[4px] min-w-[180px] overflow-y-auto overscroll-contain" style={{ left: slashMenu.left, top: slashMenu.top, maxHeight: slashMenu.maxHeight ?? "min(70vh, 480px)" }} onMouseDown={(e) => e.stopPropagation()}>
-          {slashItems.map((item, idx) => <button key={item.label} type="button" role="menuitem" data-slash-idx={idx} aria-selected={idx === slashActive} className={`w-full flex items-center gap-[8px] px-[12px] py-[7px] cursor-pointer transition-colors text-left ${idx === slashActive ? "bg-[#f5f6f8]" : "hover:bg-[#f5f6f8]"}`} onMouseEnter={() => setSlashActive(idx)} onMouseDown={(e) => { e.stopPropagation(); if (item.kind !== "file") e.preventDefault(); }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (item.kind === "file") runSlashFileAction(item.action); else runSlashAction(item.action); }}><div className="size-[20px] flex items-center justify-center rounded-[4px] bg-[#ebecf0] text-[11px] font-bold text-[#131212]">{item.icon}</div><span className="text-[14px] text-[#131212] font-['PingFang_SC:Regular',sans-serif]">{item.label}</span></button>)}
-        </div>,
+        <ContextMenuPanel
+          menuRef={slashMenuElRef}
+          width={180}
+          className="z-[280] overflow-y-auto overscroll-contain"
+          style={{ left: slashMenu.left, top: slashMenu.top, maxHeight: slashMenu.maxHeight ?? "min(70vh, 480px)" }}
+        >
+          {slashItems.map((item, idx) => {
+            const bg = slashPressIdx === idx ? "#EBECF0" : idx === slashActive ? "#F7F8FA" : "transparent";
+            return (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                data-slash-idx={idx}
+                aria-selected={idx === slashActive}
+                className="w-full flex items-center gap-[8px] h-[32px] px-[12px] box-border rounded-[4px] cursor-pointer transition-colors text-left border-0 outline-none"
+                style={{ appearance: "none", WebkitAppearance: "none", backgroundColor: bg }}
+                onMouseEnter={() => setSlashActive(idx)}
+                onMouseLeave={() => {
+                  setSlashPressIdx(null);
+                  setSlashActive((cur) => (cur === idx ? -1 : cur));
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  if (item.kind !== "file") e.preventDefault();
+                  setSlashPressIdx(idx);
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (item.kind === "file") runSlashFileAction(item.action);
+                  else runSlashAction(item.action);
+                }}
+              >
+                <div className="size-[20px] flex items-center justify-center text-[11px] font-bold text-[#131212] shrink-0">{item.icon}</div>
+                <span className="text-[14px] leading-none text-[#131212] font-['PingFang_SC:Regular',sans-serif] whitespace-nowrap">{item.label}</span>
+              </button>
+            );
+          })}
+        </ContextMenuPanel>,
         document.body,
       )}
       <div className="flex-1 min-h-0 bg-white flex justify-center overflow-hidden" onKeyDown={(e) => {
@@ -1595,7 +1645,8 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         if (slashMenu && e.key === "ArrowDown") {
           e.preventDefault();
           setSlashActive((idx) => {
-            const next = (idx + 1 + slashItems.length) % slashItems.length;
+            const count = slashItems.length;
+            const next = idx < 0 ? 0 : (idx + 1) % count;
             requestAnimationFrame(() => {
               const el = slashMenuElRef.current?.querySelector<HTMLElement>(`[data-slash-idx="${next}"]`);
               el?.scrollIntoView({ block: "nearest" });
@@ -1606,7 +1657,8 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         if (slashMenu && e.key === "ArrowUp") {
           e.preventDefault();
           setSlashActive((idx) => {
-            const next = (idx - 1 + slashItems.length) % slashItems.length;
+            const count = slashItems.length;
+            const next = idx < 0 ? count - 1 : (idx - 1 + count) % count;
             requestAnimationFrame(() => {
               const el = slashMenuElRef.current?.querySelector<HTMLElement>(`[data-slash-idx="${next}"]`);
               el?.scrollIntoView({ block: "nearest" });
@@ -1622,20 +1674,39 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         }
       }}>
         <div className="flex h-full min-h-0 w-full max-w-[1248px] px-[24px] gap-[60px] overflow-hidden">
-          <div className="min-w-0 min-h-0 flex-1 h-full overflow-hidden"><EditorContent editor={editor} className="h-full min-h-0" /></div>
-          <div className="w-[180px] shrink-0 min-h-0 py-[24px] overflow-hidden hidden xl:flex xl:flex-col">
-            <p className="font-['PingFang_SC:Medium',sans-serif] text-[#8d8e99] text-[13px] mb-[10px]">大纲</p>
-            <div ref={tocListRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-[4px]">
-              {tocHeadings.length === 0 ? <p className="text-[#b8bbc4] text-[13px]">暂无标题</p> : tocHeadings.map((h) => <button key={`${h.id}-${h.text}`} ref={(element) => {
-                if (element) tocButtonRefs.current.set(h.id, element);
-                else tocButtonRefs.current.delete(h.id);
-              }} type="button" className={`block w-full text-left text-[13px] rounded-[4px] px-[8px] py-[4px] truncate ${tocActiveId === h.id ? "text-[#134CFF] bg-[#f5f8ff]" : "text-[#8d8e99] hover:bg-[#f5f6f8]"}`} style={{ paddingLeft: `${(Number(h.tag.slice(1)) - 1) * 10 + 8}px` }} onClick={() => { scrollToHeading(h.id); }}>{h.text}</button>)}
+          <div className="min-w-0 min-h-0 flex-1 h-full max-w-full overflow-hidden"><EditorContent editor={editor} className="h-full min-h-0 w-full max-w-full min-w-0" /></div>
+          <div className="w-[264px] shrink-0 min-h-0 pt-[24px] pb-[12px] overflow-hidden hidden xl:flex xl:flex-col gap-[4px]">
+            <div className="flex items-center gap-[8px] shrink-0">
+              <img src="/icons/figma-ref/menu-02.svg" alt="" width={16} height={16} className="size-4 shrink-0" />
+              <p className="font-['PingFang_SC:Regular',sans-serif] font-normal text-[#3F4046] text-[14px] leading-[24px]">在本页</p>
+            </div>
+            <div ref={tocListRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col">
+              {tocHeadings.length === 0 ? <p className="text-[#b8bbc4] text-[14px] leading-[24px] font-normal">暂无标题</p> : tocHeadings.map((h) => {
+                const level = Math.min(Math.max(Number(h.tag.slice(1)) || 1, 1), 6);
+                const padLeft = (level - 1) * 16;
+                const isActive = tocActiveId === h.id;
+                return (
+                  <button
+                    key={`${h.id}-${h.text}`}
+                    ref={(element) => {
+                      if (element) tocButtonRefs.current.set(h.id, element);
+                      else tocButtonRefs.current.delete(h.id);
+                    }}
+                    type="button"
+                    className={`block w-full h-8 text-left font-['PingFang_SC:Regular',sans-serif] font-normal text-[14px] leading-[24px] py-1 truncate bg-transparent border-0 outline-none appearance-none ${isActive ? "text-[#134CFF]" : "text-[#505257] hover:text-[#3F4046]"}`}
+                    style={{ paddingLeft: `${padLeft}px`, paddingRight: 0 }}
+                    onClick={() => { scrollToHeading(h.id); }}
+                  >
+                    {h.text}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
       </div>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-      <div className="flex items-center justify-between px-[24px] py-[10px] border-t border-[#EBECF0] bg-white flex-shrink-0">
+      <div className="flex items-center justify-between h-[44px] px-[24px] border-t border-[#EBECF0] bg-white flex-shrink-0 box-border">
         <div className="flex items-center gap-[8px]"><div className="relative shrink-0 size-[8px]"><svg className="absolute block inset-0 size-full" fill="none" viewBox="0 0 8 8"><circle cx="4" cy="4" fill={saveStatus === "saving" ? "#F59E0B" : saveStatus === "saved" ? "#15803D" : "#8D8E99"} r="4" /></svg></div><p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[14px] whitespace-nowrap">{saveStatus === "saving" ? "自动保存中..." : savedAt ? `已自动保存，更新于${savedAt}` : "等待自动保存"}</p></div>
         <div className="flex items-center gap-[25px]"><div className="flex items-center gap-[8px]"><div className="relative shrink-0 size-[14px]"><svg className="absolute block inset-0 size-full" fill="none" viewBox="0 0 14 14"><path d={editorSvg.p2ce2bc00} stroke="#8D8E99" strokeLinecap="round" strokeWidth="1.2" /></svg></div><p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[14px]">大纲</p></div><p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[14px]">{charCount}字符 {wordCount}字</p></div>
       </div>

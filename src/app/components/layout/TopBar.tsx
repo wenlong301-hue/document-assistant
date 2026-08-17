@@ -1,13 +1,38 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { assetUrl } from "@/app/shared/utils/assetUrl";
 import { BrandTitle } from "./BrandTitle";
 import { SaveButton } from "./SaveButton";
-import { ImportButton } from "./ImportButton";
-import { ExportButton } from "./ExportButton";
 import { ShareButton } from "./ShareButton";
-import { DeleteButton } from "./DeleteButton";
-import { HelpButton } from "./HelpButton";
 import { MoreButton } from "./MoreButton";
+import { ContextMenuItem, ContextMenuPanel } from "@/app/components/shared/ContextMenu";
+import svgPaths from "@/imports/首页文档模式/svg-8pwaal4bp9";
+
+function SaveAsButton() {
+  return (
+    <div className="bg-white flex items-center justify-center h-[32px] px-[12px] relative rounded-[8px] shrink-0">
+      <div aria-hidden className="absolute border border-[#EBECF0] border-solid inset-0 pointer-events-none rounded-[8px]" />
+      <p className="relative font-['PingFang_SC:Regular',sans-serif] leading-none not-italic text-[14px] text-[#131212] whitespace-nowrap">另存为</p>
+    </div>
+  );
+}
+
+function MenuIcon({ d }: { d: string }) {
+  return (
+    <svg className="block size-full" fill="none" viewBox="0 0 16 16">
+      <path d={d} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
+function HelpMenuIcon() {
+  return (
+    <svg className="block size-full" fill="none" viewBox="0 0 16 16">
+      <circle cx="8" cy="8" r="6.2" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M6.6 6.2c0-1 .8-1.8 1.8-1.8s1.8.7 1.8 1.7c0 .9-.6 1.3-1.2 1.7-.4.2-.6.4-.6.8v.4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.2" />
+      <circle cx="8" cy="11.4" r="0.7" fill="currentColor" />
+    </svg>
+  );
+}
 
 export function TopBar({ onOpenShare, onOpenExport, onDelete, onImport, onSave, onSaveAsMdoc, onOpenHelp, level, projectName, onBack, shareDisabled = false, saveDisabled = false, saveAsDisabled = false }: {
   onOpenShare: () => void;
@@ -26,9 +51,9 @@ export function TopBar({ onOpenShare, onOpenExport, onDelete, onImport, onSave, 
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const isProjectLevel = level === "project";
-  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || "");
-  const saveAsShortcut = isMac ? "⇧⌘S" : "Ctrl+Shift+S";
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -46,6 +71,43 @@ export function TopBar({ onOpenShare, onOpenExport, onDelete, onImport, onSave, 
     };
   }, [moreOpen]);
 
+  useLayoutEffect(() => {
+    if (!moreOpen || !moreRef.current) {
+      setMenuPos(null);
+      return;
+    }
+    const rect = moreRef.current.getBoundingClientRect();
+    const width = 158;
+    const margin = 8;
+    let left = rect.right - width;
+    left = Math.max(margin, Math.min(left, window.innerWidth - width - margin));
+    setMenuPos({ top: rect.bottom + 4, left });
+  }, [moreOpen]);
+
+  const moreItems = [
+    {
+      label: "导入",
+      icon: <MenuIcon d={svgPaths.p3809f980} />,
+      action: () => { setMoreOpen(false); onImport(); },
+    },
+    {
+      label: "导出",
+      icon: <MenuIcon d={svgPaths.p1de75680} />,
+      action: () => { setMoreOpen(false); onOpenExport(); },
+    },
+    {
+      label: "删除",
+      danger: true,
+      icon: <MenuIcon d={svgPaths.p1db5f00} />,
+      action: () => { setMoreOpen(false); onDelete(); },
+    },
+    {
+      label: "帮助",
+      icon: <HelpMenuIcon />,
+      action: () => { setMoreOpen(false); onOpenHelp(); },
+    },
+  ];
+
   return (
     <div className="absolute content-stretch flex h-[66px] items-center justify-between left-0 right-0 pl-[20px] pr-[8px] py-[16px] top-0">
       {isProjectLevel ? (
@@ -60,52 +122,51 @@ export function TopBar({ onOpenShare, onOpenExport, onDelete, onImport, onSave, 
       )}
       <div className="content-stretch flex gap-[12px] items-center relative shrink-0">
         <div
-          className={`transition-all duration-150 rounded-[6px] ${saveDisabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:opacity-75 active:scale-95 active:opacity-60"}`}
+          className={`transition-all duration-150 rounded-[8px] ${saveDisabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:opacity-75 active:scale-95 active:opacity-60"}`}
           onClick={saveDisabled ? undefined : onSave}
           title={saveDisabled ? "请先选择文档" : "保存到原文件或默认库"}
         >
           <SaveButton />
         </div>
-        <div className="cursor-pointer transition-all duration-150 hover:opacity-75 active:scale-95 active:opacity-60 rounded-[6px]" onClick={onImport}><ImportButton /></div>
-        <div className="cursor-pointer transition-all duration-150 hover:opacity-75 active:scale-95 active:opacity-60 rounded-[6px]" onClick={onOpenExport}><ExportButton /></div>
         <div
-          className={`transition-all duration-150 rounded-[6px] ${shareDisabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:bg-[#EBECF0] active:bg-[#dddee3] active:scale-95"}`}
+          className={`transition-all duration-150 rounded-[8px] ${saveAsDisabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:bg-[#F7F8FA] active:bg-[#EBECF0] active:scale-95"}`}
+          onClick={saveAsDisabled ? undefined : onSaveAsMdoc}
+          title={saveAsDisabled ? "请先选择文档" : "另存为 .mdoc"}
+        >
+          <SaveAsButton />
+        </div>
+        <div
+          className={`transition-all duration-150 rounded-[8px] ${shareDisabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:bg-[#F7F8FA] active:bg-[#EBECF0] active:scale-95"}`}
           onClick={shareDisabled ? undefined : onOpenShare}
           title={shareDisabled ? "请选择文件后再分享" : undefined}
         >
           <ShareButton />
         </div>
-        <div className="cursor-pointer transition-all duration-150 hover:bg-[#EBECF0] active:bg-[#dddee3] active:scale-95 rounded-[6px]" onClick={onDelete}><DeleteButton /></div>
-        <div className="cursor-pointer transition-all duration-150 hover:bg-[#EBECF0] active:bg-[#dddee3] active:scale-95 rounded-[6px]" onClick={onOpenHelp}><HelpButton /></div>
         <div className="relative shrink-0" ref={moreRef}>
           <div
-            className="cursor-pointer transition-all duration-150 hover:bg-[#EBECF0] active:bg-[#dddee3] active:scale-95 rounded-[6px]"
+            className="cursor-pointer transition-all duration-150 hover:bg-[#F7F8FA] active:bg-[#EBECF0] active:scale-95 rounded-[8px]"
             onClick={() => setMoreOpen((v) => !v)}
             title="更多"
             aria-label="更多"
           >
             <MoreButton />
           </div>
-          {moreOpen && (
-            <div className="absolute right-0 top-[38px] z-[100] min-w-[180px] rounded-[8px] border border-[#ebecf0] bg-white py-[4px] shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
-              <button
-                type="button"
-                disabled={saveAsDisabled}
-                className={`w-full flex items-center justify-between gap-[16px] px-[12px] py-[8px] text-left text-[14px] ${
-                  saveAsDisabled
-                    ? "text-[#c0c4cc] cursor-not-allowed"
-                    : "text-[#131212] hover:bg-[#f5f6f8] cursor-pointer"
-                }`}
-                onClick={() => {
-                  if (saveAsDisabled) return;
-                  setMoreOpen(false);
-                  onSaveAsMdoc();
-                }}
-              >
-                <span>另存为 .mdoc</span>
-                <span className="text-[12px] text-[#8d8e99] whitespace-nowrap">{saveAsShortcut}</span>
-              </button>
-            </div>
+          {moreOpen && menuPos && (
+            <ContextMenuPanel
+              menuRef={menuRef}
+              width={158}
+              style={{ left: menuPos.left, top: menuPos.top }}
+            >
+              {moreItems.map(({ label, danger, icon, action }) => (
+                <ContextMenuItem
+                  key={label}
+                  danger={!!danger}
+                  label={label}
+                  icon={icon}
+                  onClick={action}
+                />
+              ))}
+            </ContextMenuPanel>
           )}
         </div>
       </div>

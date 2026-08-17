@@ -64,7 +64,7 @@ export function LinkModal({ position, initialText, initialUrl, mode, triggerRef,
       <div className="flex flex-col gap-[8px]">
         <div
           className="h-[34px] rounded-[6px] flex items-center px-[10px] transition-all duration-150"
-          style={{ border: focusedField === "text" ? "1px solid #ff4d4f" : "1px solid #EBECF0", background: focusedField === "text" ? "#fffafa" : "white" }}
+          style={{ border: focusedField === "text" ? "1px solid #131212" : "1px solid #EBECF0", background: "white" }}
         >
           <input
             type="text"
@@ -81,7 +81,7 @@ export function LinkModal({ position, initialText, initialUrl, mode, triggerRef,
         <div className="flex items-center gap-[8px]">
           <div
             className="h-[34px] flex-1 rounded-[6px] flex items-center gap-[6px] px-[10px] transition-all duration-150"
-            style={{ border: focusedField === "url" ? "1px solid #ff4d4f" : "1px solid #EBECF0", background: focusedField === "url" ? "#fffafa" : "white" }}
+            style={{ border: focusedField === "url" ? "1px solid #131212" : "1px solid #EBECF0", background: "white" }}
           >
             <svg className="size-[14px] shrink-0" fill="none" viewBox="0 0 16 16">
               <path d="M6.5 8.8L9.5 5.8M5.7 5.2L5.1 5.8C3.9 7 3.9 8.9 5.1 10.1C6.3 11.3 8.2 11.3 9.4 10.1L10 9.5M10.3 10.8L10.9 10.2C12.1 9 12.1 7.1 10.9 5.9C9.7 4.7 7.8 4.7 6.6 5.9L6 6.5" stroke="#8D8E99" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" />
@@ -100,9 +100,9 @@ export function LinkModal({ position, initialText, initialUrl, mode, triggerRef,
             />
           </div>
           <button
-            className={`h-[34px] px-[14px] rounded-[6px] text-[13px] transition-all duration-150 ${
+            className={`h-[34px] px-[14px] rounded-[8px] text-[13px] transition-all duration-150 ${
               canConfirm
-                ? "bg-[#131212] text-white cursor-pointer hover:opacity-80 active:opacity-60"
+                ? "bg-[#131212] text-white cursor-pointer hover:opacity-90 active:opacity-80"
                 : "bg-[#EBECF0] text-[#8D8E99] cursor-not-allowed"
             }`}
             style={{ fontFamily: "PingFang SC, sans-serif" }}

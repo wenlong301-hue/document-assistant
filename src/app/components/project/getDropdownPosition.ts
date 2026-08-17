@@ -1,4 +1,4 @@
-export const getDropdownPosition = (anchor: DOMRect, width = 160, height = 132) => {
+export const getDropdownPosition = (anchor: DOMRect, width = 158, height = 120) => {
   const margin = 8;
   const preferredLeft = anchor.right - width;
   const preferredTop = anchor.bottom + 4;

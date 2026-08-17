@@ -31,10 +31,10 @@ export function ShareModal({ shared, mode, loading, errorMessage, onToggle, onCl
         onClick={(e) => e.stopPropagation()}
       >
         {/* 标题栏 */}
-        <div className="flex items-center justify-between px-[24px] h-[56px]">
-          <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[16px] font-medium leading-[normal]">分享文档</p>
+        <div className="flex items-center justify-between px-[24px] pt-[18px] pb-0">
+          <p className="m-0 font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[16px] font-medium leading-[24px]">分享文档</p>
           <button
-            className="size-[28px] flex items-center justify-center rounded-[6px] text-[#131212] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors cursor-pointer"
+            className="size-[28px] flex items-center justify-center rounded-[6px] border-0 p-0 bg-transparent text-[#131212] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors cursor-pointer outline-none appearance-none"
             onClick={onClose}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -43,32 +43,32 @@ export function ShareModal({ shared, mode, loading, errorMessage, onToggle, onCl
           </button>
         </div>
 
-        {/* 正文 */}
-        <div className="px-[24px] pb-[24px] flex flex-col gap-[10px]">
-          <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[14px] font-medium leading-[normal]">
+        {/* 正文 — Figma 45:20：上24 下32；标题→说明8；说明间距4；说明→卡片12 */}
+        <div className="px-[24px] pt-[24px] pb-[32px] flex flex-col">
+          <p className="m-0 font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[14px] font-medium leading-[20px]">
             {mode === "electron" ? "分享给同一Wi-Fi / 局域网内的人" : "生成本机预览分享页"}
           </p>
-          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[13px] leading-[1.6]">
+          <p className="m-0 mt-[8px] font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[13px] leading-[18px]">
             {mode === "electron" ? "开启后，复制链接发给同事；对方用浏览器打开网址即可查看文档。" : "当前是网页预览环境，会生成一个只读 HTML 分享页，可复制本机临时链接或下载文件。"}
           </p>
-          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[13px] leading-[1.6]">
+          <p className="m-0 mt-[4px] font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[13px] leading-[18px]">
             {mode === "electron" ? "注意：您的电脑和文档助手需要保持开启，别人才能访问。" : "如果需要同 Wi-Fi 访问链接，请在 Electron 桌面应用中开启分享。"}
           </p>
-          {errorMessage && <p className="font-['PingFang_SC:Regular',sans-serif] text-[#E53E3E] text-[13px] leading-[1.6]">{errorMessage}</p>}
+          {errorMessage && <p className="m-0 mt-[4px] font-['PingFang_SC:Regular',sans-serif] text-[#E53E3E] text-[13px] leading-[18px]">{errorMessage}</p>}
 
-          {/* 开关卡片 */}
+          {/* 开关卡片 — 内边距 12/16，文案间距 4 */}
           <div
-            className="rounded-[12px] px-[16px] py-[14px] flex items-center justify-between mt-[4px] transition-all duration-300"
+            className="rounded-[12px] px-[16px] py-[12px] flex items-center justify-between mt-[12px] transition-all duration-300"
             style={{ background: shared ? "rgba(42,182,115,0.08)" : "white", border: "1px solid", borderColor: shared ? "rgba(42,182,115,0.25)" : "#ebecf0" }}
           >
-            <div className="flex flex-col gap-[6px]">
+            <div className="flex flex-col gap-[4px]">
               <p
-                className="font-['PingFang_SC:Medium',sans-serif] text-[14px] font-medium leading-[normal] transition-colors duration-200"
+                className="m-0 font-['PingFang_SC:Medium',sans-serif] text-[14px] font-medium leading-[20px] transition-colors duration-200"
                 style={{ color: shared ? "#15803d" : "#c2c6cd" }}
               >
                 {loading ? "处理中..." : shared ? "开启分享" : "未开启分享"}
               </p>
-              <p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[13px] leading-[normal]">
+              <p className="m-0 font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[13px] leading-[18px]">
                 {shared ? (mode === "electron" ? "链接已生成，点击复制链接后发给同一Wi-Fi / 局域网内的人" : "分享页已生成，可复制链接或下载 HTML 文件") : "点击右侧开关，开启后会显示访问链接"}
               </p>
             </div>
@@ -85,28 +85,26 @@ export function ShareModal({ shared, mode, loading, errorMessage, onToggle, onCl
             </button>
           </div>
 
-          {/* 访问链接区域（开启后显示） */}
+          {/* 访问链接 — Figma 43:277：灰底无描边 12r；标题 16/12；输入 340×40 r6；按钮 r6；行间距 12 */}
           {shared && (
             <div
-              className="rounded-[12px] px-[16px] py-[14px] flex flex-col gap-[10px]"
-              style={{ background: "rgba(245,245,244,0.5)", border: "1px solid #ebecf0" }}
+              className="rounded-[12px] px-[16px] pt-[12px] pb-[16px] flex flex-col gap-[8px] mt-[12px]"
+              style={{ background: "rgba(245,245,244,0.5)" }}
             >
-              <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[14px] font-medium leading-[normal]">访问链接</p>
-              <div className="flex items-center gap-[8px]">
-                <div className="flex-1 bg-white border border-[#ebecf0] rounded-[6px] px-[12px] h-[40px] flex items-center">
-                  <p className="font-['PingFang_SC:Regular',sans-serif] text-[#131212] text-[14px] tracking-[1.12px] truncate">{shareUrl}</p>
+              <p className="m-0 font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[14px] leading-[20px]">访问链接</p>
+              <div className="flex items-center gap-[12px]">
+                <div className="flex-1 min-w-0 bg-white border border-[#EBECF0] rounded-[6px] px-[16px] h-[40px] flex items-center">
+                  <p className="m-0 font-['PingFang_SC:Regular',sans-serif] text-[#131212] text-[14px] tracking-[0.08em] truncate">{shareUrl}</p>
                 </div>
                 <button
-                  className="h-[40px] px-[16px] rounded-[6px] bg-[#131212] text-white text-[14px] cursor-pointer hover:opacity-80 active:opacity-60 transition-opacity whitespace-nowrap flex-shrink-0"
-                  style={{ fontFamily: "PingFang SC, sans-serif" }}
+                  className="h-[40px] px-[16px] rounded-[6px] bg-[#131212] text-white text-[14px] font-['PingFang_SC:Regular',sans-serif] cursor-pointer hover:opacity-90 active:opacity-80 transition-opacity whitespace-nowrap flex-shrink-0 border-0"
                   onClick={handleCopy}
                 >
                   {copied ? "已复制" : "复制链接"}
                 </button>
                 {mode === "web" && onDownload && (
                   <button
-                    className="h-[40px] px-[16px] rounded-[6px] border border-[#ebecf0] bg-white text-[#131212] text-[14px] cursor-pointer hover:bg-[#f5f6f8] active:bg-[#ebecf0] transition-colors whitespace-nowrap flex-shrink-0"
-                    style={{ fontFamily: "PingFang SC, sans-serif" }}
+                    className="h-[40px] px-[16px] rounded-[6px] border border-[#EBECF0] bg-white text-[#131212] text-[14px] font-['PingFang_SC:Regular',sans-serif] cursor-pointer hover:bg-[#F7F8FA] active:bg-[#EBECF0] transition-colors whitespace-nowrap flex-shrink-0"
                     onClick={onDownload}
                   >
                     下载HTML

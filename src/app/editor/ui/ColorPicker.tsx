@@ -43,14 +43,24 @@ export function ColorPicker({
   return createPortal(
     <div
       ref={ref}
-      className="fixed z-[280] bg-white rounded-[12px] shadow-[0px_12px_24px_-4px_rgba(36,36,36,0.12)] border border-[#ebecf0] p-[12px] w-[260px]"
+      className="fixed z-[280] box-border bg-white rounded-[12px] shadow-[0px_12px_24px_-4px_rgba(36,36,36,0.12)] border border-[#ebecf0] p-[12px] w-[260px]"
       style={{ left: position.x, top: position.y }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
+      {/* 标题栏 — 与导出弹窗 ExportModal 一致 */}
       <div className="flex items-center justify-between mb-[8px]">
-        <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[14px]">{mode === "back" ? "背景颜色" : "文字颜色"}</p>
-        <button type="button" className="size-[20px] flex items-center justify-center rounded-[4px] hover:bg-[#f5f6f8] cursor-pointer text-[#8d8e99]" onClick={onClose}>&times;</button>
+        <p className="m-0 font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[16px] font-medium leading-[24px]">{mode === "back" ? "背景颜色" : "文字颜色"}</p>
+        <button
+          type="button"
+          className="size-[28px] flex items-center justify-center rounded-[6px] border-0 p-0 bg-transparent text-[#131212] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors cursor-pointer outline-none appearance-none"
+          onClick={onClose}
+          aria-label="关闭"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+            <path d="M13.3333 2.66667L2.66667 13.3333M13.3333 13.3333L2.66667 2.66667" stroke="currentColor" strokeLinecap="round" strokeWidth="1.2" />
+          </svg>
+        </button>
       </div>
       <p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[12px] mb-[6px]">预设颜色</p>
       <div className="h-[28px] rounded-[6px] border border-[#d0d0d0] mb-[10px]" style={{ background: previewColor }} />
@@ -70,9 +80,12 @@ export function ColorPicker({
           />
         ))}
       </div>
-      <div className="flex items-center gap-[8px] border-t border-[#ebecf0] pt-[8px]">
+      <div className="flex items-center gap-[8px] border-t border-[#ebecf0] pt-[8px] w-full min-w-0 box-border">
         <p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[12px] shrink-0">自定义</p>
-        <label className="relative size-[28px] shrink-0 rounded-[4px] flex items-center justify-center cursor-pointer hover:bg-[#f5f6f8] transition-colors">
+        <label
+          className="relative size-[28px] shrink-0 rounded-[4px] border border-[#ebecf0] bg-white flex items-center justify-center cursor-pointer hover:border-[#d0d0d0] transition-colors overflow-hidden"
+          title="选择颜色"
+        >
           <svg className="block size-[16px]" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
             <path d="M8.00027 4V4.02215M4.02225 8.00017H4.0001M10.8287 5.1717L10.8131 5.18736M5.18755 10.8129L5.17188 10.8285M5.18755 5.18711L5.17188 5.17144M8.0001 14.4C4.46548 14.4 1.6001 11.5346 1.6001 8C1.6001 4.46538 4.46548 1.6 8.0001 1.6C11.5347 1.6 14.4001 4.46538 14.4001 8C14.4001 9.07604 13.4058 9.792 12.3298 9.792H11.9121C11.6964 9.792 11.4837 9.84221 11.2907 9.93867C10.6044 10.2818 10.3263 11.1164 10.6694 11.8026C10.7659 11.9956 10.8161 12.2083 10.8161 12.424V12.5501C10.8161 13.2838 10.4044 13.9786 9.69676 14.1727C9.15641 14.3209 8.58749 14.4 8.0001 14.4Z" stroke="#131212" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
@@ -90,7 +103,7 @@ export function ColorPicker({
           onChange={(e) => setCustomColor(e.target.value)}
           placeholder="#000000"
           maxLength={7}
-          className="flex-1 h-[28px] rounded-[4px] border border-[#ebecf0] px-[8px] text-[12px] text-[#131212] outline-none focus:border-[#134CFF]"
+          className="min-w-0 flex-1 w-0 h-[28px] rounded-[4px] border border-solid border-[#ebecf0] px-[8px] text-[12px] text-[#131212] outline-none focus:border-[#131212] box-border"
           style={{ fontFamily: "monospace" }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && /^#[0-9a-fA-F]{3,6}$/.test((e.target as HTMLInputElement).value)) {

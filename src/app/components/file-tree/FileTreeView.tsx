@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FolderTreeNode } from "@/app/document/types";
+import { ContextMenuItem, ContextMenuPanel } from "@/app/components/shared/ContextMenu";
 import { FileTreeNode } from "./FileTreeNode";
 
 export function FileTreeView({
@@ -143,42 +144,43 @@ export function FileTreeView({
         </div>
       )}
 
-      {/* Context Menu */}
+      {/* Context Menu — 设计稿 42:108 */}
       {contextMenu && (
-        <div
-          className="fixed z-[200] w-[160px] bg-white border border-[#ebecf0] rounded-[8px] shadow-[0px_12px_16px_-4px_rgba(36,36,36,0.08)] p-[4px] flex flex-col gap-[4px]"
+        <ContextMenuPanel
+          className="z-[200]"
+          width={158}
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           {contextMenu.node.isDirectory && onNewFile && (
-            <button
-              className="w-full flex items-center gap-[8px] px-[12px] py-[6px] rounded-[4px] cursor-pointer hover:bg-[#f5f6f8] text-[#131212] text-left"
+            <ContextMenuItem
+              label="新建文件"
+              icon={
+                <svg className="block size-full" viewBox="0 0 16 16" fill="none">
+                  <path d="M8 3.2V12.8M12.8 8H3.2" stroke="currentColor" strokeLinecap="round" strokeWidth="1.2" />
+                </svg>
+              }
               onClick={() => {
                 onNewFile(contextMenu.node.path);
                 setContextMenu(null);
               }}
-            >
-              <svg className="size-[16px] shrink-0" viewBox="0 0 16 16" fill="none">
-                <path d="M8 3V13M3 8H13" stroke="currentColor" strokeLinecap="round" strokeWidth="1.2"/>
-              </svg>
-              <span className="text-[14px] whitespace-nowrap">新建文件</span>
-            </button>
+            />
           )}
           {onOpenLocation && (
-            <button
-              className="w-full flex items-center gap-[8px] px-[12px] py-[6px] rounded-[4px] cursor-pointer hover:bg-[#f5f6f8] text-[#131212] text-left"
+            <ContextMenuItem
+              label="打开文件位置"
+              icon={
+                <svg className="block size-full" viewBox="0 0 16 16" fill="none">
+                  <path d="M2 4C2 3.44772 2.44772 3 3 3H6.5L8 4.5H13C13.5523 4.5 14 4.94772 14 5.5V12C14 12.5523 13.5523 13 13 13H3C2.44772 13 2 12.5523 2 12V4Z" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M6 8H10M6 10H8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.2" />
+                </svg>
+              }
               onClick={() => {
                 onOpenLocation(contextMenu.node.path);
                 setContextMenu(null);
               }}
-            >
-              <svg className="size-[16px] shrink-0" viewBox="0 0 16 16" fill="none">
-                <path d="M2 4C2 3.44772 2.44772 3 3 3H6.5L8 4.5H13C13.5523 4.5 14 4.94772 14 5.5V12C14 12.5523 13.5523 13 13 13H3C2.44772 13 2 12.5523 2 12V4Z" stroke="currentColor" strokeWidth="1.2"/>
-                <path d="M6 8H10M6 10H8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.2"/>
-              </svg>
-              <span className="text-[14px] whitespace-nowrap">打开文件位置</span>
-            </button>
+            />
           )}
-        </div>
+        </ContextMenuPanel>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import type { Project } from "@/app/document/types";
 import { assetUrl } from "@/app/shared/utils/assetUrl";
 import { ProjectGridCard } from "./ProjectGridCard";
@@ -9,7 +9,8 @@ import { LogoIcon } from "./icons/LogoIcon";
 import { FolderPlusIcon } from "./icons/FolderPlusIcon";
 import { HelpIcon } from "./icons/HelpIcon";
 import { SearchIcon } from "./icons/SearchIcon";
-import { PlusIcon } from "./icons/PlusIcon";
+
+const FALLBACK_VERSION = "0.1.7";
 
 export function ProjectListView({
   projects,
@@ -48,6 +49,14 @@ export function ProjectListView({
 }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState(FALLBACK_VERSION);
+
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    if (api?.getVersion) {
+      api.getVersion().then((v: string) => v && setAppVersion(v)).catch(() => {});
+    }
+  }, []);
 
   const filteredProjects = projects.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -68,94 +77,118 @@ export function ProjectListView({
 
   return (
     <div className="absolute inset-0 bg-white flex flex-col">
-      {/* Top Bar - matches Figma: 66px height, #F7F8FA bg */}
-      <div className="h-[66px] flex items-center justify-between px-[20px] shrink-0 bg-[#F7F8FA]">
+      <div className="h-[66px] flex items-center justify-between px-[20px] py-[16px] shrink-0 bg-[#F7F8FA]">
         <div className="flex items-center gap-[6px]">
           <LogoIcon />
-          <span className="text-[18px] font-semibold text-[#131212]" style={{ fontFamily: "'Alimama_FangYuanTi_VF', sans-serif" }}>
+          <span
+            className="text-[18px] font-semibold leading-normal text-[#131212] whitespace-nowrap"
+            style={{ fontFamily: "'Alimama FangYuanTi VF', 'Alimama_FangYuanTi_VF', sans-serif" }}
+          >
             文档助手
+          </span>
+          <span className="text-[10px] font-normal leading-normal text-[#8D8E99] whitespace-nowrap font-['PingFang_SC:Regular',sans-serif]">
+            V{appVersion}
           </span>
           {updateVersion && onOpenUpdate && (
             <button
+              type="button"
               className="h-[20px] px-[5px] rounded-[8px] bg-[#15803D] text-white text-[10px] font-normal leading-none hover:bg-[#166534] transition-colors"
               onClick={onOpenUpdate}
               title={`发现新版本 v${updateVersion}`}
             >
-              发现新版本!
+              发现新版本
             </button>
           )}
         </div>
-        <div className="flex items-center gap-[12px]">
-          {/* Add button - supports both folders/projects and standalone files. */}
+        <div className="flex items-center justify-end gap-[12px]">
           <button
-            className="h-[32px] px-[12px] bg-[#131212] text-white rounded-[6px] flex items-center gap-[8px] text-[14px] hover:bg-[#333] transition-colors"
-            onClick={() => setShowAddModal(true)}
-          >
-            <FolderPlusIcon />
-            <span>添加</span>
-          </button>
-          <button
-            className="h-[32px] px-[12px] bg-white text-[#131212] rounded-[6px] border border-[#EBECF0] flex items-center gap-[8px] text-[14px] hover:bg-[#f5f6f8] transition-colors"
+            type="button"
+            className="h-[32px] px-0 border-0 bg-transparent text-[#131212] flex items-center justify-center gap-[8px] text-[14px] leading-none hover:opacity-70 transition-opacity cursor-pointer outline-none appearance-none"
             onClick={onOpenHelp}
           >
             <HelpIcon />
             <span>帮助</span>
           </button>
-          {/* Search Input - 276x32, bordered */}
+          <button
+            type="button"
+            className="h-[32px] px-[12px] bg-[#131212] text-white rounded-[8px] flex items-center justify-center gap-[8px] text-[14px] leading-none hover:opacity-90 transition-opacity"
+            onClick={() => setShowAddModal(true)}
+          >
+            <FolderPlusIcon />
+            <span>添加项目</span>
+          </button>
           <div className="relative w-[276px] h-[32px]">
-            <div className="absolute left-[8px] top-1/2 -translate-y-1/2">
+            <div className="absolute left-[8px] top-[8px] size-[16px] pointer-events-none">
               <SearchIcon />
             </div>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="搜索"
-              className="w-full h-full pl-[32px] pr-[12px] bg-white border border-[#EBECF0] rounded-[8px] text-[14px] text-[#131212] outline-none focus:border-[#134CFF] transition-colors placeholder:text-[#C0C4CC]"
+              placeholder="搜索项目"
+              className="w-full h-full pl-[32px] pr-[12px] bg-white border border-solid border-[#EBECF0] rounded-[8px] text-[14px] leading-[20px] text-[#131212] outline-none focus:border-[#131212] transition-colors placeholder:text-[#C0C4CC]"
             />
           </div>
-          {/* View Toggle - bordered container */}
-          <div className="flex items-center p-[3px] border border-[#EBECF0] rounded-[8px] bg-white">
+          <div className="flex items-center gap-[4px] p-[3px] h-[32px] border border-solid border-[#EBECF0] rounded-[8px] bg-white box-border">
             <button
-              className={`w-[24px] h-[24px] flex items-center justify-center rounded-[6px] transition-colors ${
-                viewMode === "list" ? "bg-[#131212]" : "hover:bg-[#f5f6f8]"
+              type="button"
+              className={`size-[24px] p-0 border-0 outline-none flex items-center justify-center rounded-[6px] transition-colors ${
+                viewMode === "list" ? "bg-[#131212]" : "bg-transparent hover:bg-[#F7F8FA]"
               }`}
               onClick={() => onViewModeChange("list")}
+              aria-label="列表视图"
             >
-              <img src={assetUrl("icons/menu-icon.svg")} alt="" className={`size-[16px] ${viewMode === "list" ? "brightness-0 invert" : ""}`} />
+              <img
+                src={assetUrl("icons/menu-icon.svg")}
+                alt=""
+                className={`size-[16px] block ${viewMode === "list" ? "brightness-0 invert" : ""}`}
+              />
             </button>
             <button
-              className={`w-[24px] h-[24px] flex items-center justify-center rounded-[6px] transition-colors ${
-                viewMode === "grid" ? "bg-[#131212]" : "hover:bg-[#f5f6f8]"
+              type="button"
+              className={`size-[24px] p-0 border-0 outline-none flex items-center justify-center rounded-[6px] transition-colors ${
+                viewMode === "grid" ? "bg-[#131212]" : "bg-transparent hover:bg-[#F7F8FA]"
               }`}
               onClick={() => onViewModeChange("grid")}
+              aria-label="卡片视图"
             >
-              <img src={assetUrl("icons/grid-icon.svg")} alt="" className={`size-[16px] ${viewMode === "grid" ? "" : "brightness-0"}`} />
+              <img
+                src={assetUrl("icons/grid-icon.svg")}
+                alt=""
+                className={`size-[16px] block ${viewMode === "grid" ? "brightness-0 invert" : ""}`}
+              />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Content Area */}
       <div className="flex-1 overflow-auto px-[20px] pt-[20px] pb-[20px]">
         {filteredProjects.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full">
             <EmptyStateIllustration />
-            <p className="text-[14px] text-[#8d8e99] mb-[16px]">当前没有内容，点击上方 <span className="font-semibold text-[#131212]">添加</span> 去选择本地文件、文件夹或新增一个项目吧</p>
+            <p className="text-[14px] text-[#8d8e99] mb-[16px]">
+              当前没有内容，点击上方 <span className="font-semibold text-[#131212]">添加项目</span>{" "}
+              去选择本地文件、文件夹或新增一个项目吧
+            </p>
           </div>
         ) : viewMode === "grid" ? (
-          <div className="flex flex-wrap gap-[16px]">
-            {filteredProjects.map((project) => (
-              <ProjectGridCard
-                key={project.id}
-                project={project}
-                isSelected={selectedId === project.id}
-                onClick={() => { setSelectedId(project.id); onSelectProject(project); }}
-                onNewFile={() => handleNewFile(project)}
-                onOpenLocation={() => handleOpenLocation(project)}
-                onRemove={() => onDeleteProject(project)}
-              />
-            ))}
+          <div className="flex flex-col gap-[16px]">
+            <div className="flex flex-wrap content-start gap-[16px]">
+              {filteredProjects.map((project) => (
+                <ProjectGridCard
+                  key={project.id}
+                  project={project}
+                  isSelected={selectedId === project.id}
+                  onClick={() => {
+                    setSelectedId(project.id);
+                    onSelectProject(project);
+                  }}
+                  onNewFile={() => handleNewFile(project)}
+                  onOpenLocation={() => handleOpenLocation(project)}
+                  onRemove={() => onDeleteProject(project)}
+                />
+              ))}
+            </div>
           </div>
         ) : (
           <div className="flex flex-col bg-white">

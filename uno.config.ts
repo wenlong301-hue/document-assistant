@@ -63,7 +63,7 @@ export default defineConfig({
   preflights: [
     {
       getCSS: () => `
-        *,::before,::after{box-sizing:border-box;border-color:var(--border);outline-color:color-mix(in oklab,var(--ring) 50%,transparent)}
+        *,::before,::after{box-sizing:border-box;border-width:0;border-style:solid;border-color:var(--border);outline-color:color-mix(in oklab,var(--ring) 50%,transparent)}
         html{font-size:var(--font-size)}
         body{margin:0;background:var(--background);color:var(--foreground)}
         h1{font-size:1.5rem;font-weight:var(--font-weight-medium);line-height:1.5}

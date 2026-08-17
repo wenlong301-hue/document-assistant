@@ -13,7 +13,7 @@ export function CloseConfirmModal({ onClose, onConfirm }: {
         <div className="flex items-center justify-between px-[24px] h-[56px] border-b border-[#EBECF0]">
           <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[16px] font-medium">关闭应用</p>
           <button
-            className="size-[28px] flex items-center justify-center rounded-[6px] text-[#131212] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors cursor-pointer"
+            className="size-[28px] flex items-center justify-center rounded-[6px] border-0 p-0 bg-transparent text-[#131212] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors cursor-pointer outline-none appearance-none"
             onClick={onClose}
             aria-label="关闭"
           >
@@ -39,7 +39,7 @@ export function CloseConfirmModal({ onClose, onConfirm }: {
           </label>
         </div>
         <div className="flex justify-end gap-[10px] px-[24px] pb-[20px]">
-          <button className="h-[36px] px-[16px] rounded-[8px] border border-[#ebecf0] bg-white text-[14px] text-[#131212] hover:bg-[#f5f6f8] transition-colors" onClick={onClose}>取消</button>
+          <button className="h-[36px] px-[16px] rounded-[8px] border border-[#EBECF0] bg-white text-[14px] text-[#131212] hover:bg-[#F7F8FA] transition-colors" onClick={onClose}>取消</button>
           <button className="h-[36px] px-[16px] rounded-[8px] bg-[#131212] text-white text-[14px] hover:opacity-90 transition-opacity" onClick={() => onConfirm("tray", remember)}>最小化到托盘</button>
           <button className="h-[36px] px-[16px] rounded-[8px] bg-[#E53E3E] text-white text-[14px] hover:opacity-90 transition-opacity" onClick={() => onConfirm("quit", remember)}>退出应用</button>
         </div>

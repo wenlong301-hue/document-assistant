@@ -1,7 +1,8 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 
-export const emptyParagraph = "<p><br></p>";
+/** 必须是真正空段落：勿写 <p><br></p>，否则 TipTap 会解析成 hardBreak，Placeholder 不显示 */
+export const emptyParagraph = "<p></p>";
 export const MAX_IMAGE_SOURCE_BYTES = 20 * 1024 * 1024;
 export const MAX_IMAGE_EMBED_BYTES = 4 * 1024 * 1024;
 export const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
@@ -13,6 +14,26 @@ export const sanitizeHtml = (html: string) => DOMPurify.sanitize(html || emptyPa
   ADD_ATTR: ["style", "class", "id", "target", "rel", "download", "checked", "data-type", "data-checked", "data-indent", "data-row-height", "data-attachment", "data-file-name", "data-file-size", "data-file-type", "controls", "src", "href", "width", "height", "colspan", "rowspan", "poster", "preload", "playsinline"],
   ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel|data:(?:image|video|audio|application)\/|data:text\/plain|manual-doc:|#)|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
 }) || emptyParagraph;
+
+/** 无可见文本/媒体时视为空，统一成单空段落以便 Placeholder 显示 */
+export const isVisuallyEmptyHtml = (html?: string) => {
+  const s = String(html || "").trim();
+  if (!s) return true;
+  if (/<(img|video|iframe|table|hr|input|svg|canvas|audio|source|embed|object)\b/i.test(s)) return false;
+  if (/data-(?:type|attachment|file-name)=/i.test(s)) return false;
+  const text = s
+    .replace(/<br\s*\/?>/gi, "")
+    .replace(/&nbsp;|&#160;|&#xA0;/gi, " ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+  return !text;
+};
+
+export const normalizeEditorHtml = (html?: string) => {
+  const cleaned = sanitizeHtml(html || emptyParagraph);
+  return isVisuallyEmptyHtml(cleaned) ? emptyParagraph : cleaned;
+};
 
 export const fileToDataUrl = (file: Blob) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();

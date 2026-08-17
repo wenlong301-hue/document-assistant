@@ -13,7 +13,7 @@ export function DeleteConfirmModal({ message, onConfirm, onClose }: { message: s
         <div className="flex items-center justify-between px-[24px] h-[56px]">
           <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[16px] font-medium leading-[normal]">提示</p>
           <button
-            className="size-[28px] flex items-center justify-center rounded-[6px] text-[#131212] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors cursor-pointer"
+            className="size-[28px] flex items-center justify-center rounded-[6px] border-0 p-0 bg-transparent text-[#131212] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors cursor-pointer outline-none appearance-none"
             onClick={onClose}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -37,12 +37,12 @@ export function DeleteConfirmModal({ message, onConfirm, onClose }: { message: s
         {/* 按钮 */}
         <div className="flex items-center justify-end gap-[12px] px-[24px] pb-[16px]">
           <button
-            className="h-[34px] px-[16px] rounded-[6px] border border-[#ebecf0] bg-white text-[#131212] text-[14px] cursor-pointer hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors"
+            className="h-[34px] px-[16px] rounded-[8px] border border-[#EBECF0] bg-white text-[#131212] text-[14px] cursor-pointer hover:bg-[#F7F8FA] active:bg-[#EBECF0] transition-colors"
             style={{ fontFamily: "PingFang SC, sans-serif" }}
             onClick={onClose}
           >取消</button>
           <button
-            className="h-[34px] px-[16px] rounded-[6px] bg-[#131212] text-white text-[14px] cursor-pointer hover:opacity-80 active:opacity-60 transition-opacity"
+            className="h-[34px] px-[16px] rounded-[8px] bg-[#131212] text-white text-[14px] cursor-pointer hover:opacity-90 active:opacity-80 transition-opacity"
             style={{ fontFamily: "PingFang SC, sans-serif" }}
             onClick={() => { onConfirm(); onClose(); }}
           >确定</button>

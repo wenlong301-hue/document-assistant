@@ -63,7 +63,7 @@ export function UpdateModal({
         <div className="flex items-center justify-between px-[24px] h-[56px]">
           <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[16px] font-medium leading-[normal]">发现新版本</p>
           <button
-            className="size-[28px] flex items-center justify-center rounded-[6px] text-[#131212] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors cursor-pointer"
+            className="size-[28px] flex items-center justify-center rounded-[6px] border-0 p-0 bg-transparent text-[#131212] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors cursor-pointer outline-none appearance-none"
             onClick={onLater}
             aria-label="关闭"
           >
@@ -109,7 +109,7 @@ export function UpdateModal({
           <div className="flex items-center justify-end gap-[10px] mt-[6px]">
             <button
               type="button"
-              className="h-[36px] px-[14px] rounded-[8px] border border-[#ebecf0] bg-white text-[13px] text-[#131212] cursor-pointer hover:bg-[#f5f6f8] transition-colors font-['PingFang_SC:Regular',sans-serif]"
+              className="h-[36px] px-[14px] rounded-[8px] border border-[#EBECF0] bg-white text-[13px] text-[#131212] cursor-pointer hover:bg-[#F7F8FA] transition-colors font-['PingFang_SC:Regular',sans-serif]"
               onClick={onLater}
               disabled={downloading}
             >
@@ -117,7 +117,7 @@ export function UpdateModal({
             </button>
             <button
               type="button"
-              className="h-[36px] px-[14px] rounded-[8px] border border-[#ebecf0] bg-white text-[13px] text-[#131212] cursor-pointer hover:bg-[#f5f6f8] transition-colors font-['PingFang_SC:Regular',sans-serif]"
+              className="h-[36px] px-[14px] rounded-[8px] border border-[#EBECF0] bg-white text-[13px] text-[#131212] cursor-pointer hover:bg-[#F7F8FA] transition-colors font-['PingFang_SC:Regular',sans-serif]"
               onClick={onOpenRelease}
             >
               打开下载页

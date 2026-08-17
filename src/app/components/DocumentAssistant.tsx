@@ -24,7 +24,7 @@ import {
   WEB_STORAGE_KEY,
   writeWebState,
 } from "@/app/document/helpers";
-import { emptyParagraph, escapeHtml, getPlainTextFromHtml } from "@/app/editor/utils/html";
+import { emptyParagraph, escapeHtml, getPlainTextFromHtml, normalizeEditorHtml } from "@/app/editor/utils/html";
 import { Toast } from "@/app/editor/ui/Toast";
 import { EditorWorkspace } from "@/app/document/EditorWorkspace";
 import { DeleteConfirmModal } from "@/app/document/DeleteConfirmModal";
@@ -846,7 +846,7 @@ export default function DocumentAssistant() {
     docName ? (docStore[docName]?.children ?? outlineTrees[docName] ?? buildEmptyOutlineTree(docName)) : [];
 
   const getNodeContent = (docName: string, nodeId: string) =>
-    docStore[docName]?.content?.[nodeId] ?? emptyParagraph;
+    normalizeEditorHtml(docStore[docName]?.content?.[nodeId] ?? emptyParagraph);
 
   const markSourceDirty = (doc: StoredDoc): StoredDoc =>
     doc.source ? { ...doc, source: { ...doc.source, dirty: true } } : doc;

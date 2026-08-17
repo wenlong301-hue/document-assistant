@@ -140,24 +140,24 @@ export function AddProjectModal({
                   onChange={(e) => setProjectName(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="输入名称"
-                  className="w-full h-[36px] px-[12px] border border-[#ececec] rounded-[8px] text-[14px] text-[#131212] outline-none focus:border-[#134CFF] transition-colors"
+                  className="w-full h-[36px] px-[12px] border border-solid border-[#EBECF0] rounded-[8px] bg-white text-[14px] text-[#131212] outline-none focus:border-[#131212] placeholder:text-[#C0C4CC] transition-colors"
                 />
               </div>
               <div>
                 <p className="text-[14px] text-[#606266] mb-[8px]">项目存放位置</p>
                 <div className="flex gap-[8px]">
-                  <div className="flex-1 h-[36px] px-[12px] border border-[#ececec] rounded-[8px] text-[14px] text-[#131212] flex items-center truncate bg-[#f9f9f9]">
+                  <div className="flex-1 h-[36px] px-[12px] border border-[#EBECF0] rounded-[8px] text-[14px] text-[#131212] flex items-center truncate bg-white">
                     {selectedLocation ? (
                       <span className="truncate">{selectedLocation}</span>
                     ) : (
-                      <span className="text-[#c0c4cc]">默认位置</span>
+                      <span className="text-[#C0C4CC]">默认位置</span>
                     )}
                   </div>
                   <button
-                    className={`h-[36px] px-[12px] border border-[#ececec] rounded-[8px] text-[14px] transition-colors shrink-0 ${
+                    className={`h-[36px] px-[12px] border border-[#EBECF0] rounded-[8px] bg-white text-[14px] transition-colors shrink-0 ${
                       isElectron
-                        ? "text-[#606266] hover:bg-[#f5f6f8]"
-                        : "text-[#c0c4cc] cursor-not-allowed"
+                        ? "text-[#131212] hover:bg-[#F7F8FA]"
+                        : "text-[#C0C4CC] cursor-not-allowed"
                     }`}
                     onClick={handleSelectLocation}
                     disabled={!isElectron}
@@ -197,14 +197,14 @@ export function AddProjectModal({
         </div>
         <div className="flex justify-end gap-[8px] px-[24px] pb-[20px]">
           <button
-            className="h-[32px] px-[16px] rounded-[6px] border border-[#ececec] text-[14px] text-[#606266] hover:bg-[#f5f6f8] transition-colors"
+            className="h-[32px] px-[16px] rounded-[8px] border border-[#EBECF0] bg-white text-[14px] text-[#131212] hover:bg-[#F7F8FA] transition-colors"
             onClick={onClose}
           >
             取消
           </button>
           {tab === "create" ? (
             <button
-              className="h-[32px] px-[16px] rounded-[6px] bg-black text-white text-[14px] hover:bg-[#333] transition-colors disabled:opacity-50"
+              className="h-[32px] px-[16px] rounded-[8px] bg-[#131212] text-white text-[14px] hover:opacity-90 transition-opacity disabled:opacity-50"
               onClick={handleCreate}
               disabled={!projectName.trim()}
             >
@@ -213,14 +213,14 @@ export function AddProjectModal({
           ) : (
             <>
               <button
-                className="h-[32px] px-[16px] rounded-[6px] border border-[#ececec] text-[#606266] text-[14px] hover:bg-[#f5f6f8] transition-colors disabled:opacity-50"
+                className="h-[32px] px-[16px] rounded-[8px] border border-[#EBECF0] bg-white text-[#131212] text-[14px] hover:bg-[#F7F8FA] transition-colors disabled:opacity-50"
                 onClick={() => handleImport("file")}
                 disabled={!isElectron}
               >
                 选择文件
               </button>
               <button
-                className="h-[32px] px-[16px] rounded-[6px] bg-black text-white text-[14px] hover:bg-[#333] transition-colors disabled:opacity-50"
+                className="h-[32px] px-[16px] rounded-[8px] bg-[#131212] text-white text-[14px] hover:opacity-90 transition-opacity disabled:opacity-50"
                 onClick={() => handleImport("folder")}
                 disabled={!isElectron}
               >

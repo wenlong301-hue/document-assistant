@@ -149,80 +149,92 @@ export function ExportModal({ docName, content, contentMap, outlineNodes, select
   };
 
   const scopeOptions = [
-    { key: "current" as const, label: "当前页", desc: "导出当前层级及子集" },
-    { key: "all" as const, label: "整个文档", desc: "导出当前文档全部内容" },
+    { key: "current" as const, label: "当前页", desc: "仅导出当前内容" },
+    { key: "all" as const, label: "整个文档", desc: "导出当前文档及子集文件" },
   ];
   const formatOptions = [
-    { key: "HTML" as const, desc: "预览分享（尽力）" },
-    { key: "Markdown" as const, desc: "二次编辑（可能有损）" },
-    { key: "Word" as const, desc: "docx（可能有损）" },
-    { key: "PDF" as const, desc: "正式分发" },
+    { key: "HTML" as const, desc: "适合预览和分享" },
+    { key: "Markdown" as const, desc: "适合二次编辑" },
+    { key: "Word" as const, desc: "导出为docx" },
+    { key: "PDF" as const, desc: "适合正式分发" },
   ];
+
+  const cardBase =
+    "relative box-border text-left bg-white rounded-[12px] border border-solid transition-colors duration-150 cursor-pointer outline-none appearance-none p-0";
+  const cardSelected = "border-[#131212]";
+  const cardIdle = "border-[#EBECF0] hover:border-[#131212]";
 
   return (
     <div className="fixed inset-0 z-[400] flex items-center justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/20" />
       <div
-        className="relative bg-white rounded-[16px] w-[600px] shadow-[0px_16px_32px_-8px_rgba(36,36,36,0.12)] border border-[#e0e0e0] p-[32px] flex flex-col gap-[24px]"
+        className="relative bg-white rounded-[16px] w-[520px] shadow-[0px_16px_32px_-8px_rgba(36,36,36,0.12)] border border-[#E0E0E0] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 标题 */}
-        <div className="flex items-center justify-between">
-          <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[18px] font-medium leading-[normal]">导出文档</p>
-          <button className="size-[28px] flex items-center justify-center rounded-[6px] text-[#131212] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" onClick={onClose} disabled={exportBusy}>
+        {/* 标题栏 — 与分享弹窗 ShareModal 一致 */}
+        <div className="flex items-center justify-between px-[24px] pt-[18px] pb-0">
+          <p className="m-0 font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[16px] font-medium leading-[24px]">导出文档</p>
+          <button
+            type="button"
+            className="size-[28px] flex items-center justify-center rounded-[6px] border-0 p-0 bg-transparent text-[#131212] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors cursor-pointer outline-none appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={onClose}
+            disabled={exportBusy}
+          >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M13.3333 2.66667L2.66667 13.3333M13.3333 13.3333L2.66667 2.66667" stroke="currentColor" strokeLinecap="round" strokeWidth="1.2" />
             </svg>
           </button>
         </div>
 
-        {/* 导出范围 */}
-        <div className="flex flex-col gap-[12px]">
-          <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[14px] font-medium leading-[normal]">导出范围</p>
-          <div className="grid grid-cols-2 gap-[12px]">
-            {scopeOptions.map(({ key, label, desc }) => (
-              <button
-                key={key}
-                className={`text-left p-[16px] rounded-[12px] border transition-all duration-150 cursor-pointer ${scope === key ? "border-[#131212] bg-[#f7f8fa]" : "border-[#e5e7eb] hover:border-[#131212] hover:bg-[#fafafa]"}`}
-                onClick={() => setScope(key)}
-              >
-                <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[15px] font-medium leading-[normal] mb-[6px]">{label}</p>
-                <p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[13px] leading-[normal]">{desc}</p>
-              </button>
-            ))}
+        {/* 内容区 — 下边距 18px */}
+        <div className="px-[24px] pt-[24px] pb-[18px] flex flex-col gap-[24px]">
+          <div className="flex flex-col gap-[8px]">
+            <p className="m-0 font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[14px] font-medium leading-[20px]">导出范围</p>
+            <div className="flex gap-[12px]">
+              {scopeOptions.map(({ key, label, desc }) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`${cardBase} w-[230px] h-[77px] ${scope === key ? cardSelected : cardIdle}`}
+                  onClick={() => setScope(key)}
+                >
+                  <p className="absolute left-[16px] top-[16px] font-['PingFang_SC:Medium',sans-serif] text-[#000000] text-[14px] font-medium leading-[20px] m-0">{label}</p>
+                  <p className="absolute left-[16px] top-[44px] font-['PingFang_SC:Regular',sans-serif] text-[#8D8E99] text-[12px] font-normal leading-[17px] m-0">{desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-[8px]">
+            <p className="m-0 font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[14px] font-medium leading-[20px]">导出格式</p>
+            <div className="flex gap-[12px]">
+              {formatOptions.map(({ key, desc }) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`${cardBase} w-[109px] h-[77px] ${format === key ? cardSelected : cardIdle}`}
+                  onClick={() => setFormat(key)}
+                >
+                  <p className="absolute left-[16px] top-[16px] font-['PingFang_SC:Medium',sans-serif] text-[#000000] text-[14px] font-medium leading-[20px] m-0">{key}</p>
+                  <p className="absolute left-[16px] top-[44px] font-['PingFang_SC:Regular',sans-serif] text-[#8D8E99] text-[12px] font-normal leading-[17px] m-0 whitespace-nowrap">{desc}</p>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* 导出格式 */}
-        <div className="flex flex-col gap-[12px]">
-          <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[14px] font-medium leading-[normal]">导出格式</p>
-          <div className="grid grid-cols-4 gap-[10px]">
-            {formatOptions.map(({ key, desc }) => (
-              <button
-                key={key}
-                className={`text-left p-[14px] rounded-[12px] border transition-all duration-150 cursor-pointer ${format === key ? "border-[#131212] bg-[#f7f8fa]" : "border-[#e5e7eb] hover:border-[#131212] hover:bg-[#fafafa]"}`}
-                onClick={() => setFormat(key)}
-              >
-                <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[15px] font-medium leading-[normal] mb-[6px]">{key}</p>
-                <p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[12px] leading-[normal]">{desc}</p>
-              </button>
-            ))}
-          </div>
-          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[12px] leading-[1.5]">
-            导出为交换格式（L3），复杂排版/空格/样式可能有损。长期精编请用原生 <span className="text-[#606266]">.mdoc</span> 保存。
-          </p>
-        </div>
-
-        {/* 底部按钮 */}
-        <div className="flex items-center justify-end gap-[12px]">
+        {/* 底部按钮栏 — 图一：上6 下16 右24 间距12 */}
+        <div className="shrink-0 flex items-center justify-end gap-[12px] pr-[24px] pt-[6px] pb-[16px]">
           <button
-            className="h-[40px] px-[24px] rounded-[8px] border border-[#e5e7eb] bg-white text-[#131212] text-[14px] cursor-pointer hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors"
+            type="button"
+            className="h-[32px] px-[16px] rounded-[6px] border border-solid border-[#EBECF0] bg-white text-[#131212] text-[14px] font-normal leading-none cursor-pointer hover:bg-[#F7F8FA] active:bg-[#EBECF0] transition-colors outline-none appearance-none disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center box-border"
             style={{ fontFamily: "PingFang SC, sans-serif" }}
             onClick={onClose}
             disabled={exportBusy}
           >取消</button>
           <button
-            className={`h-[40px] px-[24px] rounded-[8px] bg-[#131212] text-white text-[14px] transition-opacity ${exportBusy ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:opacity-80 active:opacity-60"}`}
+            type="button"
+            className={`h-[32px] px-[16px] rounded-[6px] border-0 bg-[#131212] text-white text-[14px] font-normal leading-none transition-opacity outline-none appearance-none inline-flex items-center justify-center box-border ${exportBusy ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:opacity-90 active:opacity-80"}`}
             style={{ fontFamily: "PingFang SC, sans-serif" }}
             onClick={handleExport}
             disabled={exportBusy}
