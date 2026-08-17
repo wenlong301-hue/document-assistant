@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FolderTreeNode } from "@/app/document/types";
 import { ContextMenuItem, ContextMenuPanel } from "@/app/components/shared/ContextMenu";
+import { useAutoHideScrollbar } from "@/app/shared/hooks/useAutoHideScrollbar";
 import { FileTreeNode } from "./FileTreeNode";
 
 export function FileTreeView({
@@ -21,6 +22,7 @@ export function FileTreeView({
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: FolderTreeNode } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  useAutoHideScrollbar(containerRef);
 
   const getContextMenuPosition = useCallback((e: React.MouseEvent, node: FolderTreeNode) => {
     const margin = 8;
@@ -120,7 +122,7 @@ export function FileTreeView({
   }, [filteredNodes, expandedPaths]);
 
   return (
-    <div ref={containerRef} className="absolute left-[20px] top-[158px] w-[276px] bottom-[32px] overflow-auto">
+    <div ref={containerRef} className="scroll-auto-hide absolute left-[20px] top-[158px] bottom-[40px] w-[276px] min-h-0 overflow-x-hidden overflow-y-auto">
       {flatNodes.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-full px-[16px]">
           <p className="text-[14px] text-[#8d8e99] text-center">

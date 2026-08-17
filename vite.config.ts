@@ -53,6 +53,7 @@ export default defineConfig({
             || id.includes('mammoth')
             || id.includes('jszip')
           ) return 'document-export';
+          if (id.includes('node_modules/mermaid') || id.includes('node_modules\\mermaid')) return 'mermaid';
           if (
             id.includes('node_modules/react-dom')
             || id.includes('node_modules/react/')

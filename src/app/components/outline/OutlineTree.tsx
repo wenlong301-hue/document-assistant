@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { DocContentMap, OutlineNode } from "@/app/document/types";
 import {
   buildDeleteMessage,
-  buildPreviewHtml,
+  buildPreviewHtmlAsync,
   buildPreviewSections,
   countDescendants,
   findNode,
@@ -107,10 +107,10 @@ export function OutlineTree({ nodes, selectedId, docName, contentMap, onSelect, 
     }
   };
 
-  const handleExportHtml = (id: string) => {
+  const handleExportHtml = async (id: string) => {
     const node = findNode(nodes, id);
     if (!node) return;
-    const fullHtml = buildPreviewHtml(node.name, buildPreviewSections([node], contentMap), [node], node.id, contentMap);
+    const fullHtml = await buildPreviewHtmlAsync(node.name, buildPreviewSections([node], contentMap), [node], node.id, contentMap);
     const blob = new Blob([fullHtml], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `${node.name}.html`; a.click();
@@ -151,9 +151,8 @@ export function OutlineTree({ nodes, selectedId, docName, contentMap, onSelect, 
   return (
     <>
       <div
-        className="scroll-auto-hide absolute content-stretch flex flex-col gap-[4px] items-start left-[20px] top-[210px] w-[276px]"
+        className="scroll-auto-hide absolute left-[20px] top-[210px] bottom-[40px] w-[276px] min-h-0 overflow-x-hidden overflow-y-auto flex flex-col gap-[4px] items-start"
         ref={scrollRef}
-        style={{ maxHeight: "calc(100% - 250px)", overflowY: "auto" }}
       >
         {filtering && filteredNodes.length === 0 && (
           <div className="px-[8px] py-[24px] self-stretch text-center text-[13px] text-[#8d8e99] select-none">无匹配结果</div>

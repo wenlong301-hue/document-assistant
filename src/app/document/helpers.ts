@@ -9,6 +9,7 @@ import {
   textToHtml,
   textToPlainTextHtml,
 } from "../editor/utils/html";
+import { hasMermaidBlocks, renderMermaidInHtml } from "../editor/utils/mermaid";
 import outlineSvg from "../../imports/首页大纲模式根节点/svg-4qt61e0wiv";
 
 export const WEB_STORAGE_KEY = "doc-assistant-store-v1";
@@ -223,6 +224,24 @@ export const buildPreviewSections = (nodes: OutlineNode[], contentMap?: DocConte
       };
     });
 
+/** 将各 section 内 language-mermaid 代码块预渲染为 SVG，供分享/导出离线展示 */
+export const hydratePreviewSections = async (sections: PreviewSection[]): Promise<PreviewSection[]> => {
+  if (!sections.length) return sections;
+  if (!sections.some((section) => hasMermaidBlocks(section.html))) return sections;
+  return Promise.all(sections.map(async (section) => ({
+    ...section,
+    html: await renderMermaidInHtml(section.html),
+  })));
+};
+
+export const buildPreviewHtmlAsync = async (
+  title: string,
+  sections: PreviewSection[],
+  outlineTree?: OutlineNode[],
+  initialNodeId?: string,
+  contentMap?: DocContentMap,
+) => buildPreviewHtml(title, await hydratePreviewSections(sections), outlineTree, initialNodeId, contentMap);
+
 export const buildPreviewHtml = (title: string, sections: PreviewSection[], outlineTree?: OutlineNode[], initialNodeId?: string, contentMap?: DocContentMap) => {
   const sectionMap = sections.reduce<Record<string, PreviewSection>>((acc, section) => {
     acc[section.id] = section;
@@ -293,6 +312,8 @@ body::-webkit-scrollbar{width:6px}body::-webkit-scrollbar-thumb{background:#d0d1
 .content blockquote{border-left:3px solid #134CFF;background:#f7f8fa;margin:10px 0;padding:10px 16px;color:#606266;border-radius:0 12px 12px 0}.content blockquote p{margin:0 0 4px;line-height:1.65}.content blockquote p:last-child{margin-bottom:0}
 .content pre{background:#f5f6f8;border:1px solid #ebecf0;border-radius:12px;padding:20px 24px;overflow-x:auto;font-size:13px;line-height:1.7;position:relative;margin:16px 0}
 .content pre code{font-family:'SF Mono',Menlo,Monaco,Consolas,monospace;font-size:13px;line-height:1.7}
+.content .mermaid-diagram{margin:20px 0;padding:16px;background:#fff;border:1px solid #ebecf0;border-radius:12px;overflow-x:auto;text-align:center}
+.content .mermaid-diagram svg{max-width:100%;height:auto;display:block;margin:0 auto}
 .content hr{border:none;border-top:1px solid #ebecf0;margin:24px 0}
 .copy-btn{position:absolute;top:8px;right:8px;z-index:2;height:26px;padding:0 10px;border:none;border-radius:6px;background:rgba(255,255,255,.85);backdrop-filter:blur(4px);color:#707277;font-size:12px;cursor:pointer;display:none;align-items:center;font-family:inherit;transition:color .15s}.content pre:hover .copy-btn{display:flex}.copy-btn:hover{color:#131212;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .sidebar-right{overflow-y:auto;padding:48px 0 0;position:sticky;top:28px;align-self:start;max-height:calc(100vh - 56px);scrollbar-width:none}

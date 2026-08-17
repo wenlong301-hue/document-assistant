@@ -373,6 +373,9 @@ export const TyporaKeymap = Extension.create({
         if (/^[-*+]$/.test(textBefore)) {
           return clearTrigger().toggleBulletList().run();
         }
+        if (textBefore === "```mermaid") {
+          return clearTrigger().toggleCodeBlock({ language: "mermaid" }).run();
+        }
         if (textBefore === "```") {
           return clearTrigger().toggleCodeBlock().run();
         }

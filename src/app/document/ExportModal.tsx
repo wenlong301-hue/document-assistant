@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import type { DocContentMap, OutlineNode } from "./types";
 import {
-  buildPreviewHtml,
+  buildPreviewHtmlAsync,
   buildPreviewSections,
   findNode,
   pdfPrintHtmlDocument,
@@ -98,7 +98,7 @@ export function ExportModal({ docName, content, contentMap, outlineNodes, select
       const payload = { title: displayExportTitle, content: exportContent, defaultName: safeName, options: { skipTitle } };
 
       if (format === "HTML") {
-        const fullHtml = buildPreviewHtml(displayExportTitle, exportSections, exportOutlineTree, initialNodeId, contentMap);
+        const fullHtml = await buildPreviewHtmlAsync(displayExportTitle, exportSections, exportOutlineTree, initialNodeId, contentMap);
         if (isElectron) {
           const result = await (window as any).electronAPI.exportHtml(fullHtml, `${safeName}.html`);
           notify(result === false ? "已取消导出" : "导出成功", result === false ? "info" : "success");

@@ -2,9 +2,9 @@ import { assetUrl } from "@/app/shared/utils/assetUrl";
 
 export function SidebarShareStatus({ shared, onClick }: { shared: boolean; onClick: () => void }) {
   return (
-    <div className="absolute bottom-0 left-0 w-[276px]">
-      <div className="h-[0.6px] mx-[20px] bg-[#EBECF0]" />
-      <div className="flex items-center">
+    <div className="absolute bottom-0 left-0 z-[2] h-[40px] w-[276px] bg-[#f7f8fa]">
+      <div className="h-px mx-[20px] bg-[#EBECF0]" />
+      <div className="flex items-center h-[39px] px-[20px]">
         <div
           className="flex items-center gap-[8px] px-[6px] py-[8px] cursor-pointer group flex-1"
           onClick={onClick}

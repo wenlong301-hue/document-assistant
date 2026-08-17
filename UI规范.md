@@ -142,6 +142,8 @@ style={{ fontFamily: "PingFang SC, sans-serif" }}
 | 模式头 top | 122px | |
 | 文件树 top | 158px | |
 | 大纲列表 top | 210px | |
+| 侧栏树 bottom | **40px** | 与底部分享条对齐；`top`+`bottom` 定高，禁止用不可靠的 `maxHeight: calc(100% - N)` |
+| 分享条高度 | **40px** | `SidebarShareStatus` 贴底；`z-[2]` + 页底色遮挡，防止树内容透出分割线 |
 | 编辑器 inset | left=`sidebar+32`，right=8，top=66，bottom=8 | 圆角 12px 白底 |
 | 编辑器标题条 | 高 60，px 24 | |
 | 编辑器工具栏 | 高 62 | |

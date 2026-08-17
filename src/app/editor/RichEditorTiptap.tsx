@@ -546,6 +546,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         if (textBefore === ">") return clearTrigger().toggleBlockquote().run();
         if (/^\d+\.$/.test(textBefore)) return clearTrigger().toggleOrderedList().run();
         if (/^[-*+]$/.test(textBefore)) return clearTrigger().toggleBulletList().run();
+        if (textBefore === "```mermaid") return clearTrigger().toggleCodeBlock({ language: "mermaid" }).run();
         if (textBefore === "```") return clearTrigger().toggleCodeBlock().run();
         return false;
       },
@@ -1269,6 +1270,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     { label: "任务列表", icon: <InlineIconSvg path={editorSvg.p30909380} />, action: () => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleTaskList().run()) },
     { label: "引用块", icon: <InlineIconSvg path={[editorSvg.p339d6600, editorSvg.p3a810c00, editorSvg.p27c3d000, editorSvg.p2e7ee0c0]} isFill />, action: () => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleBlockquote().run()) },
     { label: "代码块", icon: <InlineIconSvg path={editorSvg.p36d5aa00} />, action: () => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleCodeBlock().run()) },
+    { label: "Mermaid", icon: <InlineIconSvg path={editorSvg.p36d5aa00} />, action: () => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleCodeBlock({ language: "mermaid" }).run()) },
     { label: "链接", icon: <InlineIconSvg path={editorSvg.pda5c3c0} />, action: () => openLinkDialog() },
     { label: "图片", icon: <InlineIconSvg path={editorSvg.p2a7b5cf0} isFill fill="#131212" />, action: openImagePicker, kind: "file" as const },
     { label: "视频", icon: <InlineIconSvg path={editorSvg.p1a4aa900} />, action: openVideoPicker, kind: "file" as const },

@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { OutlineNode } from "../document/types";
 import { ErrorBoundary } from "../editor/ui/ErrorBoundary";
 import { RichEditorTiptap } from "../editor/RichEditorTiptap";
+import { renderMermaidInElement } from "../editor/utils/mermaid";
 import { IllustrationSvg, OutlineIllustration } from "./illustrations";
 
 export function EditorWorkspace({ docName, mode, selectedNode, nodeDepth, nodeContent, previewHtml, onTitleChange, onContentChange, fontSize, lineHeight, theme, sidebarWidth }: {
@@ -12,7 +13,21 @@ export function EditorWorkspace({ docName, mode, selectedNode, nodeDepth, nodeCo
   const isOutlineEmpty = mode === "outline" && !selectedNode;
   const titleName = mode === "outline" && selectedNode ? selectedNode.name : (docName || "文档助手");
   const [titleDraft, setTitleDraft] = useState(titleName);
+  const previewBodyRef = useRef<HTMLDivElement>(null);
   useEffect(() => { setTitleDraft(titleName); }, [titleName]);
+  useEffect(() => {
+    if (mode !== "document" || !previewHtml) return;
+    const el = previewBodyRef.current;
+    if (!el) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (!cancelled) void renderMermaidInElement(el);
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [mode, previewHtml]);
   const commitTitle = (value = titleDraft) => {
     const next = value.trim();
     if (next && next !== titleName) onTitleChange?.(next);
@@ -65,10 +80,14 @@ export function EditorWorkspace({ docName, mode, selectedNode, nodeDepth, nodeCo
             .prose-preview table td p,.prose-preview table th p{line-height:1.6;margin:0;min-height:20px}
             .prose-preview blockquote{border-left:3px solid #134CFF;background:#f7f8fa;margin:10px 0;padding:10px 16px;color:#606266;border-radius:0 12px 12px 0}
             .prose-preview pre{background:#f5f6f8;border:1px solid #ebecf0;border-radius:8px;padding:12px 14px;margin:12px 0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;line-height:1.65;white-space:pre-wrap}
+            .prose-preview .mermaid-diagram{margin:16px 0;padding:12px;background:#fff;border:1px solid #ebecf0;border-radius:8px;overflow-x:auto;text-align:center}
+            .prose-preview .mermaid-diagram svg{max-width:100%;height:auto;display:block;margin:0 auto}
+            .prose-preview .mermaid-error{border-color:#FF4D4F}
+            .prose-preview .mermaid-error-msg{color:#E53E3E;font-size:12px;margin:8px 0 0}
             .prose-preview hr{border:none;border-top:1px solid #ebecf0;margin:24px 0}
             .prose-preview a{color:#134CFF;text-decoration:underline;text-underline-offset:2px}
           `}</style>
-          <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+          <div ref={previewBodyRef} dangerouslySetInnerHTML={{ __html: previewHtml }} />
         </div>
       ) : (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-[16px]" style={{ top: titleAreaHeight }}>

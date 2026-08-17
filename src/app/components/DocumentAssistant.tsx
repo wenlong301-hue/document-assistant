@@ -6,7 +6,7 @@ import {
   buildDeleteMessage,
   buildEmptyOutlineTree,
   buildOutlineTree,
-  buildPreviewHtml,
+  buildPreviewHtmlAsync,
   buildPreviewSections,
   countDescendants,
   createStoredDoc,
@@ -207,7 +207,7 @@ export default function DocumentAssistant() {
         const fallback = [{ id: "root", name: displayName, html: contentHtml }];
         payload = {
           ext: info.ext,
-          content: buildPreviewHtml(displayName, sections.length > 0 ? sections : fallback, doc.children || [], sections[0]?.id, doc.content || {}),
+          content: await buildPreviewHtmlAsync(displayName, sections.length > 0 ? sections : fallback, doc.children || [], sections[0]?.id, doc.content || {}),
           sourceDirty: true,
         };
         expectedMode = "converted";
@@ -218,7 +218,7 @@ export default function DocumentAssistant() {
       const fallback = [{ id: "root", name: displayName, html: contentHtml }];
       payload = {
         ext: "html",
-        content: buildPreviewHtml(displayName, sections.length > 0 ? sections : fallback, doc.children || [], sections[0]?.id, doc.content || {}),
+        content: await buildPreviewHtmlAsync(displayName, sections.length > 0 ? sections : fallback, doc.children || [], sections[0]?.id, doc.content || {}),
         sourceDirty: true,
       };
       expectedMode = "converted";
@@ -649,7 +649,7 @@ export default function DocumentAssistant() {
 
   useEffect(() => () => revokeWebShareUrl(), [revokeWebShareUrl]);
 
-  const buildCurrentShareHtml = useCallback(() => {
+  const buildCurrentShareHtml = useCallback(async () => {
     if (!selectedDoc) throw new Error("请先新建或选择文档");
     const doc = docStore[selectedDoc] ?? createStoredDoc(selectedDoc, getOutlineTree(selectedDoc));
     const displayName = getDisplayFileName(doc.name || selectedDoc);
@@ -658,7 +658,7 @@ export default function DocumentAssistant() {
     const bodyHtml = sections.length > 0
       ? sections.map((section) => section.html).join('\n<hr style="border:none;border-top:1px solid #ebecf0;margin:24px 0"/>\n')
       : `<h1>${escapeHtml(displayName)}</h1>${emptyParagraph}`;
-    return buildPreviewHtml(
+    return buildPreviewHtmlAsync(
       displayName,
       sections.length > 0 ? sections : [{ id: "root", name: displayName, html: bodyHtml }],
       tree,
@@ -667,9 +667,9 @@ export default function DocumentAssistant() {
     );
   }, [selectedDoc, selectedNodeId, docStore, outlineTrees]);
 
-  const createWebShare = useCallback(() => {
+  const createWebShare = useCallback(async () => {
     revokeWebShareUrl();
-    const html = buildCurrentShareHtml();
+    const html = await buildCurrentShareHtml();
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     webShareUrlRef.current = url;
@@ -688,7 +688,7 @@ export default function DocumentAssistant() {
           setShared(false);
           setToast({ message: "分享已关闭", type: "info" });
         } else {
-          createWebShare();
+          await createWebShare();
           setShared(true);
           setToast({ message: "分享页已生成", type: "success" });
         }
@@ -705,7 +705,7 @@ export default function DocumentAssistant() {
           setToast({ message: "请先选择文档", type: "error" });
           return;
         }
-        const html = buildCurrentShareHtml();
+        const html = await buildCurrentShareHtml();
         const url = await (window as any).electronAPI.startShare(6535, selectedDoc, html);
         setShareUrl(url);
         setShared(true);
@@ -725,9 +725,9 @@ export default function DocumentAssistant() {
     }
   };
 
-  const handleDownloadShareHtml = () => {
+  const handleDownloadShareHtml = async () => {
     try {
-      const html = webShareHtmlRef.current || buildCurrentShareHtml();
+      const html = webShareHtmlRef.current || await buildCurrentShareHtml();
       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -1212,7 +1212,7 @@ export default function DocumentAssistant() {
       ? parts.map((part) => `<h1>${escapeHtml(part.name)}</h1>${part.html}`).join('\n<hr style="border:none;border-top:1px solid #ebecf0;margin:24px 0"/>\n')
       : `<h1>${escapeHtml(exportBase)}</h1>${emptyParagraph}`;
     const sections = buildPreviewSections(doc.children, doc.content);
-    const fullHtml = buildPreviewHtml(exportBase, sections.length > 0 ? sections : [{ id: "root", name: exportBase, html: bodyHtml }], doc.children, sections[0]?.id, doc.content);
+    const fullHtml = await buildPreviewHtmlAsync(exportBase, sections.length > 0 ? sections : [{ id: "root", name: exportBase, html: bodyHtml }], doc.children, sections[0]?.id, doc.content);
     if (isElectron) {
       await (window as any).electronAPI.exportHtml(fullHtml, `${exportBase}.html`);
       return;
@@ -1613,7 +1613,7 @@ export default function DocumentAssistant() {
         .map((name) => ({ key: name, label: name }));
 
   return (
-    <div className="bg-[#f7f8fa] relative size-full" data-name="首页-文档模式">
+    <div className="bg-[#f7f8fa] relative size-full overflow-hidden" data-name="首页-文档模式">
       {level === "projects" ? (
         <>
           <ProjectListView

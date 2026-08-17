@@ -18,9 +18,8 @@ export function DocList({ items, selected, onSelect, onRename, onDelete, onExpor
   useAutoHideScrollbar(scrollRef);
   return (
     <>
-      <div className="scroll-auto-hide absolute content-stretch flex flex-col gap-[4px] items-start left-[20px] top-[210px] w-[276px]"
-        ref={scrollRef}
-        style={{ maxHeight: "calc(100% - 250px)", overflowY: "auto" }}>
+      <div className="scroll-auto-hide absolute left-[20px] top-[210px] bottom-[40px] w-[276px] min-h-0 overflow-x-hidden overflow-y-auto flex flex-col gap-[4px] items-start"
+        ref={scrollRef}>
         {items.length === 0 && emptyHint && (
           <div className="px-[8px] py-[24px] self-stretch text-center text-[13px] text-[#8d8e99] select-none">{emptyHint}</div>
         )}

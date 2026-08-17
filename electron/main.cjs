@@ -1618,20 +1618,27 @@ ipcMain.handle('create-project', async (_e, name) => {
 });
 
 ipcMain.handle('import-folder', async (_e, kind) => {
-  const properties = kind === 'file'
+  // macOS: filters + openDirectory 一起用会导致无法选文件夹，仅选文件时才加 filters
+  const isFileOnly = kind === 'file';
+  const isFolderOnly = kind === 'folder';
+  const properties = isFileOnly
     ? ['openFile']
-    : kind === 'folder'
+    : isFolderOnly
       ? ['openDirectory', 'createDirectory']
       : ['openFile', 'openDirectory', 'createDirectory'];
-  const result = await dialog.showOpenDialog(mainWindow, {
-    title: '选择要导入的项目文件或文件夹',
+  /** @type {Electron.OpenDialogOptions} */
+  const options = {
+    title: isFolderOnly ? '选择要导入的文件夹' : isFileOnly ? '选择要导入的文件' : '选择要导入的项目文件或文件夹',
     buttonLabel: '导入',
     properties,
-    filters: [
+  };
+  if (isFileOnly) {
+    options.filters = [
       { name: '支持的文档', extensions: ['mdoc', 'md', 'txt', 'docx', 'html', 'htm'] },
       { name: '所有文件', extensions: ['*'] },
-    ],
-  });
+    ];
+  }
+  const result = await dialog.showOpenDialog(mainWindow, options);
   if (result.canceled || !result.filePaths?.[0]) return { canceled: true };
   const selectedPath = result.filePaths[0];
   const stat = fs.statSync(selectedPath);
