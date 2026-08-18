@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { getElectronAPI } from "@/app/shared/electron";
 
 type HelpSection = {
   id: string;
@@ -27,7 +28,7 @@ const SECTIONS: HelpSection[] = [
         <li>进入 <strong>大纲树</strong> 模式，默认带有同名根节点。</li>
         <li>用 <strong>新建层级 / 添加子文档</strong> 搭好章节结构。</li>
         <li>选中节点后在右侧编辑器写作（工具栏、斜杠命令 <code>/</code>、Markdown 快捷输入）。</li>
-        <li>内容会自动保存；可用顶栏 <strong>保存 / 分享 / 导出</strong>。</li>
+        <li>可在底栏开启自动保存（每 30 秒）；未开启时需手动保存。顶栏提供 <strong>保存 / 分享 / 导出</strong>。</li>
       </ol>
     ),
   },
@@ -39,7 +40,7 @@ const SECTIONS: HelpSection[] = [
         <li><strong>顶栏</strong>：保存、另存为、分享、更多（导入 / 导出 / 删除 / 帮助）</li>
         <li><strong>左侧</strong>：搜索、文件树/大纲树切换、文件树或大纲树、分享状态</li>
         <li><strong>右侧</strong>：标题 + 富文本编辑器（大纲树模式）</li>
-        <li><strong>底栏</strong>：保存状态、字数统计、页内大纲</li>
+        <li><strong>底栏</strong>：自动保存开关、字数统计、页内大纲</li>
       </ul>
     ),
   },
@@ -165,7 +166,7 @@ export function HelpModal({
   const [activeId, setActiveId] = useState(SECTIONS[0].id);
 
   useEffect(() => {
-    const api = (window as any).electronAPI;
+    const api = getElectronAPI();
     if (api?.getVersion) {
       api.getVersion().then((v: string) => v && setVersion(v)).catch(() => {});
     }

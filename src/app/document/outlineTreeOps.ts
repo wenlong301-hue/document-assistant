@@ -42,12 +42,27 @@ export function insertNodeAfter(nodes: OutlineNode[], node: OutlineNode, targetI
   return insert(nodes)[0];
 }
 
-export function filterOutlineNodes(nodes: OutlineNode[], query: string): OutlineNode[] {
+export function filterOutlineNodes(
+  nodes: OutlineNode[],
+  query: string,
+  contentMap?: Record<string, string>,
+  plainTextFromHtml?: (html: string) => string,
+): OutlineNode[] {
   const q = query.toLowerCase();
+  const contentHit = (id: string) => {
+    if (!contentMap || !plainTextFromHtml) return false;
+    const html = contentMap[id];
+    if (!html) return false;
+    try {
+      return plainTextFromHtml(html).toLowerCase().includes(q);
+    } catch {
+      return String(html).toLowerCase().includes(q);
+    }
+  };
   const walk = (arr: OutlineNode[]): OutlineNode[] => {
     const out: OutlineNode[] = [];
     for (const n of arr) {
-      const self = n.name.toLowerCase().includes(q);
+      const self = n.name.toLowerCase().includes(q) || contentHit(n.id);
       const children = walk(n.children);
       if (self || children.length > 0) out.push({ ...n, children });
     }

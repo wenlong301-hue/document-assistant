@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { getElectronAPI } from "@/app/shared/electron";
 
 export function AddProjectModal({
   open,
@@ -48,7 +49,7 @@ export function AddProjectModal({
 
   const handleSelectLocation = async () => {
     if (!isElectron) return;
-    const api = (window as any).electronAPI;
+    const api = getElectronAPI();
     if (api?.selectFolder) {
       try {
         const result = await api.selectFolder();
@@ -97,7 +98,7 @@ export function AddProjectModal({
 
     const files = Array.from(e.dataTransfer.files || []);
     if (files.length > 0) {
-      const api = (window as any).electronAPI;
+      const api = getElectronAPI();
       const path = api?.getPathForFile?.(files[0]) || (files[0] as File & { path?: string }).path;
       if (path) {
         onImportFolderDrop(path);

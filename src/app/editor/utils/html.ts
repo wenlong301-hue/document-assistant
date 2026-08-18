@@ -95,8 +95,14 @@ export const mergeHtmlAttrs = (...attrsList: Record<string, any>[]) => attrsList
 export const getPlainTextFromHtml = (html: string, options: { preserveWhitespace?: boolean } = {}) => {
   const doc = new DOMParser().parseFromString(html || "", "text/html");
   if (options.preserveWhitespace) {
+    // txt 导入结构是 <pre><code>…</code></pre>：原样取文本，保留空格/空行/行尾空白
     const preBlocks = Array.from(doc.body.querySelectorAll("pre"));
-    if (preBlocks.length > 0) return preBlocks.map((node) => node.textContent || "").join("\n\n");
+    if (preBlocks.length > 0) {
+      return preBlocks.map((node) => {
+        const code = node.querySelector("code");
+        return (code?.textContent ?? node.textContent ?? "").replace(/\u00a0/g, " ");
+      }).join("\n\n");
+    }
   }
   doc.body.querySelectorAll("br").forEach((node) => node.replaceWith("\n"));
   doc.body.querySelectorAll("p,div,h1,h2,h3,h4,h5,h6,li,blockquote,pre,tr").forEach((node) => {

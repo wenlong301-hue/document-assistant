@@ -5,10 +5,24 @@ const http = require('http');
 const os = require('os');
 const { spawn, execFile } = require('child_process');
 const { promisify } = require('util');
-const htmlToDocx = require('html-to-docx');
-const TurndownService = require('turndown');
 const { autoUpdater } = require('electron-updater');
-const JSZip = require('jszip');
+
+/** 导出/写回重库懒加载，避免主进程冷启动就加载 html-to-docx / turndown / jszip */
+let htmlToDocxMod = null;
+let TurndownServiceMod = null;
+let JSZipMod = null;
+function getHtmlToDocx() {
+  if (!htmlToDocxMod) htmlToDocxMod = require('html-to-docx');
+  return htmlToDocxMod;
+}
+function getTurndownService() {
+  if (!TurndownServiceMod) TurndownServiceMod = require('turndown');
+  return TurndownServiceMod;
+}
+function getJSZip() {
+  if (!JSZipMod) JSZipMod = require('jszip');
+  return JSZipMod;
+}
 
 const execFileAsync = promisify(execFile);
 
@@ -178,7 +192,9 @@ function readAppSettings() {
 
 function writeAppSettings(settings) {
   ensureDir(DOCS_DIR);
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf-8');
+  const prev = readAppSettings();
+  const next = { ...prev, ...(settings || {}) };
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(next, null, 2), 'utf-8');
   return true;
 }
 
@@ -313,6 +329,16 @@ function escapeXmlText(value) {
     .replace(/>/g, '&gt;');
 }
 
+function decodeXmlText(value) {
+  return String(value || '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+/** 通用纯文本（导出等场景可折叠空白） */
 function htmlToPlainText(html) {
   return String(html || '')
     .replace(/<br\s*\/?>/gi, '\n')
@@ -327,50 +353,99 @@ function htmlToPlainText(html) {
     .trim();
 }
 
-function splitEditableText(text) {
-  return String(text || '')
+/**
+ * DOCX 兼容写回：HTML → 段落行（保留空段、行首/行尾空格、不间断空格）
+ * 不 trim、不丢弃空行，避免 WPS/Word 打开后空白被吃掉。
+ */
+function htmlToDocxEditableLines(html) {
+  const text = String(html || '')
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|h[1-6]|li|blockquote|pre|tr|td|th)>/gi, '\n')
+    .replace(/<(?:p|div|h[1-6]|li|blockquote|pre)(?:\s[^>]*)?>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, '\u00a0')
+    .replace(/&#160;/gi, '\u00a0')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/gi, "'");
+
+  // 去掉因首尾块标签产生的单一外壳空行，中间空行全部保留
+  const lines = text.split('\n');
+  while (lines.length > 0 && lines[0] === '') lines.shift();
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  return lines;
 }
 
-async function patchDocxText(sourceBase64, editedHtml) {
-  const zip = await JSZip.loadAsync(Buffer.from(String(sourceBase64 || ''), 'base64'));
-  const documentFile = zip.file('word/document.xml');
-  if (!documentFile) throw new Error('docx 缺少 word/document.xml');
-  const xml = await documentFile.async('string');
-  const nextLines = splitEditableText(htmlToPlainText(editedHtml));
-  if (nextLines.length === 0) throw new Error('编辑内容为空，无法 patch docx');
+function paragraphXmlText(paragraphXml) {
+  const textMatches = [...String(paragraphXml || '').matchAll(/<w:t(\s[^>]*)?>([\s\S]*?)<\/w:t>/g)];
+  const text = textMatches.map((match) => decodeXmlText(match[2] || '')).join('');
+  return { textMatches, text };
+}
 
-  const paragraphs = [...xml.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)].map((match) => ({ start: match.index || 0, end: (match.index || 0) + match[0].length, xml: match[0] }));
-  const textParagraphs = paragraphs
-    .map((paragraph) => {
-      const textMatches = [...paragraph.xml.matchAll(/<w:t(\s[^>]*)?>[\s\S]*?<\/w:t>/g)];
-      const text = textMatches.map((match) => match[0].replace(/^<w:t(?:\s[^>]*)?>|<\/w:t>$/g, '')).join('').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-      return { ...paragraph, textMatches, text: text.trim() };
-    })
-    .filter((paragraph) => paragraph.textMatches.length > 0 && paragraph.text);
+function needsXmlSpacePreserve(text) {
+  const value = String(text || '');
+  return value.length > 0 && (/^\s|\s$/.test(value) || /  |\t|\u00a0/.test(value));
+}
 
-  if (textParagraphs.length !== nextLines.length) {
-    throw new Error('段落数量变化，跳过原包 patch');
+function withXmlSpacePreserve(attrs, text) {
+  let next = String(attrs || '');
+  if (!needsXmlSpacePreserve(text)) return next;
+  if (/xml:space\s*=/.test(next)) {
+    return next.replace(/xml:space\s*=\s*"[^"]*"/, 'xml:space="preserve"');
+  }
+  return `${next} xml:space="preserve"`;
+}
+
+function normalizeComparableText(value) {
+  return String(value || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[\t\r\n]+/g, ' ')
+    .replace(/ +/g, ' ')
+    .trim();
+}
+
+/**
+ * 写回段落文本。
+ * - 内容完全一致：不改 XML
+ * - 仅空白被 HTML 折叠（编辑器无额外空格意图）：保留原 OOXML，避免冲掉 WPS 空格
+ * - 用户改了文案或显式带了首尾/连续空格：写入并 xml:space="preserve"
+ */
+function replaceParagraphTextXml(paragraphXml, replacementText) {
+  const { textMatches, text: originalText } = paragraphXmlText(paragraphXml);
+  const value = String(replacementText ?? '');
+
+  if (originalText === value) return paragraphXml;
+
+  const sameMeaning = normalizeComparableText(originalText) === normalizeComparableText(value);
+  const editorWantsExactSpaces = needsXmlSpacePreserve(value) && value !== normalizeComparableText(value);
+  if (sameMeaning && !editorWantsExactSpaces) {
+    return paragraphXml;
   }
 
-  const replacements = new Map();
-  textParagraphs.forEach((paragraph, index) => {
-    const replacementText = nextLines[index];
-    let replacedFirst = false;
-    const nextParagraphXml = paragraph.xml.replace(/<w:t(\s[^>]*)?>[\s\S]*?<\/w:t>/g, (full, attrs = '') => {
-      if (replacedFirst) return full.replace(/>[^<]*</, '><');
-      replacedFirst = true;
-      const preserveSpace = /^\s|\s$/.test(replacementText) ? ' xml:space="preserve"' : '';
-      const nextAttrs = String(attrs || '').includes('xml:space=') ? attrs : `${attrs || ''}${preserveSpace}`;
-      return `<w:t${nextAttrs}>${escapeXmlText(replacementText)}</w:t>`;
-    });
-    replacements.set(paragraph.start, { end: paragraph.end, xml: nextParagraphXml });
-  });
+  // 原本无 <w:t> 的空段：空内容则原样保留结构；有内容则注入 run
+  if (textMatches.length === 0) {
+    if (!value) return paragraphXml;
+    const run = `<w:r><w:t${withXmlSpacePreserve('', value)}>${escapeXmlText(value)}</w:t></w:r>`;
+    if (/<\/w:p>/.test(paragraphXml)) {
+      return paragraphXml.replace(/<\/w:p>/, `${run}</w:p>`);
+    }
+    return paragraphXml;
+  }
 
+  let replacedFirst = false;
+  return paragraphXml.replace(/<w:t(\s[^>]*)?>([\s\S]*?)<\/w:t>/g, (full, attrs = '') => {
+    if (replacedFirst) return full.replace(/>[^<]*</, '><');
+    replacedFirst = true;
+    const nextAttrs = withXmlSpacePreserve(attrs, value);
+    return `<w:t${nextAttrs}>${escapeXmlText(value)}</w:t>`;
+  });
+}
+
+function applyParagraphReplacements(xml, paragraphs, replacements) {
   let patched = '';
   let cursor = 0;
   paragraphs.forEach((paragraph) => {
@@ -380,6 +455,101 @@ async function patchDocxText(sourceBase64, editedHtml) {
     cursor = replacement.end;
   });
   patched += xml.slice(cursor);
+  return patched;
+}
+
+function buildDocxParagraphXml(text, templateXml) {
+  const value = String(text ?? '');
+  if (templateXml && /<w:p\b/.test(templateXml)) {
+    return replaceParagraphTextXml(templateXml, value);
+  }
+  const spaceAttr = needsXmlSpacePreserve(value) ? ' xml:space="preserve"' : '';
+  return `<w:p><w:r><w:t${spaceAttr}>${escapeXmlText(value)}</w:t></w:r></w:p>`;
+}
+
+/**
+ * 尽量在原 OOXML 包上只改正文文本，保留样式/页边距/主题/页眉页脚等。
+ * - 可编辑段落含：有文本的段落 + 空白/空段落（WPS 常依赖空段撑版式）
+ * - 行首尾空格与连续空格通过 xml:space="preserve" 写回
+ * - 新增段落：在最后一个可编辑段后插入新 <w:p>
+ * - 删除段落：清空多余可编辑段文本（保留原段落节点，降低版式破坏）
+ * - 无法安全对齐时抛错，由上层 fallback 到 html-to-docx 重建
+ */
+async function patchDocxText(sourceBase64, editedHtml) {
+  const JSZip = getJSZip();
+  const zip = await JSZip.loadAsync(Buffer.from(String(sourceBase64 || ''), 'base64'));
+  const documentFile = zip.file('word/document.xml');
+  if (!documentFile) throw new Error('docx 缺少 word/document.xml');
+  const xml = await documentFile.async('string');
+  const nextLines = htmlToDocxEditableLines(editedHtml);
+  if (nextLines.length === 0) throw new Error('编辑内容为空，无法 patch docx');
+
+  const paragraphs = [...xml.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)].map((match) => ({
+    start: match.index || 0,
+    end: (match.index || 0) + match[0].length,
+    xml: match[0],
+  }));
+
+  // 可编辑段：有文本，或非绘图/域的空段（用于保留 WPS 空行版式）
+  const editableParagraphs = paragraphs
+    .map((paragraph) => {
+      const { textMatches, text } = paragraphXmlText(paragraph.xml);
+      const hasDrawing = /<w:drawing\b|<w:pict\b|<w:object\b/.test(paragraph.xml);
+      const isEditable = textMatches.length > 0 || (!hasDrawing && !/<w:instrText\b/.test(paragraph.xml));
+      return { ...paragraph, textMatches, text, isEditable };
+    })
+    .filter((paragraph) => paragraph.isEditable);
+
+  if (editableParagraphs.length === 0) {
+    throw new Error('原文档无可编辑段落，跳过原包 patch');
+  }
+
+  let targetParagraphs = editableParagraphs;
+  let targetLines = nextLines;
+  let extraLines = [];
+
+  if (targetParagraphs.length !== targetLines.length) {
+    // 回退：仅非空文本段 ↔ 非空编辑行（兼容结构略有差异但仍可保真文本）
+    const nonEmptyTargets = editableParagraphs.filter((p) => p.textMatches.length > 0 && p.text.length > 0);
+    const nonEmptyLines = nextLines.filter((line) => line.length > 0);
+    if (nonEmptyTargets.length === nonEmptyLines.length) {
+      targetParagraphs = nonEmptyTargets;
+      targetLines = nonEmptyLines;
+    } else if (nextLines.length > editableParagraphs.length) {
+      // 用户新增段落：先按原段数写回，多余行追加新段落
+      targetParagraphs = editableParagraphs;
+      targetLines = nextLines.slice(0, editableParagraphs.length);
+      extraLines = nextLines.slice(editableParagraphs.length);
+    } else if (nextLines.length < editableParagraphs.length) {
+      // 用户删除段落：写回前 N 段，清空多余可编辑段（保留节点）
+      targetParagraphs = editableParagraphs;
+      targetLines = nextLines.concat(Array(editableParagraphs.length - nextLines.length).fill(''));
+    } else {
+      throw new Error(`段落数量变化（原 ${editableParagraphs.length} / 编辑 ${nextLines.length}），跳过原包 patch`);
+    }
+  }
+
+  const replacements = new Map();
+  targetParagraphs.forEach((paragraph, index) => {
+    replacements.set(paragraph.start, {
+      end: paragraph.end,
+      xml: replaceParagraphTextXml(paragraph.xml, targetLines[index]),
+    });
+  });
+
+  // 在最后一个被替换的可编辑段后插入新增段落
+  if (extraLines.length > 0) {
+    const anchor = targetParagraphs[targetParagraphs.length - 1];
+    const templateXml = anchor?.xml || '';
+    const inserted = extraLines.map((line) => buildDocxParagraphXml(line, templateXml)).join('');
+    const current = replacements.get(anchor.start);
+    replacements.set(anchor.start, {
+      end: current ? current.end : anchor.end,
+      xml: `${current ? current.xml : anchor.xml}${inserted}`,
+    });
+  }
+
+  const patched = applyParagraphReplacements(xml, paragraphs, replacements);
   zip.file('word/document.xml', patched);
   return zip.generateAsync({ type: 'nodebuffer' });
 }
@@ -408,6 +578,7 @@ function createMarkdownImageWriter(mdPath) {
 }
 
 function contentHtmlToMarkdown(content, imageWriter) {
+  const TurndownService = getTurndownService();
   const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
   turndown.keep(['table', 'thead', 'tbody', 'tr', 'th', 'td', 'video']);
   turndown.addRule('safeImage', {
@@ -420,6 +591,28 @@ function contentHtmlToMarkdown(content, imageWriter) {
         return relative ? `\n\n![${alt}](${relative})\n\n` : `\n\n![${alt}](${src})\n\n`;
       }
       return `\n\n![${alt}](${src})\n\n`;
+    },
+  });
+  turndown.addRule('mermaidDiagram', {
+    filter: (node) => node.nodeName === 'DIV' && node.classList && node.classList.contains('mermaid-diagram'),
+    replacement: (_content, node) => {
+      const source = node.getAttribute('data-mermaid-source') || '';
+      if (!String(source).trim()) return '\n\n';
+      return '\n\n```mermaid\n' + String(source).trimEnd() + '\n```\n\n';
+    },
+  });
+  turndown.addRule('mermaidCodeBlock', {
+    filter: (node) => {
+      if (node.nodeName !== 'PRE') return false;
+      const code = node.querySelector && node.querySelector('code');
+      const cls = String(node.className || '') + ' ' + String(code && code.className || '');
+      return /language-mermaid|\bmermaid\b/i.test(cls);
+    },
+    replacement: (_content, node) => {
+      const code = node.querySelector && node.querySelector('code');
+      const source = String((code && code.textContent) || node.textContent || '').trimEnd();
+      if (!source) return '\n\n';
+      return '\n\n```mermaid\n' + source + '\n```\n\n';
     },
   });
   return turndown.turndown(content || '').trim() + '\n';
@@ -471,7 +664,7 @@ function prepareImageTagsForWord(html) {
 function wordHtmlDocument(title, content, options = {}) {
   const clean = prepareImageTagsForWord(cleanExportHtml(content));
   const body = options.skipTitle ? clean : `<h1>${escapeHtml(title || '未命名文档')}</h1>${clean}`;
-  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><style>body{font-family:'PingFang SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;color:#1F2329}.word-page{width:100%}p{margin:0 0 4px}ul,ol{margin:2px 0 4px;padding-left:22px}li{margin:0}img{max-width:560px;width:auto;height:auto;display:block;margin:4px auto}table{border-collapse:collapse;width:100%;margin:4px 0}th,td{border:1px solid #DDE1E6;padding:4px 8px;text-align:left;vertical-align:top;font-size:13px}th{background:#F5F7FA;font-weight:700}blockquote{border-left:3px solid #005EFF;padding:3px 10px;margin:4px 0;background:#F0F5FF;color:#4E5969}pre{background:#F5F7FA;padding:5px 10px;margin:4px 0;white-space:pre-wrap}code{background:#F2F3F5;padding:1px 3px}hr{border:none;border-top:1px solid #DDE1E6;margin:6px 0}</style></head><body><div class="word-page">${headingsToWordParagraphs(body)}</div></body></html>`;
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><style>body{font-family:'PingFang SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;color:#131212}.word-page{width:100%}p{margin:0 0 4px}ul,ol{margin:2px 0 4px;padding-left:22px}li{margin:0}img{max-width:560px;width:auto;height:auto;display:block;margin:4px auto}table{border-collapse:collapse;width:100%;margin:4px 0}th,td{border:1px solid #EEF0F5;padding:4px 8px;text-align:left;vertical-align:top;font-size:13px}th{background:#f7f8fa;font-weight:700}blockquote{border-left:3px solid #134CFF;padding:3px 10px;margin:4px 0;background:#f7f8fa;color:#606266}pre{background:#F5F7FA;padding:5px 10px;margin:4px 0;white-space:pre-wrap}code{background:#F2F3F5;padding:1px 3px}hr{border:none;border-top:1px solid #DDE1E6;margin:6px 0}</style></head><body><div class="word-page">${headingsToWordParagraphs(body)}</div></body></html>`;
 }
 
 function pdfHtmlDocument(title, content, options = {}) {
@@ -710,11 +903,13 @@ async function writeFolderFile(filePath, payload) {
       }
       // 无原包或 patch 失败：html-to-docx 尽力重建（L3 交换级，可能有损）
       const fullHtml = wordHtmlDocument(payload?.title || '未命名文档', payload?.html || '', payload?.options || {});
+      const htmlToDocx = getHtmlToDocx();
       const buffer = await htmlToDocx(fullHtml, null, {
         orientation: 'portrait',
         margins: { top: 720, right: 720, bottom: 720, left: 720 },
       });
       fs.writeFileSync(filePath, buffer);
+      return { ok: true, converted: true };
     } else if (ext === '.mdoc') {
       const data = typeof payload?.content === 'string' ? JSON.parse(payload.content) : payload?.content;
       if (!data || typeof data !== 'object') throw new Error('mdoc 内容无效');
@@ -1013,44 +1208,54 @@ function respondWithActiveShare(res) {
   return true;
 }
 
-function startShareServer(port = 6535, docId = null, html = null) {
+async function startShareServer(port = 6535, docId = null, html = null) {
   if (docId) activeShareDocId = docId;
-  if (html) activeShareHtml = String(html);
-  if (shareServer?.listening) return Promise.resolve(shareServer);
-  shareServer = http.createServer((req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    const url = new URL(req.url, `http://localhost:${port}`);
-    const viewMatch = url.pathname.match(/^\/view\/(.+)$/);
-    if (viewMatch) {
-      respondWithDoc(res, decodeURIComponent(viewMatch[1]));
-      return;
-    }
-    if (url.pathname === '/' || url.pathname === '') {
-      if (respondWithActiveShare(res)) return;
-      if (activeShareDocId) {
-        respondWithDoc(res, activeShareDocId);
+  if (html != null) activeShareHtml = String(html);
+  if (shareServer?.listening) {
+    const bound = shareServer.address()?.port || port;
+    return { server: shareServer, port: bound };
+  }
+  const preferred = Number(port) || 6535;
+  const tryPorts = [preferred];
+  for (let p = preferred + 1; p < preferred + 20; p++) tryPorts.push(p);
+  tryPorts.push(0);
+
+  const createOnce = (listenPort) => new Promise((resolve, reject) => {
+    shareServer = http.createServer((req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      const boundPort = shareServer?.address()?.port || listenPort || preferred;
+      const url = new URL(req.url, `http://localhost:${boundPort}`);
+      const viewMatch = url.pathname.match(/^\/view\/(.+)$/);
+      if (viewMatch) {
+        respondWithDoc(res, decodeURIComponent(viewMatch[1]));
         return;
       }
-      const docs = getAllDocs();
-      if (docs.length === 1) {
-        respondWithDoc(res, docs[0].id);
+      if (url.pathname === '/' || url.pathname === '') {
+        if (respondWithActiveShare(res)) return;
+        if (activeShareDocId) {
+          respondWithDoc(res, activeShareDocId);
+          return;
+        }
+        const docs = getAllDocs();
+        if (docs.length === 1) {
+          respondWithDoc(res, docs[0].id);
+          return;
+        }
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.end(buildSharePage(docs));
         return;
       }
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.end(buildSharePage(docs));
-      return;
-    }
-    res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end('<h1>页面未找到</h1>');
-  });
-  return new Promise((resolve, reject) => {
+      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end('<h1>页面未找到</h1>');
+    });
     const cleanup = () => {
       shareServer?.off('listening', onListening);
       shareServer?.off('error', onError);
     };
     const onListening = () => {
       cleanup();
-      resolve(shareServer);
+      const bound = shareServer.address()?.port || listenPort;
+      resolve({ server: shareServer, port: bound });
     };
     const onError = (error) => {
       cleanup();
@@ -1060,8 +1265,20 @@ function startShareServer(port = 6535, docId = null, html = null) {
     };
     shareServer.once('listening', onListening);
     shareServer.once('error', onError);
-    shareServer.listen(port, '0.0.0.0');
+    shareServer.listen(listenPort, '0.0.0.0');
   });
+
+  let lastError = null;
+  for (const p of tryPorts) {
+    try {
+      return await createOnce(p);
+    } catch (error) {
+      lastError = error;
+      if (error && error.code === 'EADDRINUSE') continue;
+      throw error;
+    }
+  }
+  throw lastError || new Error('EADDRINUSE');
 }
 
 function stopShareServer() {
@@ -1230,10 +1447,14 @@ ipcMain.handle('save-doc', (_e, id, data) => saveDoc(id, data));
 ipcMain.handle('save-doc-to-folder', (_e, id, data, options) => saveDocToFolder(id, data, options || {}));
 ipcMain.handle('delete-doc', (_e, id) => deleteDoc(id));
 ipcMain.handle('start-share', async (_e, port, docId, html) => {
-  const sharePort = port || 6535;
-  await startShareServer(sharePort, docId || null, html || null);
-  // 根路径已按 activeShareDocId 直达当前文档详情，链接保持简洁
-  return `http://${getLocalIP()}:${sharePort}`;
+  const preferred = port || 6535;
+  const { port: boundPort } = await startShareServer(preferred, docId || null, html || null);
+  return { url: `http://${getLocalIP()}:${boundPort}`, port: boundPort };
+});
+ipcMain.handle('update-share-html', (_e, docId, html) => {
+  if (docId) activeShareDocId = docId;
+  if (html != null) activeShareHtml = String(html);
+  return true;
 });
 ipcMain.handle('stop-share', () => { stopShareServer(); });
 ipcMain.handle('get-platform', () => process.platform);
@@ -1327,6 +1548,7 @@ ipcMain.handle('export-docx', async (_e, payloadOrContent, defaultName) => {
   try {
     const { title, content, defaultName: payloadDefaultName, options } = normalizeExportPayload(payloadOrContent, defaultName);
     const fullHtml = wordHtmlDocument(title, content, options);
+    const htmlToDocx = getHtmlToDocx();
     const buffer = await htmlToDocx(fullHtml, null, { orientation: 'portrait', margins: { top: 720, right: 720, bottom: 720, left: 720 } });
     const result = await dialog.showSaveDialog(mainWindow, {
       defaultPath: `${sanitizeFileName(payloadDefaultName || title || 'document').replace(/\.docx$/i, '')}.docx`,

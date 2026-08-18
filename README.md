@@ -197,7 +197,7 @@ npm run electron:win
 | 层级 | 技术 |
 |------|------|
 | 桌面壳 | Electron |
-| 前端 | React 18、Vite 6、Tailwind CSS 4 |
+| 前端 | React 18、Vite 6、UnoCSS |
 | 编辑器 | TipTap 3 |
 | Markdown | marked、turndown |
 | Word 导入 | mammoth |

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import type { DocStore, FolderFileItem, OutlineNode, StoredDoc, Project, FolderTreeNode } from "@/app/document/types";
+import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from "react";
+import type { DocStore, FolderFileItem, OutlineNode, StoredDoc, Project, FolderTreeNode, WebPersistedState } from "@/app/document/types";
 import { ProjectListView } from "@/app/components/project/ProjectListView";
 import { FileTreeView } from "@/app/components/file-tree/FileTreeView";
 import {
@@ -28,38 +28,33 @@ import { emptyParagraph, escapeHtml, getPlainTextFromHtml, normalizeEditorHtml }
 import { Toast } from "@/app/editor/ui/Toast";
 import { EditorWorkspace } from "@/app/document/EditorWorkspace";
 import { DeleteConfirmModal } from "@/app/document/DeleteConfirmModal";
-import { HelpModal } from "@/app/document/HelpModal";
 import { NewDocModal } from "@/app/document/NewDocModal";
-import { UpdateModal, type UpdateInfo, type UpdateProgress } from "@/app/document/UpdateModal";
-import { ShareModal } from "@/app/document/ShareModal";
-import { ExportModal } from "@/app/document/ExportModal";
 import { CloseConfirmModal } from "@/app/document/CloseConfirmModal";
-import { SettingsModal } from "@/app/document/SettingsModal";
 import { TopBar } from "@/app/components/layout/TopBar";
 import { SidebarSearch } from "@/app/components/sidebar/SidebarSearch";
 import { SidebarModeHeader } from "@/app/components/sidebar/SidebarModeHeader";
-import { FolderPathBar } from "@/app/components/sidebar/FolderPathBar";
-import { DocList } from "@/app/components/sidebar/DocList";
 import { SidebarShareStatus } from "@/app/components/sidebar/SidebarShareStatus";
 import { OutlineTree } from "@/app/components/outline/OutlineTree";
-import { assetUrl } from "@/app/shared/utils/assetUrl";
+import type { SidebarItem } from "@/app/components/sidebar/DocList";
+import { getElectronAPI, isElectronRuntime } from "@/app/shared/electron";
+import { formatSavedAt } from "@/app/editor/constants";
+import { useAppUpdate } from "@/app/shared/hooks/useAppUpdate";
+import { mammothStyleMap } from "@/app/document/mammothStyleMap";
+import { turndownService } from "@/app/document/exportTurndown";
 import {
   applyLineEnding,
   arrayBufferToBase64,
   getDisplayFileName,
   getDominantLineEnding,
+  isWhitespaceCollapsedFrom,
   normalizeLineEndings,
 } from "@/app/shared/utils/text";
-const mammothStyleMap = [
-  "p[style-name='Title'] => h1:fresh",
-  "p[style-name='标题'] => h1:fresh",
-  "p[style-name='Heading 1'] => h1:fresh",
-  "p[style-name='标题 1'] => h1:fresh",
-  "p[style-name='Heading 2'] => h2:fresh",
-  "p[style-name='标题 2'] => h2:fresh",
-  "p[style-name='Heading 3'] => h3:fresh",
-  "p[style-name='标题 3'] => h3:fresh",
-].join("\n");
+
+const HelpModal = lazy(() => import("@/app/document/HelpModal").then((m) => ({ default: m.HelpModal })));
+const SettingsModal = lazy(() => import("@/app/document/SettingsModal").then((m) => ({ default: m.SettingsModal })));
+const UpdateModal = lazy(() => import("@/app/document/UpdateModal").then((m) => ({ default: m.UpdateModal })));
+const ShareModal = lazy(() => import("@/app/document/ShareModal").then((m) => ({ default: m.ShareModal })));
+const ExportModal = lazy(() => import("@/app/document/ExportModal").then((m) => ({ default: m.ExportModal })));
 
 export default function DocumentAssistant() {
   const [selectedDoc, setSelectedDoc] = useState("");
@@ -70,24 +65,13 @@ export default function DocumentAssistant() {
   const [shared, setShared] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
-  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-  const [showUpdateModal, setShowUpdateModal] = useState(false);
-  const [updateDownloading, setUpdateDownloading] = useState(false);
-  const [updateDownloaded, setUpdateDownloaded] = useState(false);
-  const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null);
-  const [updateError, setUpdateError] = useState("");
-  const [updateCheckBusy, setUpdateCheckBusy] = useState(false);
-  const manualUpdateCheckRef = useRef(false);
-  const startupUpdateCheckRef = useRef(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [shareBusy, setShareBusy] = useState(false);
   const [shareError, setShareError] = useState("");
   const [showExportModal, setShowExportModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [outlineSearchEnter, setOutlineSearchEnter] = useState(0);
   const [mode, setMode] = useState<"document" | "outline">("document");
-  const fontSize = "15px";
-  const lineHeight = "1.8";
-  const theme = "light";
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
   const [outlineNodes, setOutlineNodes] = useState<OutlineNode[]>([]);
   // 按文档名持久化大纲树，避免切换模式时丢失编辑
@@ -96,7 +80,6 @@ export default function DocumentAssistant() {
   const [docStore, setDocStore] = useState<DocStore>({});
   const [webStoreHydrated, setWebStoreHydrated] = useState(false);
   const saveTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const webPersistTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const webPersistErrorShownRef = useRef(false);
   const anchorNavigationHandledRef = useRef(false);
   const editorContentRef = useRef({ html: "", text: "" });
@@ -104,7 +87,7 @@ export default function DocumentAssistant() {
   const [shareUrl, setShareUrl] = useState("http://localhost:6535");
   const webShareUrlRef = useRef<string | null>(null);
   const webShareHtmlRef = useRef("");
-  const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+  const isElectron = isElectronRuntime();
   const [activeFolder, setActiveFolder] = useState<string | null>(null);
   const [folderFiles, setFolderFiles] = useState<FolderFileItem[]>([]);
   const [folderGone, setFolderGone] = useState(false);
@@ -118,7 +101,12 @@ export default function DocumentAssistant() {
   const [submode, setSubmode] = useState<"files" | "outline">("files");
   const [folderTree, setFolderTree] = useState<FolderTreeNode[]>([]);
   const [selectedFileNode, setSelectedFileNode] = useState<FolderTreeNode | null>(null);
-  const [appSettings, setAppSettings] = useState<{ closeBehavior?: string }>({});
+  const [appSettings, setAppSettings] = useState<{ closeBehavior?: string; fontSize?: string; lineHeight?: string; theme?: string; autoSaveEnabled?: boolean }>({});
+  const fontSize = appSettings.fontSize || "15px";
+  const lineHeight = appSettings.lineHeight || "1.8";
+  const theme = appSettings.theme || "light";
+  const autoSaveEnabled = !!appSettings.autoSaveEnabled;
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const docStoreRef = useRef<DocStore>({});
   const selectedDocRef = useRef("");
 
@@ -133,7 +121,7 @@ export default function DocumentAssistant() {
   const writeFolderDocBack = useCallback(async (docName: string, doc: StoredDoc): Promise<{ ok: boolean; mode?: "preserved" | "patched" | "converted" | "mdoc"; error?: string }> => {
     const info = openFileInfoRef.current;
     if (!info || info.docName !== docName) return { ok: false, error: "未绑定原文件" };
-    const api = (window as any).electronAPI;
+    const api = getElectronAPI();
     if (!api?.writeFolderFile) return { ok: false, error: "当前环境不支持写回" };
     const parts = flattenOutlineNodes(doc.children || []);
     const source = doc.source;
@@ -166,25 +154,40 @@ export default function DocumentAssistant() {
       };
       expectedMode = "mdoc";
     } else if (info.ext === "md") {
-      if (!isDirty && source?.originalText != null) {
-        payload = { ext: "md", content: source.originalText, sourceDirty: false };
+      const original = source?.originalText;
+      if (!isDirty && original != null) {
+        payload = { ext: "md", content: original, sourceDirty: false };
         expectedMode = "preserved";
       } else {
         if (!markdownContentHtml.trim()) return { ok: false, error: "内容为空，已阻止覆盖" };
-        payload = { ext: "md", html: markdownContentHtml, title: getDisplayFileName(doc.name || docName), sourceDirty: true };
-        expectedMode = "converted";
+        // 先本地 turndown；与原文一致或仅空白差异时写回原文，避免吃掉原文件空格/空行
+        const convertedMd = `${turndownService.turndown(markdownContentHtml).trim()}\n`;
+        if (original != null && isWhitespaceCollapsedFrom(convertedMd, original)) {
+          payload = { ext: "md", content: original, sourceDirty: false };
+          expectedMode = "preserved";
+        } else {
+          payload = { ext: "md", html: markdownContentHtml, title: getDisplayFileName(doc.name || docName), sourceDirty: true };
+          expectedMode = "converted";
+        }
       }
     } else if (info.ext === "txt") {
-      if (!isDirty && source?.originalText != null) {
-        payload = { ext: "txt", content: source.originalText, sourceDirty: false };
+      const original = source?.originalText ?? info.originalText;
+      if (!isDirty && original != null) {
+        payload = { ext: "txt", content: original, sourceDirty: false };
         expectedMode = "preserved";
       } else {
-        const text = parts.length > 0 ? parts.map((n) => getPlainTextFromHtml(doc.content?.[n.id] || "", { preserveWhitespace: true })).join("\n\n") : "";
-        const content = info.originalText != null && normalizeLineEndings(text) === normalizeLineEndings(info.originalText)
-          ? info.originalText
-          : applyLineEnding(text, info.lineEnding || "\n");
-        payload = { ext: "txt", content, sourceDirty: true };
-        expectedMode = content === info.originalText || content === source?.originalText ? "preserved" : "converted";
+        const text = parts.length > 0
+          ? parts.map((n) => getPlainTextFromHtml(doc.content?.[n.id] || "", { preserveWhitespace: true })).join("\n\n")
+          : "";
+        // 字节级一致，或仅空白差异：一律写回原文，保证原文件空格/空行/换行风格不变
+        if (original != null && isWhitespaceCollapsedFrom(text, original)) {
+          payload = { ext: "txt", content: original, sourceDirty: false };
+          expectedMode = "preserved";
+        } else {
+          const content = applyLineEnding(text, info.lineEnding || "\n");
+          payload = { ext: "txt", content, sourceDirty: true };
+          expectedMode = "converted";
+        }
       }
     } else if (info.ext === "docx") {
       const dirty = source?.ext === "docx" ? !!source.dirty : true;
@@ -198,9 +201,29 @@ export default function DocumentAssistant() {
       };
       expectedMode = !dirty ? "preserved" : "patched";
     } else if (info.ext === "html" || info.ext === "htm") {
-      if (!isDirty && source?.originalText != null) {
-        payload = { ext: info.ext, content: source.originalText, sourceDirty: false };
+      const original = source?.originalText;
+      if (!isDirty && original != null) {
+        payload = { ext: info.ext, content: original, sourceDirty: false };
         expectedMode = "preserved";
+      } else if (original != null) {
+        const editedPlain = parts.length > 0
+          ? parts.map((n) => getPlainTextFromHtml(doc.content?.[n.id] || "", { preserveWhitespace: true })).join("\n\n")
+          : getPlainTextFromHtml(contentHtml, { preserveWhitespace: true });
+        const originalPlain = getPlainTextFromHtml(original, { preserveWhitespace: true });
+        if (isWhitespaceCollapsedFrom(editedPlain, originalPlain)) {
+          payload = { ext: info.ext, content: original, sourceDirty: false };
+          expectedMode = "preserved";
+        } else {
+          const sections = buildPreviewSections(doc.children || [], doc.content || {});
+          const displayName = getDisplayFileName(doc.name || docName);
+          const fallback = [{ id: "root", name: displayName, html: contentHtml }];
+          payload = {
+            ext: info.ext,
+            content: await buildPreviewHtmlAsync(displayName, sections.length > 0 ? sections : fallback, doc.children || [], sections[0]?.id, doc.content || {}),
+            sourceDirty: true,
+          };
+          expectedMode = "converted";
+        }
       } else {
         const sections = buildPreviewSections(doc.children || [], doc.content || {});
         const displayName = getDisplayFileName(doc.name || docName);
@@ -229,7 +252,40 @@ export default function DocumentAssistant() {
         setToast({ message: `保存失败：${result.error || "写入错误"}`, type: "error" });
         return { ok: false, error: result.error || "写入错误" };
       }
-      const mode = result?.preserved ? "preserved" : result?.patched ? "patched" : expectedMode;
+      const mode = result?.preserved
+        ? "preserved"
+        : result?.patched
+          ? "patched"
+          : result?.converted
+            ? "converted"
+            : expectedMode;
+      // docx 写回成功后刷新内存中的原包，避免下次 patch 仍基于打开时的旧 base64
+      if (info.ext === "docx" && mode !== "preserved") {
+        try {
+          const fresh = await api.readFolderFile?.(info.filePath);
+          if (fresh?.base64) {
+            const writtenAt = doc.updatedAt;
+            setDocStore((prev) => {
+              const current = prev[docName];
+              if (!current?.source || current.source.ext !== "docx") return prev;
+              // 写回期间若又编辑过，只更新 base64，保留 dirty，避免冲掉新改动
+              const nextDoc: StoredDoc = {
+                ...current,
+                source: {
+                  ...current.source,
+                  base64: fresh.base64,
+                  dirty: current.updatedAt === writtenAt ? false : true,
+                },
+              };
+              const nextStore = { ...prev, [docName]: nextDoc };
+              docStoreRef.current = nextStore;
+              return nextStore;
+            });
+          }
+        } catch (error) {
+          console.warn("refresh docx source after write failed:", error);
+        }
+      }
       return { ok: true, mode };
     } catch (error) {
       console.error("write folder file failed:", error);
@@ -246,7 +302,7 @@ export default function DocumentAssistant() {
       return;
     }
     saveTimersRef.current[docName] = setTimeout(() => {
-      (window as any).electronAPI.saveDoc(docName, { ...doc, updatedAt: new Date().toISOString() });
+      getElectronAPI()?.saveDoc(docName, { ...doc, updatedAt: new Date().toISOString() });
     }, delay);
   }, [isElectron, writeFolderDocBack]);
 
@@ -254,12 +310,17 @@ export default function DocumentAssistant() {
     return docStore[docName] ?? createStoredDoc(docName);
   }, [docStore]);
 
-  const setAndPersistDoc = useCallback((docName: string, updater: (doc: StoredDoc) => StoredDoc, delay = 500) => {
+  const setAndPersistDoc = useCallback((docName: string, updater: (doc: StoredDoc) => StoredDoc, delay = 500, options?: { forcePersist?: boolean }) => {
     setDocStore((prev) => {
       const current = prev[docName] ?? createStoredDoc(docName);
       const nextDoc = { ...updater(current), name: docName, updatedAt: new Date().toISOString() };
-      persistDoc(docName, nextDoc, delay);
-      return { ...prev, [docName]: nextDoc };
+      const nextStore = { ...prev, [docName]: nextDoc };
+      // 同步写入 ref，避免「刚编辑完立刻保存」时 useEffect 尚未跑、handleSave 读到旧内容并取消防抖写回
+      docStoreRef.current = nextStore;
+      // 开启自动保存时也不在编辑时防抖落盘，仅由 30s 定时器 / 手动保存 / forcePersist 落盘
+      const shouldPersist = options?.forcePersist || delay === 0;
+      if (shouldPersist) persistDoc(docName, nextDoc, delay);
+      return nextStore;
     });
   }, [persistDoc]);
 
@@ -273,7 +334,7 @@ export default function DocumentAssistant() {
       return result.ok;
     }
     try {
-      await (window as any).electronAPI?.saveDoc?.(docName, { ...doc, updatedAt: new Date().toISOString() });
+      await getElectronAPI()?.saveDoc?.(docName, { ...doc, updatedAt: new Date().toISOString() });
       return true;
     } catch (error) {
       console.error("auto save doc failed:", error);
@@ -285,13 +346,68 @@ export default function DocumentAssistant() {
     return flushDoc(selectedDocRef.current);
   }, [flushDoc]);
 
+  const {
+    updateInfo,
+    showUpdateModal,
+    setShowUpdateModal,
+    updateDownloading,
+    updateDownloaded,
+    updateProgress,
+    updateError,
+    updateCheckBusy,
+    handleCheckForUpdates,
+    handleUpdateLater,
+    handleOpenReleasePage,
+    handleDownloadUpdate,
+    handleInstallUpdate,
+  } = useAppUpdate(isElectron, setToast, flushCurrentDoc);
+
+  const persistWebStateNow = useCallback(async (state: WebPersistedState) => {
+    try {
+      await writeWebState(state);
+      localStorage.removeItem(WEB_STORAGE_KEY);
+      webPersistErrorShownRef.current = false;
+      return true;
+    } catch (indexedDbError) {
+      console.error("Failed to save IndexedDB store:", indexedDbError);
+      try {
+        localStorage.setItem(WEB_STORAGE_KEY, JSON.stringify(state));
+        webPersistErrorShownRef.current = false;
+        return true;
+      } catch (storageError) {
+        console.error("Failed to save fallback web store:", storageError);
+        if (!webPersistErrorShownRef.current) {
+          webPersistErrorShownRef.current = true;
+          setToast({ message: "文档内容过大，浏览器存储失败，请导出文档后减少媒体文件", type: "error" });
+        }
+        return false;
+      }
+    }
+  }, []);
+
+
+
   useEffect(() => {
-    if (!isElectron) return;
+    if (!autoSaveEnabled) return;
     const timer = window.setInterval(() => {
-      void flushCurrentDoc();
+      void (async () => {
+        if (isElectron) {
+          const ok = await flushCurrentDoc();
+          if (ok) setLastSavedAt(formatSavedAt(false));
+          return;
+        }
+        if (!webStoreHydrated) return;
+        const state: WebPersistedState = {
+          docs,
+          docStore: docStoreRef.current,
+          selectedDoc: selectedDocRef.current,
+        };
+        const ok = await persistWebStateNow(state);
+        if (ok) setLastSavedAt(formatSavedAt(false));
+      })();
     }, 30000);
     return () => window.clearInterval(timer);
-  }, [isElectron, flushCurrentDoc]);
+  }, [autoSaveEnabled, isElectron, flushCurrentDoc, webStoreHydrated, docs, persistWebStateNow]);
 
   useEffect(() => {
     const handler = () => setModal({ type: "new" });
@@ -301,80 +417,7 @@ export default function DocumentAssistant() {
 
   useEffect(() => {
     if (!isElectron) return;
-    const api = (window as any).electronAPI;
-    if (!api?.onUpdateAvailable) return;
-
-    const unsubAvailable = api.onUpdateAvailable?.(async (payload: UpdateInfo) => {
-      setUpdateCheckBusy(false);
-      setUpdateError("");
-      setUpdateDownloaded(false);
-      setUpdateProgress(null);
-      const isManual = manualUpdateCheckRef.current;
-      manualUpdateCheckRef.current = false;
-      const skipped = api.getSkippedUpdateVersion ? await api.getSkippedUpdateVersion() : "";
-      if (!isManual && skipped && payload?.version && skipped === payload.version) return;
-      const nextUpdateInfo = {
-        version: payload?.version || "",
-        currentVersion: payload?.currentVersion,
-        releaseDate: payload?.releaseDate,
-        platform: payload?.platform,
-      };
-      setUpdateInfo(nextUpdateInfo);
-      setShowUpdateModal(isManual);
-    });
-    const unsubNotAvailable = api.onUpdateNotAvailable?.((payload: { currentVersion?: string; reason?: string }) => {
-      setUpdateCheckBusy(false);
-      if (manualUpdateCheckRef.current) {
-        setToast({
-          message: payload?.reason === "dev" ? "开发模式不检查更新" : "当前已是最新版本",
-          type: "info",
-        });
-        manualUpdateCheckRef.current = false;
-      }
-    });
-    const unsubProgress = api.onUpdateProgress?.((payload: UpdateProgress) => {
-      setUpdateDownloading(true);
-      setUpdateProgress(payload);
-    });
-    const unsubDownloaded = api.onUpdateDownloaded?.((payload: { version?: string; platform?: string }) => {
-      setUpdateDownloading(false);
-      setUpdateDownloaded(true);
-      setUpdateProgress({ percent: 100 });
-      setUpdateInfo((prev) => prev ? { ...prev, version: payload?.version || prev.version, platform: payload?.platform || prev.platform } : prev);
-      setToast({ message: "更新包已下载完成", type: "success" });
-    });
-    const unsubError = api.onUpdateError?.((payload: { message?: string }) => {
-      setUpdateCheckBusy(false);
-      setUpdateDownloading(false);
-      const message = payload?.message || "检查或下载更新失败";
-      setUpdateError(message);
-      if (manualUpdateCheckRef.current) {
-        setToast({ message, type: "error" });
-      }
-      manualUpdateCheckRef.current = false;
-    });
-
-    if (!startupUpdateCheckRef.current && api.checkForUpdates) {
-      startupUpdateCheckRef.current = true;
-      window.setTimeout(() => {
-        api.checkForUpdates({ manual: false }).catch((error: unknown) => {
-          console.error("startup update check failed:", error);
-        });
-      }, 1200);
-    }
-
-    return () => {
-      unsubAvailable?.();
-      unsubNotAvailable?.();
-      unsubProgress?.();
-      unsubDownloaded?.();
-      unsubError?.();
-    };
-  }, [isElectron]);
-
-  useEffect(() => {
-    if (!isElectron) return;
-    const api = (window as any).electronAPI;
+    const api = getElectronAPI();
     if (!api?.onRequestCloseWindow) return;
     const unsub = api.onRequestCloseWindow(() => {
       // 立即 ACK，避免主进程误判白屏并强制退出
@@ -384,103 +427,26 @@ export default function DocumentAssistant() {
     return () => unsub?.();
   }, [isElectron]);
 
-  const handleCheckForUpdates = useCallback(async () => {
-    if (!isElectron) {
-      setToast({ message: "请在桌面应用中检查更新", type: "info" });
-      return;
-    }
-    const api = (window as any).electronAPI;
-    if (!api?.checkForUpdates) {
-      setToast({ message: "当前版本不支持检查更新", type: "error" });
-      return;
-    }
-    manualUpdateCheckRef.current = true;
-    setUpdateCheckBusy(true);
-    setUpdateError("");
-    try {
-      await api.checkForUpdates({ manual: true });
-    } catch (error) {
-      setUpdateCheckBusy(false);
-      manualUpdateCheckRef.current = false;
-      setToast({ message: error instanceof Error ? error.message : "检查更新失败", type: "error" });
-    }
-  }, [isElectron]);
-
-  const handleUpdateLater = useCallback(async () => {
-    setShowUpdateModal(false);
-    setUpdateDownloading(false);
-    setUpdateDownloaded(false);
-    setUpdateProgress(null);
-    setUpdateError("");
-  }, []);
-
-  const handleOpenReleasePage = useCallback(async () => {
-    try {
-      if ((window as any).electronAPI?.openReleasePage) {
-        await (window as any).electronAPI.openReleasePage();
-      } else {
-        window.open("https://github.com/wenlong301-hue/document-assistant/releases/latest", "_blank", "noopener,noreferrer");
-      }
-    } catch {
-      window.open("https://github.com/wenlong301-hue/document-assistant/releases/latest", "_blank", "noopener,noreferrer");
-    }
-  }, []);
-
-  const handleDownloadUpdate = useCallback(async () => {
-    setUpdateError("");
-    setUpdateDownloading(true);
-    setUpdateProgress({ percent: 0 });
-    try {
-      const result = await (window as any).electronAPI?.downloadUpdate?.();
-      if (result && result.ok === false) {
-        setUpdateDownloading(false);
-        setUpdateError(result.message || "下载更新失败");
-      }
-    } catch (error) {
-      setUpdateDownloading(false);
-      setUpdateError(error instanceof Error ? error.message : "下载更新失败");
-    }
-  }, []);
-
-  const handleInstallUpdate = useCallback(async () => {
-    try {
-      setShowCloseConfirm(false);
-      await flushCurrentDoc();
-      const result = await (window as any).electronAPI?.installUpdate?.();
-      if (result?.mode === "replace-in-place") {
-        setToast({ message: "正在安装新版本并重启…", type: "info" });
-      } else if (result?.mode === "open-installer") {
-        setToast({
-          message: "已打开安装包：请将应用拖入「应用程序」并选择替换，勿保留旧版",
-          type: "info",
-        });
-      }
-    } catch (error) {
-      setUpdateError(error instanceof Error ? error.message : "安装更新失败");
-      setToast({ message: "安装失败，请打开下载页手动安装", type: "error" });
-    }
-  }, []);
-
   const handleCloseWindowChoice = useCallback(async (action: "tray" | "quit", remember: boolean) => {
     setShowCloseConfirm(false);
     await flushCurrentDoc();
     if (remember) setAppSettings((prev) => ({ ...prev, closeBehavior: action }));
     try {
-      await (window as any).electronAPI?.respondCloseWindow?.({ action, remember });
+      await getElectronAPI()?.respondCloseWindow?.({ action, remember });
     } catch (error) {
       setToast({ message: error instanceof Error ? error.message : "关闭应用失败", type: "error" });
     }
-  }, []);
+  }, [flushCurrentDoc]);
 
   const handleCancelCloseWindow = useCallback(() => {
     setShowCloseConfirm(false);
     // 通知主进程取消关闭确认，避免 2s 强制退出
-    void (window as any).electronAPI?.respondCloseWindow?.({ action: "cancel" });
+    void getElectronAPI()?.respondCloseWindow?.({ action: "cancel" });
   }, []);
 
   useEffect(() => {
     if (!isElectron) return;
-    const api = (window as any).electronAPI;
+    const api = getElectronAPI();
     if (!api?.onFolderChanged) return;
     const unsub = api.onFolderChanged?.((payload: { path?: string; files?: FolderFileItem[]; gone?: boolean }) => {
       const files = Array.isArray(payload?.files) ? payload.files : [];
@@ -510,7 +476,7 @@ export default function DocumentAssistant() {
 
   useEffect(() => {
     if (!isElectron) return;
-    const api = (window as any).electronAPI;
+    const api = getElectronAPI();
     if (!api?.getFolderState) return;
     api.getFolderState().then((state: { path?: string | null; files?: FolderFileItem[]; gone?: boolean }) => {
       if (!state?.path) return;
@@ -523,7 +489,7 @@ export default function DocumentAssistant() {
   // Load projects on mount
   useEffect(() => {
     if (!isElectron) return;
-    const api = (window as any).electronAPI;
+    const api = getElectronAPI();
     if (!api?.getProjects) return;
     api.getProjects().then((projectList: Project[]) => {
       setProjects(projectList || []);
@@ -542,21 +508,26 @@ export default function DocumentAssistant() {
 
   // Load app settings on mount
   useEffect(() => {
-    if (!isElectron) return;
-    const api = (window as any).electronAPI;
-    if (!api?.settingsRead) return;
-    api.settingsRead().then((settings: { closeBehavior?: string }) => {
-      setAppSettings(settings || {});
-    }).catch((error: unknown) => console.error("load settings failed:", error));
+    const api = getElectronAPI();
+    if (isElectron && api?.settingsRead) {
+      api.settingsRead().then((settings: { closeBehavior?: string; fontSize?: string; lineHeight?: string; theme?: string; autoSaveEnabled?: boolean }) => {
+        setAppSettings(settings || {});
+      }).catch((error: unknown) => console.error("load settings failed:", error));
+      return;
+    }
+    try {
+      const raw = localStorage.getItem("doc-assistant-settings");
+      if (raw) setAppSettings(JSON.parse(raw));
+    } catch {}
   }, [isElectron]);
 
   useEffect(() => {
     if (isElectron) {
-      (window as any).electronAPI.getDocs().then(async (list: any[]) => {
+      getElectronAPI()?.getDocs().then(async (list: any[]) => {
         if (list.length > 0) {
           const loadedEntries = await Promise.all(list.map(async (item: any) => {
             const id = item.id ?? item.name;
-            const raw = await (window as any).electronAPI.getDoc(id);
+            const raw = await getElectronAPI()?.getDoc(id);
             const doc = normalizeStoredDoc(item.name ?? id, raw);
             return [doc.name, doc] as const;
           }));
@@ -613,32 +584,6 @@ export default function DocumentAssistant() {
     return () => { cancelled = true; };
   }, [isElectron]);
 
-  useEffect(() => {
-    if (isElectron || !webStoreHydrated) return;
-    clearTimeout(webPersistTimerRef.current);
-    const state: WebPersistedState = { docs, docStore, selectedDoc };
-    webPersistTimerRef.current = setTimeout(async () => {
-      try {
-        await writeWebState(state);
-        localStorage.removeItem(WEB_STORAGE_KEY);
-        webPersistErrorShownRef.current = false;
-      } catch (indexedDbError) {
-        console.error("Failed to save IndexedDB store:", indexedDbError);
-        try {
-          localStorage.setItem(WEB_STORAGE_KEY, JSON.stringify(state));
-          webPersistErrorShownRef.current = false;
-        } catch (storageError) {
-          console.error("Failed to save fallback web store:", storageError);
-          if (!webPersistErrorShownRef.current) {
-            webPersistErrorShownRef.current = true;
-            setToast({ message: "文档内容过大，浏览器存储失败，请导出文档后减少媒体文件", type: "error" });
-          }
-        }
-      }
-    }, 500);
-    return () => clearTimeout(webPersistTimerRef.current);
-  }, [docs, docStore, selectedDoc, isElectron, webStoreHydrated]);
-
   const revokeWebShareUrl = useCallback(() => {
     if (webShareUrlRef.current) {
       URL.revokeObjectURL(webShareUrlRef.current);
@@ -677,6 +622,21 @@ export default function DocumentAssistant() {
     setShareUrl(url);
   }, [buildCurrentShareHtml, revokeWebShareUrl]);
 
+  const handleSaveSettings = async (next: { closeBehavior?: string; fontSize?: string; lineHeight?: string; theme?: string; autoSaveEnabled?: boolean }) => {
+    const merged = { ...appSettings, ...next };
+    setAppSettings(merged);
+    try {
+      const api = getElectronAPI();
+      if (api?.settingsWrite) await api.settingsWrite(merged);
+      else if (!isElectron) {
+        try { localStorage.setItem("doc-assistant-settings", JSON.stringify(merged)); } catch {}
+      }
+      setToast({ message: "设置已保存", type: "success" });
+    } catch (error) {
+      setToast({ message: error instanceof Error ? error.message : "设置保存失败", type: "error" });
+    }
+  };
+
   const handleToggleShare = async () => {
     if (shareBusy) return;
     setShareBusy(true);
@@ -706,24 +666,54 @@ export default function DocumentAssistant() {
           return;
         }
         const html = await buildCurrentShareHtml();
-        const url = await (window as any).electronAPI.startShare(6535, selectedDoc, html);
+        const result = await getElectronAPI()?.startShare(6535, selectedDoc, html);
+        const url = typeof result === "string" ? result : result?.url;
+        if (!url) throw new Error(result?.error || "分享开启失败");
         setShareUrl(url);
         setShared(true);
-        setToast({ message: "分享已开启", type: "success" });
+        setToast({ message: result?.port && result.port !== 6535 ? `分享已开启（端口 ${result.port}）` : "分享已开启", type: "success" });
       } else {
-        await (window as any).electronAPI.stopShare();
+        await getElectronAPI()?.stopShare();
         setShared(false);
         setToast({ message: "分享已关闭", type: "info" });
       }
     } catch (error) {
       console.error("Failed to toggle share:", error);
       const message = error instanceof Error ? error.message : "分享操作失败";
-      setShareError(message.includes("EADDRINUSE") ? "端口 6535 已被占用，请关闭占用程序后重试。" : message);
+      setShareError(message.includes("EADDRINUSE") ? "可用端口都被占用，请关闭占用程序后重试。" : message);
       setToast({ message: "分享开启失败", type: "error" });
     } finally {
       setShareBusy(false);
     }
   };
+
+  useEffect(() => {
+    if (!shared || !selectedDoc || shareBusy) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const html = await buildCurrentShareHtml();
+          if (cancelled) return;
+          if (!isElectron) {
+            revokeWebShareUrl();
+            const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            webShareUrlRef.current = url;
+            webShareHtmlRef.current = html;
+            setShareUrl(url);
+            return;
+          }
+          const api = getElectronAPI();
+          if (api?.updateShareHtml) await api.updateShareHtml(selectedDoc, html);
+          else if (api?.startShare) await api.startShare(0, selectedDoc, html);
+        } catch (e) {
+          console.warn("refresh share failed", e);
+        }
+      })();
+    }, 800);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [shared, selectedDoc, selectedNodeId, docStore, shareBusy, buildCurrentShareHtml, isElectron, revokeWebShareUrl]);
 
   const handleDownloadShareHtml = async () => {
     try {
@@ -912,7 +902,7 @@ export default function DocumentAssistant() {
       setMode("outline");
       return;
     }
-    const api = (window as any).electronAPI;
+    const api = getElectronAPI();
     let raw: { ext: string; text?: string; base64?: string } | null = null;
     try {
       raw = await api.readFolderFile(file.path);
@@ -991,7 +981,7 @@ export default function DocumentAssistant() {
       setToast({ message: "请在桌面应用中使用文件夹功能", type: "info" });
       return;
     }
-    const api = (window as any).electronAPI;
+    const api = getElectronAPI();
     try {
       const result = await api.openFolder();
       if (result?.canceled) return;
@@ -1010,7 +1000,7 @@ export default function DocumentAssistant() {
   const handleCloseFolder = async () => {
     if (!isElectron) return;
     try {
-      await (window as any).electronAPI.closeFolder?.();
+      await getElectronAPI()?.closeFolder?.();
     } catch {}
     openFileInfoRef.current = null;
     setActiveFolder(null);
@@ -1042,9 +1032,22 @@ export default function DocumentAssistant() {
     const info = openFileInfoRef.current;
     if (info && info.docName === selectedDoc) {
       clearTimeout(saveTimersRef.current[selectedDoc]);
-      const doc = docStore[selectedDoc] ?? createStoredDoc(selectedDoc, getOutlineTree(selectedDoc));
+      // 必须用 ref：编辑后立刻 Cmd+S 时 render 闭包里的 docStore 可能仍是旧内容
+      const doc = docStoreRef.current[selectedDoc] ?? createStoredDoc(selectedDoc, getOutlineTree(selectedDoc));
       const result = await writeFolderDocBack(selectedDoc, doc);
-      if (result.ok) saveResultToast(result.mode);
+      if (result.ok) {
+        setLastSavedAt(formatSavedAt(false));
+        saveResultToast(result.mode);
+      }
+      return;
+    }
+    if (!isElectron) {
+      const state: WebPersistedState = { docs, docStore: docStoreRef.current, selectedDoc };
+      const ok = await persistWebStateNow(state);
+      if (ok) {
+        setLastSavedAt(formatSavedAt(false));
+        setToast({ message: "已保存", type: "success" });
+      }
       return;
     }
     await handleSaveToFolder();
@@ -1052,7 +1055,7 @@ export default function DocumentAssistant() {
 
   const doDeleteFolderFile = async (info: { docName: string; filePath: string; ext: string }) => {
     if (!isElectron) return;
-    const api = (window as any).electronAPI;
+    const api = getElectronAPI();
     let result: { ok: boolean; error?: string } | null = null;
     try {
       result = await api.trashFolderFile(info.filePath);
@@ -1099,7 +1102,7 @@ export default function DocumentAssistant() {
   const handleRename = async (oldName: string, newName: string) => {
     const fileItem = activeFolder ? folderFiles.find((f) => f.relPath === oldName) : undefined;
     if (fileItem && isElectron) {
-      const api = (window as any).electronAPI;
+      const api = getElectronAPI();
       const curExt = fileItem.ext || "";
       let safe = sanitizeFileName(newName);
       if (!safe.toLowerCase().endsWith(curExt.toLowerCase())) safe += curExt;
@@ -1159,7 +1162,7 @@ export default function DocumentAssistant() {
       return { ...rest, [newName]: renamedDoc };
     });
     if (isElectron) {
-      (window as any).electronAPI.deleteDoc(oldName);
+      getElectronAPI()?.deleteDoc(oldName);
       persistDoc(newName, renamedDoc, 0);
     }
   };
@@ -1194,7 +1197,7 @@ export default function DocumentAssistant() {
     setOutlineTrees((prev) => { const { [name]: _, ...rest } = prev; return rest; });
     setDocStore((prev) => { const { [name]: _, ...rest } = prev; return rest; });
     if (mode === "outline" && selectedDoc === name) setMode("document");
-    if (isElectron) (window as any).electronAPI.deleteDoc(name);
+    if (isElectron) getElectronAPI()?.deleteDoc(name);
   };
 
   const handleDelete = (name: string) => {
@@ -1214,7 +1217,7 @@ export default function DocumentAssistant() {
     const sections = buildPreviewSections(doc.children, doc.content);
     const fullHtml = await buildPreviewHtmlAsync(exportBase, sections.length > 0 ? sections : [{ id: "root", name: exportBase, html: bodyHtml }], doc.children, sections[0]?.id, doc.content);
     if (isElectron) {
-      await (window as any).electronAPI.exportHtml(fullHtml, `${exportBase}.html`);
+      await getElectronAPI()?.exportHtml(fullHtml, `${exportBase}.html`);
       return;
     }
     const blob = new Blob([fullHtml], { type: "text/html" });
@@ -1239,8 +1242,8 @@ export default function DocumentAssistant() {
     const baseName = getDisplayFileName(doc.name || selectedDoc);
     const payload = { ...rest, name: baseName, children: tree, updatedAt: new Date().toISOString() };
 
-    if (isElectron && (window as any).electronAPI.saveDocToFolder) {
-      const api = (window as any).electronAPI;
+    if (isElectron && getElectronAPI()?.saveDocToFolder) {
+      const api = getElectronAPI();
       const defaultDir = openFileInfoRef.current?.filePath
         ? openFileInfoRef.current.filePath.replace(/[\\/][^\\/]+$/, "")
         : selectedProject?.folderPath || activeFolder || undefined;
@@ -1272,8 +1275,8 @@ export default function DocumentAssistant() {
 
       openFileInfoRef.current = { docName: relPath, filePath: absPath, ext: "mdoc" };
       setDocStore((prev) => {
-        const next = { ...prev, [relPath]: mdocDoc };
-        if (prevDocName !== relPath) {
+        const next: DocStore = { ...prev, [relPath]: mdocDoc };
+        if (prevDocName && prevDocName !== relPath) {
           const { [prevDocName]: _drop, ...restStore } = next;
           return restStore[relPath] ? { ...restStore, [relPath]: mdocDoc } : next;
         }
@@ -1294,6 +1297,7 @@ export default function DocumentAssistant() {
         } catch { /* ignore refresh errors */ }
       }
 
+      setLastSavedAt(formatSavedAt(false));
       setToast({ message: `已另存并打开 ${fileName}`, type: "success" });
       return;
     }
@@ -1381,7 +1385,7 @@ export default function DocumentAssistant() {
       return;
     }
     // Scan project folder
-    const api = (window as any).electronAPI;
+    const api = getElectronAPI();
     if (project.folderPath && api?.scanFolderTree) {
       try {
         const tree = await api.scanFolderTree(project.folderPath);
@@ -1406,7 +1410,7 @@ export default function DocumentAssistant() {
   }, [openFolderFile]);
 
   const handleCreateProject = useCallback(async (name: string, folderPath?: string) => {
-    const api = (window as any).electronAPI;
+    const api = getElectronAPI();
     try {
       let result;
       if (folderPath && api?.createProjectAt) {
@@ -1428,7 +1432,7 @@ export default function DocumentAssistant() {
   }, [handleSelectProject]);
 
   const handleImportFolder = useCallback(async (kind?: "file" | "folder") => {
-    const api = (window as any).electronAPI;
+    const api = getElectronAPI();
     if (!api?.importFolder) return;
     try {
       const result = await api.importFolder(kind);
@@ -1462,7 +1466,7 @@ export default function DocumentAssistant() {
   }, [projects, handleSelectProject]);
 
   const handleImportFolderDrop = useCallback(async (folderPath: string) => {
-    const api = (window as any).electronAPI;
+    const api = getElectronAPI();
     try {
       const projectName = folderPath.split(/[\\/]/).pop() || "导入的项目";
       if (projects.some((project) => project.filePath === folderPath || project.folderPath === folderPath)) {
@@ -1513,7 +1517,7 @@ export default function DocumentAssistant() {
   }, []);
 
   const handleNewFileInFolder = useCallback(async (folderPath: string, fileName = "新建文件") => {
-    const api = (window as any).electronAPI;
+    const api = getElectronAPI();
     if (!api?.createFileInFolder) return;
     try {
       const result = await api.createFileInFolder(folderPath, fileName);
@@ -1594,6 +1598,32 @@ export default function DocumentAssistant() {
     if (selectedDoc && name !== selectedDoc) handleRename(selectedDoc, name);
   };
 
+  const handleAutoSaveChange = (enabled: boolean) => {
+    const merged = { ...appSettings, autoSaveEnabled: enabled };
+    setAppSettings(merged);
+    void (async () => {
+      try {
+        const api = getElectronAPI();
+        if (api?.settingsWrite) await api.settingsWrite(merged);
+        else if (!isElectron) {
+          try { localStorage.setItem("doc-assistant-settings", JSON.stringify(merged)); } catch {}
+        }
+      } catch (error) {
+        console.error("Failed to persist auto-save setting:", error);
+      }
+      if (enabled) {
+        if (isElectron) {
+          const ok = await flushCurrentDoc();
+          if (ok) setLastSavedAt(formatSavedAt(false));
+        } else {
+          const state: WebPersistedState = { docs, docStore: docStoreRef.current, selectedDoc };
+          const ok = await persistWebStateNow(state);
+          if (ok) setLastSavedAt(formatSavedAt(false));
+        }
+      }
+    })();
+  };
+
   const handleNodeContentChange = (html: string, text: string) => {
     if (!selectedNode) return;
     editorContentRef.current = { html, text };
@@ -1632,7 +1662,7 @@ export default function DocumentAssistant() {
             onDeleteProject={async (project) => {
               const newProjects = projects.filter((p) => p.id !== project.id);
               setProjects(newProjects);
-              const api = (window as any).electronAPI;
+              const api = getElectronAPI();
               if (api?.saveProjects) {
                 await api.saveProjects(newProjects);
               }
@@ -1643,26 +1673,36 @@ export default function DocumentAssistant() {
             onViewModeChange={setProjectViewMode}
             onSearchChange={setSearchQuery}
           />
-          {showHelpModal && (
-            <HelpModal
-              onClose={() => setShowHelpModal(false)}
-              onCheckUpdate={isElectron ? handleCheckForUpdates : undefined}
-              updateCheckBusy={updateCheckBusy}
-            />
-          )}
-          {updateInfo && showUpdateModal && (
-            <UpdateModal
-              info={updateInfo}
-              downloading={updateDownloading}
-              downloaded={updateDownloaded}
-              progress={updateProgress}
-              errorMessage={updateError}
-              onLater={handleUpdateLater}
-              onOpenRelease={handleOpenReleasePage}
-              onDownload={handleDownloadUpdate}
-              onInstall={handleInstallUpdate}
-            />
-          )}
+          <Suspense fallback={null}>
+            {showHelpModal && (
+              <HelpModal
+                onClose={() => setShowHelpModal(false)}
+                onCheckUpdate={isElectron ? handleCheckForUpdates : undefined}
+                updateCheckBusy={updateCheckBusy}
+              />
+            )}
+            {showSettingsModal && (
+              <SettingsModal
+                open={showSettingsModal}
+                onClose={() => setShowSettingsModal(false)}
+                settings={appSettings}
+                onSave={(s) => { void handleSaveSettings(s); }}
+              />
+            )}
+            {updateInfo && showUpdateModal && (
+              <UpdateModal
+                info={updateInfo}
+                downloading={updateDownloading}
+                downloaded={updateDownloaded}
+                progress={updateProgress}
+                errorMessage={updateError}
+                onLater={handleUpdateLater}
+                onOpenRelease={handleOpenReleasePage}
+                onDownload={handleDownloadUpdate}
+                onInstall={() => { setShowCloseConfirm(false); void handleInstallUpdate(); }}
+              />
+            )}
+          </Suspense>
           {showCloseConfirm && (
             <CloseConfirmModal
               onClose={handleCancelCloseWindow}
@@ -1674,7 +1714,7 @@ export default function DocumentAssistant() {
       ) : (
         <>
           <EditorWorkspace docName={workspaceDocName} mode={mode} selectedNode={selectedNode} nodeDepth={selectedNodeDepth} nodeContent={selectedNode ? getNodeContent(selectedDoc, selectedNode.id) : emptyParagraph} previewHtml={filePreviewHtml} onTitleChange={handleTitleChange} theme={theme} fontSize={fontSize} lineHeight={lineHeight} sidebarWidth={276}
-            onContentChange={handleNodeContentChange} />
+            onContentChange={handleNodeContentChange} autoSaveEnabled={autoSaveEnabled} lastSavedAt={lastSavedAt} onAutoSaveChange={handleAutoSaveChange} />
           <TopBar
             onOpenShare={() => {
               if (shareDisabled) {
@@ -1689,6 +1729,7 @@ export default function DocumentAssistant() {
             onSave={handleSave}
             onSaveAsMdoc={handleSaveAsMdoc}
             onOpenHelp={() => setShowHelpModal(true)}
+            onOpenSettings={() => setShowSettingsModal(true)}
             level={level}
             projectName={selectedProject?.name || ""}
             onBack={handleBackToProjects}
@@ -1713,7 +1754,7 @@ export default function DocumentAssistant() {
               onSelect={handleFileSelect}
               searchQuery={searchQuery}
               onNewFile={handleNewFileInFolder}
-              onOpenLocation={(path) => (window as any).electronAPI?.openFolderLocation(path)}
+              onOpenLocation={(path) => getElectronAPI()?.openFolderLocation(path)}
             />
           ) : (
             <OutlineTree nodes={outlineNodes} selectedId={selectedNodeId} docName={selectedDoc} contentMap={docStore[selectedDoc]?.content ?? {}} onSelect={setSelectedNodeId} onUpdateNodes={(nodes) => updateOutlineTree(selectedDoc, nodes)} onToast={(message, type) => setToast({ message, type })} filter={searchQuery} enterTick={outlineSearchEnter} />
@@ -1727,41 +1768,51 @@ export default function DocumentAssistant() {
           onClose={() => setDocDeleteConfirm(null)}
         />
       )}
-      {showExportModal && (
-        <ExportModal docName={selectedDoc} content={selectedNode ? getNodeContent(selectedDoc, selectedNode.id) : editorContentRef.current.html} contentMap={docStore[selectedDoc]?.content ?? {}} outlineNodes={outlineNodes} selectedNodeId={selectedNodeId} isElectron={!!isElectron} onClose={() => setShowExportModal(false)} onToast={(message, type) => setToast({ message, type })} />
-      )}
-      {showShareModal && (
-        <ShareModal
-          shared={shared}
-          mode={isElectron ? "electron" : "web"}
-          loading={shareBusy}
-          errorMessage={shareError}
-          shareUrl={shareUrl}
-          onToggle={handleToggleShare}
-          onDownload={isElectron ? undefined : handleDownloadShareHtml}
-          onClose={() => setShowShareModal(false)}
-        />
-      )}
-      {showHelpModal && (
-        <HelpModal
-          onClose={() => setShowHelpModal(false)}
-          onCheckUpdate={isElectron ? handleCheckForUpdates : undefined}
-          updateCheckBusy={updateCheckBusy}
-        />
-      )}
-      {updateInfo && showUpdateModal && (
-        <UpdateModal
-          info={updateInfo}
-          downloading={updateDownloading}
-          downloaded={updateDownloaded}
-          progress={updateProgress}
-          errorMessage={updateError}
-          onLater={handleUpdateLater}
-          onOpenRelease={handleOpenReleasePage}
-          onDownload={handleDownloadUpdate}
-          onInstall={handleInstallUpdate}
-        />
-      )}
+      <Suspense fallback={null}>
+        {showExportModal && (
+          <ExportModal docName={selectedDoc} content={selectedNode ? getNodeContent(selectedDoc, selectedNode.id) : editorContentRef.current.html} contentMap={docStore[selectedDoc]?.content ?? {}} outlineNodes={outlineNodes} selectedNodeId={selectedNodeId} isElectron={!!isElectron} onClose={() => setShowExportModal(false)} onToast={(message, type) => setToast({ message, type })} />
+        )}
+        {showShareModal && (
+          <ShareModal
+            shared={shared}
+            mode={isElectron ? "electron" : "web"}
+            loading={shareBusy}
+            errorMessage={shareError}
+            shareUrl={shareUrl}
+            onToggle={handleToggleShare}
+            onDownload={isElectron ? undefined : handleDownloadShareHtml}
+            onClose={() => setShowShareModal(false)}
+          />
+        )}
+        {showHelpModal && (
+          <HelpModal
+            onClose={() => setShowHelpModal(false)}
+            onCheckUpdate={isElectron ? handleCheckForUpdates : undefined}
+            updateCheckBusy={updateCheckBusy}
+          />
+        )}
+        {showSettingsModal && (
+          <SettingsModal
+            open={showSettingsModal}
+            onClose={() => setShowSettingsModal(false)}
+            settings={appSettings}
+            onSave={(s) => { void handleSaveSettings(s); }}
+          />
+        )}
+        {updateInfo && showUpdateModal && (
+          <UpdateModal
+            info={updateInfo}
+            downloading={updateDownloading}
+            downloaded={updateDownloaded}
+            progress={updateProgress}
+            errorMessage={updateError}
+            onLater={handleUpdateLater}
+            onOpenRelease={handleOpenReleasePage}
+            onDownload={handleDownloadUpdate}
+            onInstall={() => { setShowCloseConfirm(false); void handleInstallUpdate(); }}
+          />
+        )}
+      </Suspense>
       {showCloseConfirm && (
         <CloseConfirmModal
           onClose={handleCancelCloseWindow}

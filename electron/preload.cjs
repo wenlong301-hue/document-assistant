@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveDocToFolder: (id, data, options) => ipcRenderer.invoke('save-doc-to-folder', id, data, options || {}),
   deleteDoc: (id) => ipcRenderer.invoke('delete-doc', id),
   startShare: (port, docId, html) => ipcRenderer.invoke('start-share', port, docId, html),
+  updateShareHtml: (docId, html) => ipcRenderer.invoke('update-share-html', docId, html),
   stopShare: () => ipcRenderer.invoke('stop-share'),
   getPlatform: () => ipcRenderer.invoke('get-platform'),
   getVersion: () => ipcRenderer.invoke('get-version'),

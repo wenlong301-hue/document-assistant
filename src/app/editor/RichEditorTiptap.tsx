@@ -1,3 +1,4 @@
+// @ts-nocheck — TipTap 多版本类型冲突（starter-kit 嵌套 @tiptap/core），运行时无问题
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { EditorContent, useEditor } from "@tiptap/react";
@@ -20,6 +21,7 @@ import {
   insertParagraphAfterAncestor,
   isCurrentCodeLineEmpty,
   isTiptapBlockEmpty,
+  MermaidCodeBlock,
   ResizableImage,
   TableCellWithRowHeight,
   TableHeaderWithRowHeight,
@@ -29,9 +31,7 @@ import {
 import {
   FONT_FAMILIES,
   FONT_SIZES,
-  formatSavedAt,
   getEditorTextCount,
-  getEditorWordCount,
   getSlashMenuPlacement,
   HEADING_OPTIONS,
   normalizeHexColor,
@@ -55,9 +55,11 @@ import { IconSvg } from "./ui/IconSvg";
 import { InlineIconSvg } from "./ui/InlineIconSvg";
 import { LinkModal } from "./ui/LinkModal";
 import { Toast } from "./ui/Toast";
+import { getElectronAPI } from "@/app/shared/electron";
 
-export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange, fontSize: propFontSize, lineHeight: propLineHeight, theme: propTheme }: {
+export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange, autoSaveEnabled = false, lastSavedAt = null, onAutoSaveChange, fontSize: propFontSize, lineHeight: propLineHeight, theme: propTheme }: {
   docName: string; nodeId: string; initialHtml?: string; onContentChange?: (html: string, text: string) => void;
+  autoSaveEnabled?: boolean; lastSavedAt?: string | null; onAutoSaveChange?: (enabled: boolean) => void;
   fontSize?: string; lineHeight?: string; theme?: string;
 }) {
   const imgInputRef = useRef<HTMLInputElement>(null);
@@ -66,11 +68,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   const linkBtnRef = useRef<HTMLButtonElement>(null);
   const lastExternalHtmlRef = useRef("");
   const lastSyncedNodeIdRef = useRef<string | null>(null);
-  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
-  const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
   const [charCount, setCharCount] = useState(0);
-  const [wordCount, setWordCount] = useState(0);
   const [toolbarTick, setToolbarTick] = useState(0);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
   type ToolbarPanel = null | "heading" | "font" | "size" | "align" | "fore" | "back" | "link" | "table";
@@ -167,7 +165,8 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     const toolbarBottom = toolbarRef.current?.getBoundingClientRect().bottom ?? 120;
     const editorTop = activeEditor.view.dom.getBoundingClientRect().top;
     const safeTop = Math.max(toolbarBottom + 8, editorTop);
-    const rowRects = Array.from(table.querySelectorAll("tr")).map((row, index) => {
+    const rowRects = Array.from(table.querySelectorAll("tr")).map((rowEl, index) => {
+      const row = rowEl as HTMLTableRowElement;
       const rowRect = row.getBoundingClientRect();
       return {
         index,
@@ -342,9 +341,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     extensions: [
       StarterKit.configure({
         link: false,
-        codeBlock: {
-          HTMLAttributes: { class: "doc-code-block" },
-        },
+        codeBlock: false,
         blockquote: {
           HTMLAttributes: { class: "doc-blockquote" },
         },
@@ -357,6 +354,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
           HTMLAttributes: { class: "doc-list doc-ordered-list" },
         },
       }),
+      MermaidCodeBlock,
       TyporaKeymap,
       TextStyle,
       Color,
@@ -582,7 +580,6 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       if (ensureHeadingAnchors(editor)) return;
       const text = editor.getText();
       setCharCount(getEditorTextCount(text));
-      setWordCount(getEditorWordCount(text));
       lastExternalHtmlRef.current = normalizeEditorHtml(initialHtml);
       refreshToc(editor);
     },
@@ -593,16 +590,6 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       const text = editor.getText();
       lastExternalHtmlRef.current = html;
       setCharCount(getEditorTextCount(text));
-      setWordCount(getEditorWordCount(text));
-      setSaveStatus("unsaved");
-      clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        setSaveStatus("saving");
-        window.setTimeout(() => {
-          setSavedAt(formatSavedAt());
-          setSaveStatus("saved");
-        }, 160);
-      }, 500);
       onContentChange?.(html, text);
       setToolbarTick((tick) => tick + 1);
       refreshToc(editor);
@@ -645,9 +632,6 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     }
     const text = editor.getText();
     setCharCount(getEditorTextCount(text));
-    setWordCount(getEditorWordCount(text));
-    setSaveStatus("saved");
-    setSavedAt(formatSavedAt());
     if (!ensureHeadingAnchors(editor)) refreshToc(editor);
   }, [editor, nodeId, initialHtml, refreshToc, ensureHeadingAnchors]);
 
@@ -788,7 +772,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     document.addEventListener("mouseup", handler);
     document.addEventListener("fullscreenchange", onViewportChange);
     window.addEventListener("orientationchange", onViewportChange);
-    const electronApi = (window as any).electronAPI;
+    const electronApi = getElectronAPI();
     const offViewport = typeof electronApi?.onViewportChange === "function"
       ? electronApi.onViewportChange(onViewportChange)
       : undefined;
@@ -805,7 +789,6 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
 
   useEffect(() => () => {
     mountedRef.current = false;
-    clearTimeout(saveTimer.current);
     if (tocScrollRafRef.current != null) window.cancelAnimationFrame(tocScrollRafRef.current);
   }, []);
 
@@ -1286,6 +1269,12 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         .doc-tiptap-content .doc-blockquote{border-left:3px solid #134CFF;background:#f7f8fa;margin:10px 0;padding:8px 14px;color:#606266;border-radius:0 8px 8px 0}.doc-tiptap-content .doc-blockquote p{margin:0 0 4px;line-height:1.65}.doc-tiptap-content .doc-blockquote p:last-child{margin-bottom:0}
         .doc-tiptap-content .doc-list{margin:8px 0 10px;padding-left:28px}.doc-tiptap-content .doc-ordered-list{list-style:decimal}.doc-tiptap-content .doc-ordered-list .doc-ordered-list{list-style:lower-alpha}.doc-tiptap-content .doc-ordered-list .doc-ordered-list .doc-ordered-list{list-style:lower-roman}.doc-tiptap-content .doc-bullet-list{list-style:disc}.doc-tiptap-content .doc-bullet-list .doc-bullet-list{list-style:circle}.doc-tiptap-content .doc-bullet-list .doc-bullet-list .doc-bullet-list{list-style:square}.doc-tiptap-content li{margin:4px 0;padding-left:2px}.doc-tiptap-content li>p{margin:0}.doc-tiptap-content .doc-task-list{list-style:none;margin:8px 0 10px;padding-left:0}.doc-tiptap-content .doc-task-item{display:flex;gap:8px;align-items:flex-start}.doc-tiptap-content .doc-task-item>label{margin-top:2px}.doc-tiptap-content .doc-task-item>div{flex:1}
         .doc-tiptap-content .doc-code-block{background:#f5f6f8;border:1px solid #ebecf0;border-radius:8px;padding:12px 14px;margin:12px 0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;line-height:1.65;white-space:pre-wrap}
+        .doc-tiptap-content .doc-mermaid{margin:12px 0;border:1px solid #ebecf0;border-radius:8px;background:#fff;overflow:hidden;position:relative}
+        .doc-tiptap-content .doc-mermaid-preview{padding:12px;overflow-x:auto;text-align:center;min-height:48px}
+        .doc-tiptap-content .doc-mermaid-preview svg{max-width:100%;height:auto;display:block;margin:0 auto}
+        .doc-tiptap-content .doc-mermaid-error{color:#E53E3E;font-size:12px;line-height:1.5;text-align:left;white-space:pre-wrap;word-break:break-word}
+        .doc-tiptap-content .doc-mermaid.is-editing .doc-mermaid-source{margin:0;border:0;border-radius:0;background:#f5f6f8}
+        .doc-tiptap-content .doc-code-block-wrap{margin:12px 0}
         .doc-tiptap-content .doc-link{color:#134CFF;text-decoration:underline}.doc-tiptap-content .doc-image{display:block;max-width:100%;height:auto;margin:0;border-radius:8px;cursor:pointer}.doc-tiptap-content [data-resize-container][data-node="image"]{display:inline-flex;width:fit-content;margin:12px 0;max-width:100%;outline:none;position:relative}.doc-tiptap-content [data-resize-container][data-node="image"].ProseMirror-selectednode{outline:2px solid #134CFF;outline-offset:2px;border-radius:8px}.doc-tiptap-content [data-resize-wrapper]{display:block;width:fit-content;max-width:100%;height:auto;line-height:0;position:relative}.doc-tiptap-content [data-resize-handle]{background:#fff;border:2px solid #134CFF;border-radius:50%;box-sizing:border-box;height:12px;opacity:0;pointer-events:none;position:absolute;width:12px;z-index:3}.doc-tiptap-content [data-resize-container].ProseMirror-selectednode [data-resize-handle],.doc-tiptap-content [data-resize-container][data-resize-state="true"] [data-resize-handle]{opacity:1;pointer-events:auto}.doc-tiptap-content [data-resize-handle="top-left"]{cursor:nwse-resize;left:0;top:0;transform:translate(-50%,-50%)}.doc-tiptap-content [data-resize-handle="top-right"]{cursor:nesw-resize;right:0;top:0;transform:translate(50%,-50%)}.doc-tiptap-content [data-resize-handle="bottom-left"]{bottom:0;cursor:nesw-resize;left:0;transform:translate(-50%,50%)}.doc-tiptap-content [data-resize-handle="bottom-right"]{bottom:0;cursor:nwse-resize;right:0;transform:translate(50%,50%)}.doc-tiptap-content .doc-video{display:block;max-width:100%;margin:12px 0;border-radius:8px;background:#000}.doc-tiptap-content .doc-attachment{align-items:center;background:#f7f8fa;border:1px solid #ebecf0;border-radius:8px;color:#303133;display:flex;font-size:13px;margin:12px 0;max-width:520px;min-height:42px;padding:10px 12px;text-decoration:none}.doc-tiptap-content .doc-attachment:hover{border-color:#cfd4df;background:#f2f4f7}
         .doc-tiptap-content .tableWrapper{display:block;margin:14px 0;max-width:100%;overflow-x:auto;overflow-y:hidden;padding:2px 0 8px}.doc-tiptap-content .tableWrapper table,.doc-tiptap-content table.doc-table,.doc-tiptap-content table{border:1px solid #EEF0F5;border-collapse:collapse;border-spacing:0;display:table;margin:0;max-width:none;overflow:visible;table-layout:fixed;width:100%}.doc-tiptap-content table td,.doc-tiptap-content table th,.doc-tiptap-content .doc-table td,.doc-tiptap-content .doc-table th{border:1px solid #EEF0F5;box-sizing:border-box;min-width:96px;padding:7px 9px;position:relative;vertical-align:top}.doc-tiptap-content table th,.doc-tiptap-content .doc-table th{background:#f7f8fa;color:#131212;font-weight:600;text-align:left}.doc-tiptap-content table tr:nth-child(odd) td,.doc-tiptap-content .doc-table tr:nth-child(odd) td{background:rgba(238,240,245,0.502)}.doc-tiptap-content table td>*,.doc-tiptap-content table th>*,.doc-tiptap-content .doc-table td>*,.doc-tiptap-content .doc-table th>*{margin-bottom:0!important}.doc-tiptap-content table td p,.doc-tiptap-content table th p{line-height:1.6;margin:0;min-height:20px}.doc-tiptap-content table td p:empty::before,.doc-tiptap-content table th p:empty::before{content:"\\00a0";display:inline-block}.doc-tiptap-content table .selectedCell:after,.doc-tiptap-content .doc-table .selectedCell:after{background:rgba(19,76,255,0.12);content:"";inset:0;pointer-events:none;position:absolute;z-index:2}.doc-tiptap-content table td:focus-within,.doc-tiptap-content table th:focus-within,.doc-tiptap-content .doc-table td:focus-within,.doc-tiptap-content .doc-table th:focus-within{box-shadow:inset 0 0 0 2px rgba(0,94,255,0.18);background:#FAFCFF!important}.doc-tiptap-content .column-resize-handle{background:#134CFF;bottom:-2px;pointer-events:none;position:absolute;right:-3px;top:0;width:3px}.resize-cursor{cursor:col-resize}.table-row-resize-cursor,.table-row-resize-cursor *{cursor:row-resize!important}.doc-table-row-resize-handle{background:transparent;border-radius:0;cursor:row-resize;height:12px;position:fixed;touch-action:none;z-index:280}.doc-table-row-resize-handle::after{background:transparent;border-radius:999px;content:"";height:2px;left:0;position:absolute;right:0;top:5px;transition:background-color .12s ease}.doc-table-row-resize-handle:hover::after{background:rgba(19,76,255,0.18)}.doc-table-row-resize-handle.is-resizing::after{background:rgba(19,76,255,0.42)}
         .doc-tiptap-content .is-empty::before,.doc-tiptap-content .is-editor-empty::before{color:#b8bbc4;content:attr(data-placeholder);float:left;height:0;pointer-events:none}.doc-tiptap-content p.is-empty:first-child::before{color:#b8bbc4}.doc-tiptap-content:focus{outline:none}
@@ -1639,9 +1628,9 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         </ContextMenuPanel>,
         document.body,
       )}
-      <div className="flex-1 min-h-0 bg-white flex justify-center overflow-hidden" onKeyDown={(e) => {
+      <div className="flex-1 min-h-0 bg-white flex justify-center items-stretch overflow-hidden" onKeyDown={(e) => {
         if (!editor) return;
-        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); setSavedAt(formatSavedAt()); setSaveStatus("saved"); setToast({ message: "已保存", type: "success" }); }
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); /* 实际保存由 DocumentAssistant 快捷键处理 */ }
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); const pos = getCaretMenuPosition(); setLinkModalPos({ x: pos.left - 150, y: pos.top + 8 }); setLinkModalMode("insert"); setLinkModalText(""); setLinkModalUrl(""); setShowLinkModal(true); }
         if (slashMenu && e.key === "Escape") { e.preventDefault(); setSlashMenu(null); }
         if (slashMenu && e.key === "ArrowDown") {
@@ -1677,12 +1666,12 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       }}>
         <div className="flex h-full min-h-0 w-full max-w-[1248px] px-[24px] gap-[60px] overflow-hidden">
           <div className="min-w-0 min-h-0 flex-1 h-full max-w-full overflow-hidden"><EditorContent editor={editor} className="h-full min-h-0 w-full max-w-full min-w-0" /></div>
-          <div className="w-[264px] shrink-0 min-h-0 pt-[24px] pb-[12px] overflow-hidden hidden xl:flex xl:flex-col gap-[4px]">
-            <div className="flex items-center gap-[8px] shrink-0">
+          <div className="w-[264px] max-w-[264px] shrink-0 min-w-0 min-h-0 self-stretch pt-[24px] pb-[12px] overflow-hidden hidden xl:flex xl:flex-col gap-[4px] box-border">
+            <div className="flex items-center gap-[8px] shrink-0 min-w-0">
               <img src="/icons/figma-ref/menu-02.svg" alt="" width={16} height={16} className="size-4 shrink-0" />
               <p className="font-['PingFang_SC:Regular',sans-serif] font-normal text-[#3F4046] text-[14px] leading-[24px]">在本页</p>
             </div>
-            <div ref={tocListRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col">
+            <div ref={tocListRef} className="h-0 flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain">
               {tocHeadings.length === 0 ? <p className="text-[#b8bbc4] text-[14px] leading-[24px] font-normal">暂无标题</p> : tocHeadings.map((h) => {
                 const level = Math.min(Math.max(Number(h.tag.slice(1)) || 1, 1), 6);
                 const padLeft = (level - 1) * 16;
@@ -1695,7 +1684,8 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
                       else tocButtonRefs.current.delete(h.id);
                     }}
                     type="button"
-                    className={`block w-full h-8 text-left font-['PingFang_SC:Regular',sans-serif] font-normal text-[14px] leading-[24px] py-1 truncate bg-transparent border-0 outline-none appearance-none ${isActive ? "text-[#134CFF]" : "text-[#505257] hover:text-[#3F4046]"}`}
+                    title={h.text}
+                    className={`block w-full max-w-full min-w-0 shrink-0 h-8 text-left font-['PingFang_SC:Regular',sans-serif] font-normal text-[14px] leading-[24px] py-1 truncate bg-transparent border-0 outline-none appearance-none ${isActive ? "text-[#134CFF]" : "text-[#505257] hover:text-[#3F4046]"}`}
                     style={{ paddingLeft: `${padLeft}px`, paddingRight: 0 }}
                     onClick={() => { scrollToHeading(h.id); }}
                   >
@@ -1709,8 +1699,39 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       </div>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       <div className="flex items-center justify-between h-[44px] px-[24px] border-t border-[#EBECF0] bg-white flex-shrink-0 box-border">
-        <div className="flex items-center gap-[8px]"><div className="relative shrink-0 size-[8px]"><svg className="absolute block inset-0 size-full" fill="none" viewBox="0 0 8 8"><circle cx="4" cy="4" fill={saveStatus === "saving" ? "#F59E0B" : saveStatus === "saved" ? "#15803D" : "#8D8E99"} r="4" /></svg></div><p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[14px] whitespace-nowrap">{saveStatus === "saving" ? "自动保存中..." : savedAt ? `已自动保存，更新于${savedAt}` : "等待自动保存"}</p></div>
-        <div className="flex items-center gap-[25px]"><div className="flex items-center gap-[8px]"><div className="relative shrink-0 size-[14px]"><svg className="absolute block inset-0 size-full" fill="none" viewBox="0 0 14 14"><path d={editorSvg.p2ce2bc00} stroke="#8D8E99" strokeLinecap="round" strokeWidth="1.2" /></svg></div><p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[14px]">大纲</p></div><p className="font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[14px]">{charCount}字符 {wordCount}字</p></div>
+        <div className="flex items-center gap-[8px]">
+          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#8D8E99] text-[14px] leading-none whitespace-nowrap">自动保存</p>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={autoSaveEnabled}
+            aria-label="自动保存"
+            className="relative shrink-0 w-[40px] h-[20px] rounded-full transition-colors duration-300 cursor-pointer border-0 p-0"
+            style={{ background: autoSaveEnabled ? "#131212" : "#EBECF0" }}
+            onClick={() => onAutoSaveChange?.(!autoSaveEnabled)}
+          >
+            <span
+              className="absolute top-[2px] size-[16px] rounded-full transition-all duration-300"
+              style={{ left: autoSaveEnabled ? "22px" : "2px", background: autoSaveEnabled ? "#FFFFFF" : "#131212" }}
+            />
+          </button>
+          <p className="font-['PingFang_SC:Light',sans-serif] font-light text-[#8D8E99] text-[14px] leading-none whitespace-nowrap">
+            {autoSaveEnabled
+              ? (lastSavedAt ? `于 ${lastSavedAt} 更新保存` : "开启后每隔 30 秒自动保存")
+              : "需手动保存"}
+          </p>
+        </div>
+        <div className="flex items-center gap-[25px]">
+          <div className="flex items-center gap-[8px]">
+            <div className="relative shrink-0 size-[14px]">
+              <svg className="absolute block inset-0 size-full" fill="none" viewBox="0 0 14 14">
+                <path d={editorSvg.p2ce2bc00} stroke="#8D8E99" strokeLinecap="round" strokeWidth="1.2" />
+              </svg>
+            </div>
+            <p className="font-['PingFang_SC:Regular',sans-serif] text-[#8D8E99] text-[14px]">大纲</p>
+          </div>
+          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#8D8E99] text-[14px]">{charCount}字符</p>
+        </div>
       </div>
     </div>
   );

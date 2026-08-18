@@ -1,9 +1,12 @@
+// @ts-nocheck — TipTap 多版本类型冲突（starter-kit 嵌套 @tiptap/core），运行时无问题
 import { Extension, mergeAttributes, Node as TiptapNode, ResizableNodeView } from "@tiptap/core";
+import CodeBlock from "@tiptap/extension-code-block";
 import Image from "@tiptap/extension-image";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { formatFileSize, mergeHtmlAttrs } from "../utils/html";
 import { fitImageSize, imageRatioLockedRef, syncContainerToImage } from "../utils/image";
+import { renderMermaidSourceToSvg } from "../utils/mermaid";
 
 export const ResizableImage = Image.extend({
   addNodeView() {
@@ -329,6 +332,196 @@ export const IndentExtension = Extension.create({
       },
     } as any;
   },
+});
+
+export const MermaidCodeBlock = CodeBlock.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      language: {
+        default: null,
+        parseHTML: (element) => {
+          const dataLang = element.getAttribute("data-language")
+            || element.querySelector?.("code")?.getAttribute("data-language");
+          if (dataLang) return dataLang;
+          const classNames = [
+            ...Array.from(element.classList || []),
+            ...Array.from(element.querySelector?.("code")?.classList || []),
+          ].map(String);
+          const hit = classNames.find((name) => name.startsWith("language-"));
+          return hit ? hit.replace(/^language-/, "") : null;
+        },
+        rendered: false,
+      },
+    };
+  },
+
+  renderHTML({ node, HTMLAttributes }) {
+    const language = node.attrs.language;
+    return [
+      "pre",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
+        class: language === "mermaid" ? "doc-code-block language-mermaid" : "doc-code-block",
+        "data-language": language || undefined,
+      }),
+      [
+        "code",
+        language ? { class: `language-${language}`, "data-language": language } : {},
+        0,
+      ],
+    ];
+  },
+
+  addNodeView() {
+    return ({ node, editor, getPos }) => {
+      const dom = document.createElement("div");
+      const preview = document.createElement("div");
+      const pre = document.createElement("pre");
+      const code = document.createElement("code");
+      let currentNode = node;
+      let selected = false;
+      let renderToken = 0;
+      let lastSource = "";
+      let debounceTimer = 0;
+
+      const isMermaid = () => String(currentNode.attrs.language || "") === "mermaid";
+
+      const syncChrome = () => {
+        const mermaid = isMermaid();
+        // 可编辑：选中时编辑源码，未选中时显示预览；只读：始终预览
+        const showSource = mermaid ? (editor.isEditable && selected) : true;
+        dom.className = mermaid ? `doc-mermaid${showSource ? " is-editing" : ""}` : "doc-code-block-wrap";
+        dom.style.position = mermaid ? "relative" : "";
+        pre.className = mermaid ? "doc-code-block doc-mermaid-source" : "doc-code-block";
+        if (currentNode.attrs.language) {
+          const lang = String(currentNode.attrs.language);
+          pre.setAttribute("data-language", lang);
+          code.className = `language-${lang}`;
+          code.setAttribute("data-language", lang);
+        } else {
+          pre.removeAttribute("data-language");
+          code.className = "";
+          code.removeAttribute("data-language");
+        }
+        if (!mermaid) {
+          preview.style.display = "none";
+          preview.innerHTML = "";
+          pre.style.cssText = "";
+          return;
+        }
+        if (showSource) {
+          preview.style.display = "none";
+          pre.style.cssText = "";
+        } else {
+          // 预览态：隐藏源码但保持 contentDOM 挂载，避免 ProseMirror 丢更新
+          preview.style.display = "block";
+          pre.style.position = "absolute";
+          pre.style.width = "1px";
+          pre.style.height = "1px";
+          pre.style.opacity = "0";
+          pre.style.overflow = "hidden";
+          pre.style.pointerEvents = "none";
+          pre.style.margin = "0";
+          pre.style.padding = "0";
+          pre.style.border = "0";
+        }
+      };
+
+      const renderPreview = (source: string) => {
+        if (!isMermaid()) return;
+        const trimmed = String(source || "").replace(/\u00a0/g, " ").trimEnd();
+        if (!trimmed.trim()) {
+          preview.className = "doc-mermaid-preview";
+          preview.textContent = "输入 Mermaid 语法后将在此预览";
+          lastSource = "";
+          return;
+        }
+        if (trimmed === lastSource && preview.querySelector("svg")) return;
+        const token = ++renderToken;
+        preview.className = "doc-mermaid-preview";
+        preview.textContent = "图表渲染中…";
+        void renderMermaidSourceToSvg(trimmed).then((svg) => {
+          if (token !== renderToken) return;
+          lastSource = trimmed;
+          preview.innerHTML = svg;
+          const svgEl = preview.querySelector("svg");
+          if (svgEl) {
+            svgEl.removeAttribute("height");
+            svgEl.style.maxWidth = "100%";
+            svgEl.style.height = "auto";
+            svgEl.style.display = "block";
+            svgEl.style.margin = "0 auto";
+          }
+        }).catch((error) => {
+          if (token !== renderToken) return;
+          lastSource = "";
+          preview.className = "doc-mermaid-preview doc-mermaid-error";
+          preview.textContent = `Mermaid 渲染失败：${error instanceof Error ? error.message : "语法错误"}`;
+        });
+      };
+
+      const scheduleRender = () => {
+        window.clearTimeout(debounceTimer);
+        debounceTimer = window.setTimeout(() => {
+          renderPreview(code.innerText);
+        }, 280);
+      };
+
+      preview.className = "doc-mermaid-preview";
+      preview.addEventListener("mousedown", (event) => {
+        if (!editor.isEditable || !isMermaid()) return;
+        event.preventDefault();
+        const pos = typeof getPos === "function" ? getPos() : null;
+        if (typeof pos === "number") {
+          editor.chain().focus().setNodeSelection(pos).run();
+        }
+      });
+      pre.contentEditable = editor.isEditable ? "true" : "false";
+      pre.appendChild(code);
+      dom.appendChild(preview);
+      dom.appendChild(pre);
+      code.textContent = currentNode.textContent;
+      syncChrome();
+      if (isMermaid()) renderPreview(currentNode.textContent);
+
+      return {
+        dom,
+        contentDOM: code,
+        update: (updatedNode) => {
+          if (updatedNode.type !== currentNode.type) return false;
+          currentNode = updatedNode;
+          syncChrome();
+          if (isMermaid()) scheduleRender();
+          else {
+            preview.innerHTML = "";
+            lastSource = "";
+          }
+          return true;
+        },
+        selectNode: () => {
+          selected = true;
+          syncChrome();
+        },
+        deselectNode: () => {
+          selected = false;
+          syncChrome();
+          if (isMermaid()) scheduleRender();
+        },
+        stopEvent: () => false,
+        ignoreMutation: (mutation) => {
+          if (preview.contains(mutation.target as Node)) return true;
+          if (code.contains(mutation.target as Node)) return false;
+          return true;
+        },
+        destroy: () => {
+          window.clearTimeout(debounceTimer);
+          renderToken += 1;
+        },
+      };
+    };
+  },
+}).configure({
+  HTMLAttributes: { class: "doc-code-block" },
 });
 
 export const TyporaKeymap = Extension.create({

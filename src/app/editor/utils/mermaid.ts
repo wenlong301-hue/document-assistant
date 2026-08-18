@@ -46,6 +46,12 @@ async function renderOne(source: string, id: string): Promise<string> {
   return svg;
 }
 
+/** 供编辑器 NodeView 直接渲染单段 Mermaid 源码 */
+export async function renderMermaidSourceToSvg(source: string): Promise<string> {
+  const id = `mermaid-src-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return renderOne(source, id);
+}
+
 /** 在已挂载的 DOM 根节点内把 mermaid 代码块渲染成图 */
 export async function renderMermaidInElement(root: HTMLElement | null | undefined) {
   if (!root || typeof document === "undefined") return;

@@ -11,6 +11,7 @@ import {
 import { emptyParagraph, escapeHtml } from "@/app/editor/utils/html";
 import { getDisplayFileName } from "@/app/shared/utils/text";
 import { turndownService } from "./exportTurndown";
+import { getElectronAPI } from "@/app/shared/electron";
 
 // PreviewSection type used in original - infer locally
 type PreviewSection = { id: string; name: string; html: string };
@@ -100,15 +101,15 @@ export function ExportModal({ docName, content, contentMap, outlineNodes, select
       if (format === "HTML") {
         const fullHtml = await buildPreviewHtmlAsync(displayExportTitle, exportSections, exportOutlineTree, initialNodeId, contentMap);
         if (isElectron) {
-          const result = await (window as any).electronAPI.exportHtml(fullHtml, `${safeName}.html`);
+          const result = await getElectronAPI()?.exportHtml(fullHtml, `${safeName}.html`);
           notify(result === false ? "已取消导出" : "导出成功", result === false ? "info" : "success");
         } else {
           downloadBlob(new Blob([fullHtml], { type: "text/html" }), `${safeName}.html`);
           notify("导出成功", "success");
         }
       } else if (format === "Markdown") {
-        if (isElectron && (window as any).electronAPI.exportMarkdown) {
-          const result = await (window as any).electronAPI.exportMarkdown(payload);
+        if (isElectron && getElectronAPI()?.exportMarkdown) {
+          const result = await getElectronAPI()?.exportMarkdown(payload);
           if (result?.error) throw new Error(result.error);
           notify(result?.canceled ? "已取消导出" : "导出成功", result?.canceled ? "info" : "success");
         } else {
@@ -118,7 +119,7 @@ export function ExportModal({ docName, content, contentMap, outlineNodes, select
         }
       } else if (format === "Word") {
         if (isElectron) {
-          const result = await (window as any).electronAPI.exportDocx(payload);
+          const result = await getElectronAPI()?.exportDocx(payload);
           if (result?.error) throw new Error(result.error);
           notify(result?.canceled ? "已取消导出" : "导出成功", result?.canceled ? "info" : "success");
         } else {
@@ -129,7 +130,7 @@ export function ExportModal({ docName, content, contentMap, outlineNodes, select
         }
       } else if (format === "PDF") {
         if (isElectron) {
-          const result = await (window as any).electronAPI.exportPdf(payload);
+          const result = await getElectronAPI()?.exportPdf(payload);
           if (result?.error) throw new Error(result.error);
           notify(result?.canceled ? "已取消导出" : "导出成功", result?.canceled ? "info" : "success");
         } else {

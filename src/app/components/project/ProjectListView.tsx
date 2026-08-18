@@ -9,6 +9,7 @@ import { LogoIcon } from "./icons/LogoIcon";
 import { FolderPlusIcon } from "./icons/FolderPlusIcon";
 import { HelpIcon } from "./icons/HelpIcon";
 import { SearchIcon } from "./icons/SearchIcon";
+import { getElectronAPI } from "@/app/shared/electron";
 
 const FALLBACK_VERSION = "0.1.7";
 
@@ -52,7 +53,7 @@ export function ProjectListView({
   const [appVersion, setAppVersion] = useState(FALLBACK_VERSION);
 
   useEffect(() => {
-    const api = (window as any).electronAPI;
+    const api = getElectronAPI();
     if (api?.getVersion) {
       api.getVersion().then((v: string) => v && setAppVersion(v)).catch(() => {});
     }
@@ -71,7 +72,7 @@ export function ProjectListView({
   const handleOpenLocation = useCallback((project: Project) => {
     const location = project.filePath || project.folderPath;
     if (location && isElectron) {
-      (window as any).electronAPI?.openFolderLocation(location);
+      getElectronAPI()?.openFolderLocation(location);
     }
   }, [isElectron]);
 

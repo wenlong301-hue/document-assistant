@@ -34,7 +34,7 @@ function HelpMenuIcon() {
   );
 }
 
-export function TopBar({ onOpenShare, onOpenExport, onDelete, onImport, onSave, onSaveAsMdoc, onOpenHelp, level, projectName, onBack, shareDisabled = false, saveDisabled = false, saveAsDisabled = false }: {
+export function TopBar({ onOpenShare, onOpenExport, onDelete, onImport, onSave, onSaveAsMdoc, onOpenHelp, onOpenSettings, level, projectName, onBack, shareDisabled = false, saveDisabled = false, saveAsDisabled = false }: {
   onOpenShare: () => void;
   onOpenExport: () => void;
   onDelete: () => void;
@@ -42,6 +42,7 @@ export function TopBar({ onOpenShare, onOpenExport, onDelete, onImport, onSave, 
   onSave: () => void;
   onSaveAsMdoc: () => void;
   onOpenHelp: () => void;
+  onOpenSettings?: () => void;
   level?: "projects" | "project";
   projectName?: string;
   onBack?: () => void;
@@ -100,6 +101,16 @@ export function TopBar({ onOpenShare, onOpenExport, onDelete, onImport, onSave, 
       danger: true,
       icon: <MenuIcon d={svgPaths.p1db5f00} />,
       action: () => { setMoreOpen(false); onDelete(); },
+    },
+    {
+      label: "设置",
+      icon: (
+        <svg className="block size-full" fill="none" viewBox="0 0 16 16">
+          <path d="M6.5 2.5h3l.4 1.3c.3.1.6.3.9.5l1.3-.4.9.9-.4 1.3c.2.3.4.6.5.9l1.3.4v3l-1.3.4c-.1.3-.3.6-.5.9l.4 1.3-.9.9-1.3-.4c-.3.2-.6.4-.9.5L9.5 13.5h-3l-.4-1.3c-.3-.1-.6-.3-.9-.5l-1.3.4-.9-.9.4-1.3c-.2-.3-.4-.6-.5-.9L2.5 9.5v-3l1.3-.4c.1-.3.3-.6.5-.9L3.9 3.9l.9-.9 1.3.4c.3-.2.6-.4.9-.5L6.5 2.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+          <circle cx="8" cy="8" r="1.8" stroke="currentColor" strokeWidth="1.2"/>
+        </svg>
+      ),
+      action: () => { setMoreOpen(false); onOpenSettings?.(); },
     },
     {
       label: "帮助",

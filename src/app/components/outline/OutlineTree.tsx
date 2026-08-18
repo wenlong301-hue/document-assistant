@@ -9,6 +9,7 @@ import {
   findNodeDepth,
 } from "@/app/document/helpers";
 import { filterOutlineNodes, insertNodeAfter, insertNodeBefore, removeNodeById } from "@/app/document/outlineTreeOps";
+import { getPlainTextFromHtml } from "@/app/editor/utils/html";
 import { DeleteConfirmModal } from "@/app/document/DeleteConfirmModal";
 import { NewDocModal } from "@/app/document/NewDocModal";
 import { useAutoHideScrollbar } from "@/app/shared/hooks/useAutoHideScrollbar";
@@ -28,7 +29,7 @@ export function OutlineTree({ nodes, selectedId, docName, contentMap, onSelect, 
   const scrollRef = useRef<HTMLDivElement>(null);
   useAutoHideScrollbar(scrollRef);
   const filtering = filter.trim().length > 0;
-  const filteredNodes = useMemo(() => (filtering ? filterOutlineNodes(nodes, filter.trim()) : nodes), [nodes, filter, filtering]);
+  const filteredNodes = useMemo(() => (filtering ? filterOutlineNodes(nodes, filter.trim(), contentMap, getPlainTextFromHtml) : nodes), [nodes, filter, filtering, contentMap]);
 
   useEffect(() => {
     if (filtering && enterTick > 0 && filteredNodes.length > 0) onSelect(filteredNodes[0].id);

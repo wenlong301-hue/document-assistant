@@ -76,6 +76,7 @@
 | `accent-stroke` | `#0012DD` | 插画描边（更深蓝） |
 | `success` | `#15803D` | 成功 Toast、分享开启文案、更新徽章 |
 | `success-toggle` | `#2AB673` | 分享开关开启轨 |
+| `ink-toggle` | `#131212` | 编辑器底栏「自动保存」开启轨（关闭轨 `#EBECF0`，滑块对侧） |
 | `danger` | `#E53E3E` | 危险主按钮、错误 Toast、错误文案 |
 | `danger-menu` | `#FF4D4F` | 菜单危险项文字 |
 | `danger-hover-bg` | `#FFF1F0` | 危险菜单 hover 底 |

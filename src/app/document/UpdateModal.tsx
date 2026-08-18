@@ -75,20 +75,22 @@ export function UpdateModal({
           </button>
         </div>
 
-        {/* 正文 — 与 ShareModal 一致：上24 下32 */}
+        {/* 正文 — 与 ShareModal 一致：上24 下32；标题→说明 8 */}
         <div className="px-[24px] pt-[24px] pb-[32px] flex flex-col">
-          <p className="m-0 font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[14px] font-medium leading-[20px]">
-            当前版本 v{info.currentVersion || "-"}，最新版本{" "}
-            <span className="text-[#134CFF]">v{info.version}</span> 已发布。
-          </p>
-          <p className="m-0 mt-[8px] font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[13px] leading-[18px]">
-            {isMac
-              ? "下载完成后将覆盖当前应用并自动重启（不会生成第二个应用）。也可前往 GitHub Release 手动安装。"
-              : "可直接下载并安装更新；也可前往 GitHub Release 页面获取安装包。"}
-          </p>
+          <div className="flex flex-col gap-[8px]">
+            <p className="m-0 font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[14px] font-medium leading-[20px]">
+              当前版本 v{info.currentVersion || "-"}，最新版本{" "}
+              <span className="text-[#134CFF]">v{info.version}</span> 已发布。
+            </p>
+            <p className="m-0 font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[13px] leading-[18px]">
+              {isMac
+                ? "下载完成后将覆盖当前应用并自动重启（不会生成第二个应用）。也可前往 GitHub Release 手动安装。"
+                : "可直接下载并安装更新；也可前往 GitHub Release 页面获取安装包。"}
+            </p>
+          </div>
 
           {(downloading || downloaded) && (
-            <div className="mt-[16px] flex flex-col gap-[8px]">
+            <div className="mt-[16px] flex flex-col gap-[4px]">
               <div className="h-[8px] rounded-full bg-[#eef0f5] overflow-hidden">
                 <div
                   className="h-full rounded-full bg-[#134CFF] transition-all duration-200"
