@@ -274,6 +274,9 @@ function setupAutoUpdater() {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.allowPrerelease = false;
+  // 始终全量下载安装包，禁用差量/WebInstaller，保证更新包完整可静默安装
+  autoUpdater.disableDifferentialDownload = true;
+  autoUpdater.disableWebInstaller = true;
   // 公开仓库的 GitHub Releases；不自动上传，仅用于检查/下载
   try {
     autoUpdater.setFeedURL({
@@ -1561,7 +1564,7 @@ ipcMain.handle('download-update', async () => {
   }
 });
 ipcMain.handle('install-update', async () => {
-  // Windows：quitAndInstall。macOS：原地替换当前 .app，避免拖入安装产生双应用。
+  // macOS：原地静默替换当前 .app 并重启；Windows：NSIS 静默安装后重启。
   if (process.platform === 'darwin') {
     if (lastDownloadedUpdatePath && fs.existsSync(lastDownloadedUpdatePath)) {
       try {
@@ -1584,7 +1587,8 @@ ipcMain.handle('install-update', async () => {
   forceQuit = true;
   setImmediate(() => {
     try {
-      autoUpdater.quitAndInstall(false, true);
+      // isSilent=true：静默安装；isForceRunAfter=true：安装后自动重启
+      autoUpdater.quitAndInstall(true, true);
     } catch (error) {
       console.error('quitAndInstall failed:', error);
       shell.openExternal(RELEASE_PAGE_URL);

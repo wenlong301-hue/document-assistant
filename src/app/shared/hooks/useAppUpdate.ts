@@ -14,6 +14,7 @@ export function useAppUpdate(isElectron: boolean, setToast: ToastSetter, flushCu
   const [updateCheckBusy, setUpdateCheckBusy] = useState(false);
   const manualUpdateCheckRef = useRef(false);
   const startupUpdateCheckRef = useRef(false);
+  const autoInstallStartedRef = useRef(false);
 
   useEffect(() => {
     if (!isElectron) return;
@@ -56,7 +57,31 @@ export function useAppUpdate(isElectron: boolean, setToast: ToastSetter, flushCu
       setUpdateDownloaded(true);
       setUpdateProgress({ percent: 100 });
       setUpdateInfo((prev) => (prev ? { ...prev, version: payload?.version || prev.version, platform: payload?.platform || prev.platform } : prev));
-      setToast({ message: "更新包已下载完成", type: "success" });
+      setToast({ message: "更新包已下载完成，正在静默安装并重启…", type: "info" });
+      // 全量下载完成后自动静默安装并重启（防重复触发）
+      if (autoInstallStartedRef.current) return;
+      autoInstallStartedRef.current = true;
+      void (async () => {
+        try {
+          await flushCurrentDoc();
+          const result = await api.installUpdate?.();
+          if (result?.mode === "open-installer") {
+            autoInstallStartedRef.current = false;
+            setToast({
+              message: "已打开安装包：请将应用拖入「应用程序」并选择替换，勿保留旧版",
+              type: "info",
+            });
+          } else if (result?.mode === "open-release") {
+            autoInstallStartedRef.current = false;
+            setToast({ message: "请前往下载页手动安装更新", type: "info" });
+          }
+        } catch (error) {
+          autoInstallStartedRef.current = false;
+          const message = error instanceof Error ? error.message : "自动安装失败";
+          setUpdateError(message);
+          setToast({ message: "自动安装失败，请点击「立即安装并重启」或打开下载页", type: "error" });
+        }
+      })();
     });
     const unsubError = api.onUpdateError?.((payload) => {
       setUpdateCheckBusy(false);
@@ -83,7 +108,7 @@ export function useAppUpdate(isElectron: boolean, setToast: ToastSetter, flushCu
       unsubDownloaded?.();
       unsubError?.();
     };
-  }, [isElectron, setToast]);
+  }, [isElectron, setToast, flushCurrentDoc]);
 
   const handleCheckForUpdates = useCallback(async () => {
     if (!isElectron) {

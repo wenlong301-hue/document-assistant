@@ -48,10 +48,12 @@ export function UpdateModal({
   const isMac = info.platform === "darwin" || (typeof navigator !== "undefined" && /Mac/i.test(navigator.platform));
   const percent = Math.max(0, Math.min(100, Math.round(progress?.percent || 0)));
   const primaryLabel = downloaded
-    ? "立即安装并重启"
+    ? errorMessage
+      ? "立即安装并重启"
+      : "正在安装…"
     : downloading
-      ? `下载中 ${percent}%`
-      : "下载更新";
+      ? `全量下载中 ${percent}%`
+      : "下载并安装";
 
   return (
     <div className="fixed inset-0 z-[400] flex items-center justify-center" onClick={onLater}>
@@ -84,8 +86,8 @@ export function UpdateModal({
             </p>
             <p className="m-0 font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[13px] leading-[18px]">
               {isMac
-                ? "下载完成后将覆盖当前应用并自动重启（不会生成第二个应用）。也可前往 GitHub Release 手动安装。"
-                : "可直接下载并安装更新；也可前往 GitHub Release 页面获取安装包。"}
+                ? "将全量下载完整安装包；下载完成后自动静默覆盖当前应用并重启（不会生成第二个应用）。也可前往 GitHub Release 手动安装。"
+                : "将全量下载完整安装包；下载完成后自动静默安装并重启。也可前往 GitHub Release 页面获取安装包。"}
             </p>
           </div>
 
@@ -99,9 +101,11 @@ export function UpdateModal({
               </div>
               <p className="m-0 font-['PingFang_SC:Regular',sans-serif] text-[12px] text-[#8d8e99] leading-[18px]">
                 {downloaded
-                  ? "下载完成"
+                  ? progress?.total
+                    ? `${formatBytes(progress.total)} / ${formatBytes(progress.total)}  ·  100%`
+                    : "下载完成  ·  100%"
                   : progress?.total
-                    ? `${formatBytes(progress.transferred)} / ${formatBytes(progress.total)}`
+                    ? `${formatBytes(progress.transferred)} / ${formatBytes(progress.total)}  ·  ${percent}%`
                     : `已下载 ${percent}%`}
               </p>
             </div>
@@ -135,7 +139,7 @@ export function UpdateModal({
               className={`h-[32px] px-[16px] rounded-[6px] border-0 bg-[#131212] text-white text-[14px] font-normal leading-none transition-opacity outline-none appearance-none inline-flex items-center justify-center box-border ${downloading ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:opacity-90 active:opacity-80"}`}
               style={{ fontFamily: "PingFang SC, sans-serif" }}
               onClick={downloaded ? onInstall : onDownload}
-              disabled={downloading}
+              disabled={downloading || (downloaded && !errorMessage)}
             >
               {primaryLabel}
             </button>
