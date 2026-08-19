@@ -192,7 +192,7 @@ export function AddProjectModal({
               <p className="text-[14px] text-[#606266] mb-[4px]">
                 {isDragOver ? "松开以导入" : "拖拽文件或文件夹到此处，或点击选择"}
               </p>
-              <p className="text-[12px] text-[#8d8e99]">支持 .mdoc / .md / .txt / .html / .htm / .docx 或文件夹</p>
+              <p className="text-[12px] text-[#8d8e99]">支持 .mdoc / .md / .txt / .html / .htm / .docx / .sql 或文件夹</p>
             </div>
           )}
         </div>

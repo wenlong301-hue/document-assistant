@@ -14,10 +14,12 @@ import { TableRow } from "@tiptap/extension-table-row";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import editorSvg from "../../imports/首页大纲模式根节点未编写内容-1/svg-208e2u96ym";
+import { assetUrl } from "@/app/shared/utils/assetUrl";
 import {
   AttachmentNode,
   BlockAnchorExtension,
   IndentExtension,
+  exitCodeBlockCleanly,
   insertParagraphAfterAncestor,
   isCurrentCodeLineEmpty,
   isTiptapBlockEmpty,
@@ -178,7 +180,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     }).filter((handle) => handle.top >= safeTop && handle.top < window.innerHeight - 8);
     const tableBarTop = Math.max(safeTop, rect.top - 42);
     setTableToolbarPos({
-      left: Math.max(12, Math.min(rect.left, window.innerWidth - 620)),
+      left: Math.max(12, Math.min(rect.left, window.innerWidth - 760)),
       top: tableBarTop,
     });
     setTableRowHandles(rowRects);
@@ -365,9 +367,12 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       IndentExtension,
       TextAlign.configure({ types: ["heading", "paragraph"], alignments: ["left", "center", "right", "justify"] }),
       Placeholder.configure({
-        placeholder: "输入 / 呼出命令，或直接开始写作",
+        placeholder: ({ node }) => {
+          if (node.type.name === "codeBlock") return "";
+          return "输入 / 呼出命令，或直接开始写作";
+        },
         showOnlyWhenEditable: true,
-        showOnlyCurrent: false,
+        showOnlyCurrent: true,
         includeChildren: false,
         emptyNodeClass: "is-empty",
         emptyEditorClass: "is-editor-empty",
@@ -452,14 +457,17 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
             return false;
           }
           if ((event.key === "Escape" || ((event.metaKey || event.ctrlKey) && event.key === "Enter")) && activeEditor.isActive("codeBlock")) {
+            // Mermaid 由 NodeView 自行处理确定/取消，勿 exitCode
+            if (activeEditor.getAttributes("codeBlock")?.language === "mermaid") return false;
             event.preventDefault();
-            return activeEditor.chain().focus().exitCode().run();
+            return exitCodeBlockCleanly(activeEditor);
           }
           if (event.key !== "Enter" || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false;
           if (activeEditor.isActive("codeBlock")) {
+            if (activeEditor.getAttributes("codeBlock")?.language === "mermaid") return false;
             if (isCurrentCodeLineEmpty(activeEditor)) {
               event.preventDefault();
-              return activeEditor.chain().focus().exitCode().run();
+              return exitCodeBlockCleanly(activeEditor);
             }
             return false;
           }
@@ -493,14 +501,16 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
           return false;
         }
         if ((event.key === "Escape" || ((event.metaKey || event.ctrlKey) && event.key === "Enter")) && activeEditor.isActive("codeBlock")) {
+          if (activeEditor.getAttributes("codeBlock")?.language === "mermaid") return false;
           event.preventDefault();
-          return activeEditor.chain().focus().exitCode().run();
+          return exitCodeBlockCleanly(activeEditor);
         }
         if (event.key !== "Enter" || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false;
         if (activeEditor.isActive("codeBlock")) {
+          if (activeEditor.getAttributes("codeBlock")?.language === "mermaid") return false;
           if (isCurrentCodeLineEmpty(activeEditor)) {
             event.preventDefault();
-            return activeEditor.chain().focus().exitCode().run();
+            return exitCodeBlockCleanly(activeEditor);
           }
           return false;
         }
@@ -561,6 +571,16 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
               return true;
             }
           }
+        }
+        // 代码块内强制纯文本粘贴，避免 NodeView/HTML 粘贴丢失
+        const $from = view.state.selection.$from;
+        if ($from.parent.type.name === "codeBlock") {
+          const text = event.clipboardData?.getData("text/plain");
+          if (text == null) return false;
+          event.preventDefault();
+          const { from, to } = view.state.selection;
+          view.dispatch(view.state.tr.insertText(text, from, to));
+          return true;
         }
         return false;
       },
@@ -715,16 +735,17 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         return;
       }
       if ((event.key === "Escape" || ((event.metaKey || event.ctrlKey) && event.key === "Enter")) && editor.isActive("codeBlock")) {
+        if (editor.getAttributes("codeBlock")?.language === "mermaid") return;
         event.preventDefault();
         event.stopImmediatePropagation();
-        editor.chain().focus().exitCode().run();
+        exitCodeBlockCleanly(editor);
         return;
       }
       if (event.key !== "Enter" || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return;
-      if (editor.isActive("codeBlock") && isCurrentCodeLineEmpty(editor)) {
+      if (editor.isActive("codeBlock") && editor.getAttributes("codeBlock")?.language !== "mermaid" && isCurrentCodeLineEmpty(editor)) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        editor.chain().focus().exitCode().run();
+        exitCodeBlockCleanly(editor);
         return;
       }
       if (editor.isActive("blockquote") && isTiptapBlockEmpty(editor)) {
@@ -1151,13 +1172,18 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     document.addEventListener("keydown", onKeyDown, true);
   };
 
-  const runTableCommand = (command: "addRowBefore" | "addRowAfter" | "deleteRow" | "addColumnBefore" | "addColumnAfter" | "deleteColumn" | "deleteTable") => {
+  const runTableCommand = (command: "addRowBefore" | "addRowAfter" | "deleteRow" | "addColumnBefore" | "addColumnAfter" | "deleteColumn" | "deleteTable" | "mergeCells" | "splitCell") => {
     const activeEditor = editorInstanceRef.current;
     if (!activeEditor) return;
     restoreEditorSelection(activeEditor);
     activeEditor.chain().focus()[command]().run();
     if (command === "deleteTable") setShowTableToolbar(false);
     window.setTimeout(() => updateTableToolbar(activeEditor), 0);
+  };
+
+  const applyTableAlign = (align: "left" | "center" | "right") => {
+    applyTextAlign(align);
+    window.setTimeout(() => updateTableToolbar(editorInstanceRef.current), 0);
   };
 
   const insertTable = () => {
@@ -1266,20 +1292,39 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     <div className="absolute inset-0 flex flex-col">
       <style>{`
         .doc-tiptap-content{max-width:100%;box-sizing:border-box;overflow-x:hidden;overflow-wrap:anywhere;word-break:break-word}.doc-tiptap-content p{margin:0 0 10px}.doc-tiptap-content h1{font-size:28px;line-height:1.45;margin:18px 0 12px;font-weight:700}.doc-tiptap-content h2{font-size:24px;line-height:1.45;margin:16px 0 10px;font-weight:700}.doc-tiptap-content h3{font-size:20px;line-height:1.5;margin:14px 0 8px;font-weight:650}.doc-tiptap-content h4,.doc-tiptap-content h5,.doc-tiptap-content h6{font-size:17px;line-height:1.55;margin:12px 0 8px;font-weight:650}.doc-tiptap-content>:first-child{margin-top:0}
-        .doc-tiptap-content .doc-blockquote{border-left:3px solid #134CFF;background:#f7f8fa;margin:10px 0;padding:8px 14px;color:#606266;border-radius:0 8px 8px 0}.doc-tiptap-content .doc-blockquote p{margin:0 0 4px;line-height:1.65}.doc-tiptap-content .doc-blockquote p:last-child{margin-bottom:0}
+        .doc-tiptap-content .doc-blockquote{border-left:3px solid #EBECF0;background:transparent;margin:6px 0;padding:2px 12px;color:#606266;border-radius:0}.doc-tiptap-content .doc-blockquote p{margin:0;line-height:1.8}.doc-tiptap-content .doc-blockquote p:last-child{margin-bottom:0}
         .doc-tiptap-content .doc-list{margin:8px 0 10px;padding-left:28px}.doc-tiptap-content .doc-ordered-list{list-style:decimal}.doc-tiptap-content .doc-ordered-list .doc-ordered-list{list-style:lower-alpha}.doc-tiptap-content .doc-ordered-list .doc-ordered-list .doc-ordered-list{list-style:lower-roman}.doc-tiptap-content .doc-bullet-list{list-style:disc}.doc-tiptap-content .doc-bullet-list .doc-bullet-list{list-style:circle}.doc-tiptap-content .doc-bullet-list .doc-bullet-list .doc-bullet-list{list-style:square}.doc-tiptap-content li{margin:4px 0;padding-left:2px}.doc-tiptap-content li>p{margin:0}.doc-tiptap-content .doc-task-list{list-style:none;margin:8px 0 10px;padding-left:0}.doc-tiptap-content .doc-task-item{display:flex;gap:8px;align-items:flex-start}.doc-tiptap-content .doc-task-item>label{margin-top:2px}.doc-tiptap-content .doc-task-item>div{flex:1}
         .doc-tiptap-content .doc-code-block{background:#f5f6f8;border:1px solid #ebecf0;border-radius:8px;padding:12px 14px;margin:12px 0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;line-height:1.65;white-space:pre-wrap}
-        .doc-tiptap-content .doc-mermaid{margin:12px 0;border:1px solid #ebecf0;border-radius:8px;background:#fff;overflow:hidden;position:relative}
-        .doc-tiptap-content .doc-mermaid-preview{padding:12px;overflow-x:auto;text-align:center;min-height:48px}
-        .doc-tiptap-content .doc-mermaid-preview svg{max-width:100%;height:auto;display:block;margin:0 auto}
+        .doc-tiptap-content .doc-mermaid{margin:12px 0;border:1px solid #EBECF0;border-radius:8px;background:#fff;overflow:hidden;position:relative}
+        .doc-tiptap-content .doc-mermaid-preview{padding:12px;overflow-x:auto;text-align:center;min-height:48px;box-sizing:border-box}
+        .doc-tiptap-content .doc-mermaid-preview svg{max-width:100%;height:auto;display:block;margin:0 auto;pointer-events:none}
         .doc-tiptap-content .doc-mermaid-error{color:#E53E3E;font-size:12px;line-height:1.5;text-align:left;white-space:pre-wrap;word-break:break-word}
-        .doc-tiptap-content .doc-mermaid.is-editing .doc-mermaid-source{margin:0;border:0;border-radius:0;background:#f5f6f8}
+        .doc-tiptap-content .doc-mermaid.is-editing .doc-mermaid-source{margin:0;border:0;border-radius:0;background:#F5F6F8}
+        .doc-tiptap-content .doc-mermaid-edit-hint{display:none;position:absolute;top:8px;right:8px;z-index:4;height:28px;padding:0 10px;border-radius:6px;border:1px solid #EBECF0;background:#fff;color:#131212;font-size:12px;font-family:PingFang SC,sans-serif;line-height:1;cursor:pointer;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+        .doc-tiptap-content .doc-mermaid:not(.is-editing):hover .doc-mermaid-edit-hint{display:inline-flex!important}
+        .doc-tiptap-content .doc-mermaid-edit-hint:hover{background:#F7F8FA}
+        .doc-tiptap-content .doc-mermaid-toolbar{display:none;position:relative;z-index:3;align-items:center;justify-content:flex-end;gap:12px;padding:8px 12px;border-top:1px solid #EBECF0;background:#fff}
+        .doc-tiptap-content .doc-mermaid-btn{height:32px;padding:0 16px;border-radius:6px;font-size:14px;font-family:PingFang SC,sans-serif;font-weight:400;line-height:1;cursor:pointer;outline:none;appearance:none;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;transition:opacity .15s,background-color .15s}
+        .doc-tiptap-content .doc-mermaid-btn-cancel{border:1px solid #EBECF0;background:#fff;color:#131212}
+        .doc-tiptap-content .doc-mermaid-btn-cancel:hover{background:#F7F8FA}
+        .doc-tiptap-content .doc-mermaid-btn-cancel:active{background:#EBECF0}
+        .doc-tiptap-content .doc-mermaid-btn-confirm{border:0;background:#131212;color:#fff}
+        .doc-tiptap-content .doc-mermaid-btn-confirm:hover{opacity:.9}
+        .doc-tiptap-content .doc-mermaid-btn-confirm:active{opacity:.8}
         .doc-tiptap-content .doc-code-block-wrap{margin:12px 0}
         .doc-tiptap-content .doc-link{color:#134CFF;text-decoration:underline}.doc-tiptap-content .doc-image{display:block;max-width:100%;height:auto;margin:0;border-radius:8px;cursor:pointer}.doc-tiptap-content [data-resize-container][data-node="image"]{display:inline-flex;width:fit-content;margin:12px 0;max-width:100%;outline:none;position:relative}.doc-tiptap-content [data-resize-container][data-node="image"].ProseMirror-selectednode{outline:2px solid #134CFF;outline-offset:2px;border-radius:8px}.doc-tiptap-content [data-resize-wrapper]{display:block;width:fit-content;max-width:100%;height:auto;line-height:0;position:relative}.doc-tiptap-content [data-resize-handle]{background:#fff;border:2px solid #134CFF;border-radius:50%;box-sizing:border-box;height:12px;opacity:0;pointer-events:none;position:absolute;width:12px;z-index:3}.doc-tiptap-content [data-resize-container].ProseMirror-selectednode [data-resize-handle],.doc-tiptap-content [data-resize-container][data-resize-state="true"] [data-resize-handle]{opacity:1;pointer-events:auto}.doc-tiptap-content [data-resize-handle="top-left"]{cursor:nwse-resize;left:0;top:0;transform:translate(-50%,-50%)}.doc-tiptap-content [data-resize-handle="top-right"]{cursor:nesw-resize;right:0;top:0;transform:translate(50%,-50%)}.doc-tiptap-content [data-resize-handle="bottom-left"]{bottom:0;cursor:nesw-resize;left:0;transform:translate(-50%,50%)}.doc-tiptap-content [data-resize-handle="bottom-right"]{bottom:0;cursor:nwse-resize;right:0;transform:translate(50%,50%)}.doc-tiptap-content .doc-video{display:block;max-width:100%;margin:12px 0;border-radius:8px;background:#000}.doc-tiptap-content .doc-attachment{align-items:center;background:#f7f8fa;border:1px solid #ebecf0;border-radius:8px;color:#303133;display:flex;font-size:13px;margin:12px 0;max-width:520px;min-height:42px;padding:10px 12px;text-decoration:none}.doc-tiptap-content .doc-attachment:hover{border-color:#cfd4df;background:#f2f4f7}
         .doc-tiptap-content .tableWrapper{display:block;margin:14px 0;max-width:100%;overflow-x:auto;overflow-y:hidden;padding:2px 0 8px}.doc-tiptap-content .tableWrapper table,.doc-tiptap-content table.doc-table,.doc-tiptap-content table{border:1px solid #EEF0F5;border-collapse:collapse;border-spacing:0;display:table;margin:0;max-width:none;overflow:visible;table-layout:fixed;width:100%}.doc-tiptap-content table td,.doc-tiptap-content table th,.doc-tiptap-content .doc-table td,.doc-tiptap-content .doc-table th{border:1px solid #EEF0F5;box-sizing:border-box;min-width:96px;padding:7px 9px;position:relative;vertical-align:top}.doc-tiptap-content table th,.doc-tiptap-content .doc-table th{background:#f7f8fa;color:#131212;font-weight:600;text-align:left}.doc-tiptap-content table tr:nth-child(odd) td,.doc-tiptap-content .doc-table tr:nth-child(odd) td{background:rgba(238,240,245,0.502)}.doc-tiptap-content table td>*,.doc-tiptap-content table th>*,.doc-tiptap-content .doc-table td>*,.doc-tiptap-content .doc-table th>*{margin-bottom:0!important}.doc-tiptap-content table td p,.doc-tiptap-content table th p{line-height:1.6;margin:0;min-height:20px}.doc-tiptap-content table td p:empty::before,.doc-tiptap-content table th p:empty::before{content:"\\00a0";display:inline-block}.doc-tiptap-content table .selectedCell:after,.doc-tiptap-content .doc-table .selectedCell:after{background:rgba(19,76,255,0.12);content:"";inset:0;pointer-events:none;position:absolute;z-index:2}.doc-tiptap-content table td:focus-within,.doc-tiptap-content table th:focus-within,.doc-tiptap-content .doc-table td:focus-within,.doc-tiptap-content .doc-table th:focus-within{box-shadow:inset 0 0 0 2px rgba(0,94,255,0.18);background:#FAFCFF!important}.doc-tiptap-content .column-resize-handle{background:#134CFF;bottom:-2px;pointer-events:none;position:absolute;right:-3px;top:0;width:3px}.resize-cursor{cursor:col-resize}.table-row-resize-cursor,.table-row-resize-cursor *{cursor:row-resize!important}.doc-table-row-resize-handle{background:transparent;border-radius:0;cursor:row-resize;height:12px;position:fixed;touch-action:none;z-index:280}.doc-table-row-resize-handle::after{background:transparent;border-radius:999px;content:"";height:2px;left:0;position:absolute;right:0;top:5px;transition:background-color .12s ease}.doc-table-row-resize-handle:hover::after{background:rgba(19,76,255,0.18)}.doc-table-row-resize-handle.is-resizing::after{background:rgba(19,76,255,0.42)}
-        .doc-tiptap-content .is-empty::before,.doc-tiptap-content .is-editor-empty::before{color:#b8bbc4;content:attr(data-placeholder);float:left;height:0;pointer-events:none}.doc-tiptap-content p.is-empty:first-child::before{color:#b8bbc4}.doc-tiptap-content:focus{outline:none}
+        .doc-tiptap-content .is-empty::before,.doc-tiptap-content .is-editor-empty::before{color:#b8bbc4;content:attr(data-placeholder);float:left;height:0;pointer-events:none}.doc-tiptap-content p.is-empty:first-child::before{color:#b8bbc4}.doc-tiptap-content pre.is-empty::before,.doc-tiptap-content .doc-code-block.is-empty::before,.doc-tiptap-content .doc-mermaid-source.is-empty::before{content:none!important}.doc-tiptap-content:focus{outline:none}
         .doc-tiptap-content p[style*="text-align"],.doc-tiptap-content h1[style*="text-align"],.doc-tiptap-content h2[style*="text-align"],.doc-tiptap-content h3[style*="text-align"],.doc-tiptap-content h4[style*="text-align"],.doc-tiptap-content h5[style*="text-align"],.doc-tiptap-content h6[style*="text-align"]{display:block}
-        .doc-editor-toolbar{position:relative;z-index:260;isolation:isolate;pointer-events:auto;scrollbar-gutter:stable both-edges;-webkit-overflow-scrolling:touch}
+        .doc-table-float-bar{background:#FFFFFF!important}
+        .doc-table-float-btn{height:28px;padding:0 8px;border-radius:8px;border:0;background:#FFFFFF;color:#131212;font-size:12px;font-family:PingFang SC,sans-serif;line-height:1;cursor:pointer;transition:background-color .15s;appearance:none;outline:none;white-space:nowrap}
+        .doc-table-float-btn:hover{background:#EBECF0!important;border-radius:8px}
+        .doc-table-float-btn.is-active{background:#EBECF0!important}
+        .doc-table-float-btn.is-danger{background:#FFFFFF;color:#E53E3E}
+        .doc-table-float-btn.is-danger:hover{background:#FFF1F0!important;border-radius:8px}
+        .doc-table-float-label{height:28px;padding:0 8px;border-radius:8px;border:0;background:#FFFFFF;color:#8D8E99;font-size:12px;font-family:PingFang SC,sans-serif;display:inline-flex;align-items:center;user-select:none;white-space:nowrap}
+        .doc-table-float-sep{width:1px;height:16px;background:#EBECF0;margin:0 2px;flex-shrink:0}
+                .doc-editor-toolbar{position:relative;z-index:260;isolation:isolate;pointer-events:auto;scrollbar-gutter:stable both-edges;-webkit-overflow-scrolling:touch}
         .doc-editor-toolbar button,.doc-editor-toolbar [role="button"]{pointer-events:auto;position:relative;z-index:1}
         .doc-editor-toolbar button:hover{background-color:#EBECF0!important}
         .doc-editor-toolbar button:active{background-color:#EBECF0!important}
@@ -1345,7 +1390,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         <Btn label="无序列表" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleBulletList().run())}><IconSvg path={editorSvg.p1ddeb0c0} /></Btn>
         <Btn label="减少缩进" action={() => applyIndent(-1)}><IconSvg path={editorSvg.p3244ee00} /></Btn>
         <Btn label="增加缩进" action={() => applyIndent(1)}><IconSvg path={editorSvg.p25bdc300} /></Btn>
-        <button type="button" className={`relative flex items-center shrink-0 cursor-pointer select-none bg-transparent border-0 p-0 ${showAlignDropdown || editor?.isActive({ textAlign: "center" }) || editor?.isActive({ textAlign: "right" }) || editor?.isActive({ textAlign: "justify" }) ? "opacity-100" : ""}`}
+        <button type="button" className={`relative size-[24px] rounded-[4px] inline-flex items-center justify-center shrink-0 cursor-pointer select-none border-0 p-0 transition-colors hover:bg-[#EBECF0] active:bg-[#EBECF0] ${showAlignDropdown || editor?.isActive({ textAlign: "center" }) || editor?.isActive({ textAlign: "right" }) || editor?.isActive({ textAlign: "justify" }) ? "bg-[#EBECF0]" : "bg-transparent"}`}
           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); saveEditorSelection(); }}
           onClick={(e) => {
             e.preventDefault();
@@ -1354,7 +1399,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
             const r = e.currentTarget.getBoundingClientRect();
             toggleToolbarPanel("align", { x: r.left, y: r.bottom + 4 });
           }}>
-          <div className={`size-[24px] rounded-[4px] flex items-center justify-center relative hover:bg-[#EBECF0] active:bg-[#EBECF0] transition-colors ${showAlignDropdown || editor?.isActive({ textAlign: "center" }) || editor?.isActive({ textAlign: "right" }) || editor?.isActive({ textAlign: "justify" }) ? "bg-[#EBECF0]" : ""}`}><IconSvg path={editorSvg.p2c9c5c80} /></div>
+          <IconSvg path={editorSvg.p2c9c5c80} />
         </button>
         <Btn label="引用块" cmd="blockquote" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleBlockquote().run())}><IconSvg path={[editorSvg.p339d6600, editorSvg.p3a810c00, editorSvg.p27c3d000, editorSvg.p2e7ee0c0]} isFill /></Btn>
         <Btn label="代码块" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleCodeBlock().run())}><IconSvg path={editorSvg.p36d5aa00} /></Btn>
@@ -1426,20 +1471,27 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         document.body,
       )}
       {showTableToolbar && createPortal(
-        <div className="fixed z-[280] bg-white rounded-[8px] shadow-[0px_12px_16px_-4px_rgba(36,36,36,0.08)] border border-[#ebecf0] p-[4px] flex items-center gap-[4px]"
+        <div className="doc-table-float-bar fixed z-[280] rounded-[8px] border border-[#EBECF0] p-[6px] flex items-center gap-[4px] shadow-[0_16px_32px_-8px_rgba(36,36,36,0.12)]"
           style={{ left: tableToolbarPos.left, top: tableToolbarPos.top }}
           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-          <div className="flex items-center gap-[4px] px-[8px] py-[4px] text-[12px] text-[#131212] font-['PingFang_SC:Regular',sans-serif]">表格</div>
-          <div className="w-[1px] h-[16px] bg-[#ebecf0] mx-[4px]" />
-          <button type="button" className="h-[28px] px-[8px] rounded-[4px] text-[12px] text-[#131212] cursor-pointer hover:bg-[#f5f6f8] transition-colors" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("addRowBefore"); }}>上方行</button>
-          <button type="button" className="h-[28px] px-[8px] rounded-[4px] text-[12px] text-[#131212] cursor-pointer hover:bg-[#f5f6f8] transition-colors" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("addRowAfter"); }}>下方行</button>
-          <button type="button" className="h-[28px] px-[8px] rounded-[4px] text-[12px] text-[#131212] cursor-pointer hover:bg-[#f5f6f8] transition-colors" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("deleteRow"); }}>删行</button>
-          <div className="w-[1px] h-[16px] bg-[#ebecf0] mx-[4px]" />
-          <button type="button" className="h-[28px] px-[8px] rounded-[4px] text-[12px] text-[#131212] cursor-pointer hover:bg-[#f5f6f8] transition-colors" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("addColumnBefore"); }}>左列</button>
-          <button type="button" className="h-[28px] px-[8px] rounded-[4px] text-[12px] text-[#131212] cursor-pointer hover:bg-[#f5f6f8] transition-colors" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("addColumnAfter"); }}>右列</button>
-          <button type="button" className="h-[28px] px-[8px] rounded-[4px] text-[12px] text-[#131212] cursor-pointer hover:bg-[#f5f6f8] transition-colors" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("deleteColumn"); }}>删列</button>
-          <div className="w-[1px] h-[16px] bg-[#ebecf0] mx-[4px]" />
-          <button type="button" className="h-[28px] px-[8px] rounded-[4px] text-[12px] text-[#ff4d4f] cursor-pointer hover:bg-[#fff5f5] transition-colors" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("deleteTable"); }}>删表格</button>
+          <div className="doc-table-float-label">表格</div>
+          <div className="doc-table-float-sep" />
+          <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("addRowBefore"); }}>上方行</button>
+          <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("addRowAfter"); }}>下方行</button>
+          <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("deleteRow"); }}>删行</button>
+          <div className="doc-table-float-sep" />
+          <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("addColumnBefore"); }}>左列</button>
+          <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("addColumnAfter"); }}>右列</button>
+          <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("deleteColumn"); }}>删列</button>
+          <div className="doc-table-float-sep" />
+          <button type="button" className={`doc-table-float-btn${editor?.isActive({ textAlign: "left" }) || (!editor?.isActive({ textAlign: "center" }) && !editor?.isActive({ textAlign: "right" }) && !editor?.isActive({ textAlign: "justify" })) ? " is-active" : ""}`} onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); applyTableAlign("left"); }}>左齐</button>
+          <button type="button" className={`doc-table-float-btn${editor?.isActive({ textAlign: "center" }) ? " is-active" : ""}`} onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); applyTableAlign("center"); }}>居中</button>
+          <button type="button" className={`doc-table-float-btn${editor?.isActive({ textAlign: "right" }) ? " is-active" : ""}`} onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); applyTableAlign("right"); }}>右齐</button>
+          <div className="doc-table-float-sep" />
+          <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("mergeCells"); }}>合并</button>
+          <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("splitCell"); }}>拆分</button>
+          <div className="doc-table-float-sep" />
+          <button type="button" className="doc-table-float-btn is-danger" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("deleteTable"); }}>删表格</button>
         </div>,
         document.body,
       )}
@@ -1668,7 +1720,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
           <div className="min-w-0 min-h-0 flex-1 h-full max-w-full overflow-hidden"><EditorContent editor={editor} className="h-full min-h-0 w-full max-w-full min-w-0" /></div>
           <div className="w-[264px] max-w-[264px] shrink-0 min-w-0 min-h-0 self-stretch pt-[24px] pb-[12px] overflow-hidden hidden xl:flex xl:flex-col gap-[4px] box-border">
             <div className="flex items-center gap-[8px] shrink-0 min-w-0">
-              <img src="/icons/figma-ref/menu-02.svg" alt="" width={16} height={16} className="size-4 shrink-0" />
+              <img src={assetUrl("icons/figma-ref/menu-02.svg")} alt="" width={16} height={16} className="size-4 shrink-0" />
               <p className="font-['PingFang_SC:Regular',sans-serif] font-normal text-[#3F4046] text-[14px] leading-[24px]">在本页</p>
             </div>
             <div ref={tocListRef} className="h-0 flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain">

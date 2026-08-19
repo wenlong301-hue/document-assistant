@@ -131,7 +131,10 @@ export const textToHtml = (text: string) => text
   .map((line) => `<p>${escapeHtml(line) || "&nbsp;"}</p>`)
   .join("") || emptyParagraph;
 
-export const textToPlainTextHtml = (text: string) => `<pre><code>${escapeHtml(String(text || "").replace(/^\uFEFF/, ""))}</code></pre>`;
+export const textToPlainTextHtml = (text: string, language?: string) => {
+  const lang = language ? ` class="language-${language}"` : "";
+  return `<pre><code${lang}>${escapeHtml(String(text || "").replace(/^\uFEFF/, ""))}</code></pre>`;
+};
 
 export const markdownToSimpleHtml = (text: string) => sanitizeHtml(marked.parse(text, { async: false }) as string || emptyParagraph);
 

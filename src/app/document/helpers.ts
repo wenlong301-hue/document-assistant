@@ -397,7 +397,7 @@ export const headingsToWordParagraphs = (html: string) => {
 
 export const wordHtmlDocument = (title: string, content: string, options: { skipTitle?: boolean } = {}) => {
   const body = options.skipTitle ? cleanExportHtml(content) : `<h1>${escapeHtml(title || "未命名文档")}</h1>${cleanExportHtml(content)}`;
-  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><style>body{font-family:'PingFang SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;color:#131212}.word-page{width:100%}p{margin:0 0 4px}ul,ol{margin:2px 0 4px;padding-left:22px}li{margin:0}img{max-width:560px;width:auto;height:auto;display:block;margin:4px auto}table{border-collapse:collapse;width:100%;margin:4px 0}th,td{border:1px solid #EEF0F5;padding:4px 8px;text-align:left;vertical-align:top;font-size:13px}th{background:#f7f8fa;font-weight:700}blockquote{border-left:3px solid #134CFF;padding:3px 10px;margin:4px 0;background:#f7f8fa;color:#606266}pre{background:#F5F7FA;padding:5px 10px;margin:4px 0;white-space:pre-wrap}code{background:#F2F3F5;padding:1px 3px}hr{border:none;border-top:1px solid #DDE1E6;margin:6px 0}</style></head><body><div class="word-page">${headingsToWordParagraphs(body)}</div></body></html>`;
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><style>body{font-family:'PingFang SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;color:#131212}.word-page{width:100%}p{margin:0 0 4px}ul,ol{margin:2px 0 4px;padding-left:22px}li{margin:0}img{max-width:560px;width:auto;height:auto;display:block;margin:4px auto}table{border-collapse:collapse;width:100%;margin:4px 0}th,td{border:1px solid #EEF0F5;padding:4px 8px;text-align:left;vertical-align:top;font-size:13px}th{background:#f7f8fa;font-weight:700}blockquote{border-left:3px solid #EBECF0;padding:3px 10px;margin:4px 0;background:transparent;color:#606266}pre{background:#F5F7FA;padding:5px 10px;margin:4px 0;white-space:pre-wrap}code{background:#F2F3F5;padding:1px 3px}hr{border:none;border-top:1px solid #DDE1E6;margin:6px 0}</style></head><body><div class="word-page">${headingsToWordParagraphs(body)}</div></body></html>`;
 };
 
 export const pdfPrintHtmlDocument = (title: string, content: string, options: { skipTitle?: boolean } = {}) => {
@@ -421,7 +421,7 @@ video,.doc-video{display:none!important}
 table{width:100%;border-collapse:collapse;margin:12px 0;page-break-inside:avoid}
 th,td{border:1px solid #ebecf0;padding:8px 12px;text-align:left;vertical-align:top;font-size:14px}
 th{background:#f7f8fa;font-weight:600}
-blockquote{border-left:3px solid #134CFF;padding:8px 14px;margin:10px 0;background:#f7f8fa;color:#606266;border-radius:0 8px 8px 0}blockquote p{margin:0 0 4px;line-height:1.65}blockquote p:last-child{margin-bottom:0}
+blockquote{border-left:3px solid #EBECF0;padding:2px 12px;margin:6px 0;background:transparent;color:#606266;border-radius:0}blockquote p{margin:0;line-height:1.8}blockquote p:last-child{margin-bottom:0}
 pre{background:#f7f8fa;padding:12px 16px;margin:12px 0;white-space:pre-wrap;border-radius:8px;font-size:13px}
 code{background:#f2f3f5;padding:1px 4px;border-radius:4px;font-size:0.92em}
 hr{border:none;border-top:1px solid #ebecf0;margin:20px 0}

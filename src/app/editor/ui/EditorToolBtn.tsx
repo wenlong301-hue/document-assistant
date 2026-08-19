@@ -42,7 +42,7 @@ export function EditorToolBtn({ label, cmd, exec, activeFormats, children, actio
         type="button"
         aria-label={label}
         title={label}
-        className={`rounded-[4px] shrink-0 size-[24px] cursor-pointer transition-colors relative border-0 p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#134CFF] focus-visible:outline-offset-1 hover:bg-[#EBECF0] active:bg-[#EBECF0] ${cmd && activeFormats?.has(cmd) ? "bg-[#EBECF0]" : "bg-transparent"}`}
+        className={`rounded-[4px] shrink-0 size-[24px] cursor-pointer transition-colors relative border-0 p-0 inline-flex items-center justify-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#134CFF] focus-visible:outline-offset-1 hover:bg-[#EBECF0] active:bg-[#EBECF0] ${cmd && activeFormats?.has(cmd) ? "bg-[#EBECF0]" : "bg-transparent"}`}
         onMouseEnter={handleEnter}
         onMouseLeave={() => setHover(false)}
         onMouseDown={handleMouseDown}

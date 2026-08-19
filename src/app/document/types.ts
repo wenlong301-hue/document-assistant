@@ -1,7 +1,7 @@
 export type OutlineNode = { id: string; name: string; children: OutlineNode[]; includeInPreview?: boolean };
 export type DocContentMap = Record<string, string>;
 /** L2 项目原文件来源：打开什么格式就尽量保真写回什么格式 */
-export type ProjectSourceExt = "docx" | "md" | "txt" | "html" | "htm";
+export type ProjectSourceExt = "docx" | "md" | "txt" | "html" | "htm" | "sql";
 
 export type ProjectSource = {
   ext: ProjectSourceExt;

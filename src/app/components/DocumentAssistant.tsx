@@ -170,10 +170,10 @@ export default function DocumentAssistant() {
           expectedMode = "converted";
         }
       }
-    } else if (info.ext === "txt") {
+    } else if (info.ext === "txt" || info.ext === "sql") {
       const original = source?.originalText ?? info.originalText;
       if (!isDirty && original != null) {
-        payload = { ext: "txt", content: original, sourceDirty: false };
+        payload = { ext: info.ext, content: original, sourceDirty: false };
         expectedMode = "preserved";
       } else {
         const text = parts.length > 0
@@ -181,11 +181,11 @@ export default function DocumentAssistant() {
           : "";
         // 字节级一致，或仅空白差异：一律写回原文，保证原文件空格/空行/换行风格不变
         if (original != null && isWhitespaceCollapsedFrom(text, original)) {
-          payload = { ext: "txt", content: original, sourceDirty: false };
+          payload = { ext: info.ext, content: original, sourceDirty: false };
           expectedMode = "preserved";
         } else {
           const content = applyLineEnding(text, info.lineEnding || "\n");
-          payload = { ext: "txt", content, sourceDirty: true };
+          payload = { ext: info.ext, content, sourceDirty: true };
           expectedMode = "converted";
         }
       }
@@ -801,10 +801,17 @@ export default function DocumentAssistant() {
           setSelectedNodeId(firstNode?.id ?? "");
           persistDoc(doc.name, doc, 0);
         } else {
-          const html = ext === "txt" ? textToPlainTextHtml(text) : textToHtml(text);
+          const html = ext === "txt" || ext === "sql"
+            ? textToPlainTextHtml(text, ext === "sql" ? "sql" : undefined)
+            : textToHtml(text);
           const tree = buildOutlineTree(name);
           const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
-          const doc = createStoredDoc(name, tree, { [leaf.id]: html });
+          const doc = {
+            ...createStoredDoc(name, tree, { [leaf.id]: html }),
+            source: ext === "txt" || ext === "sql"
+              ? { ext: ext as "txt" | "sql", originalText: text, dirty: false }
+              : undefined,
+          };
           setDocs((prev) => [...new Set([...prev, name])]);
           setSelectedDoc(name);
           setDocStore((prev) => ({ ...prev, [name]: doc }));
@@ -960,14 +967,20 @@ export default function DocumentAssistant() {
         apply(doc, doc.children, firstNode?.id ?? "", true, { filePath: file.path, ext: fileExt, originalText });
       } else {
         const originalText = raw.text || "";
-        const html = fileExt === "txt" ? textToPlainTextHtml(originalText) : textToHtml(originalText);
+        const html = fileExt === "txt" || fileExt === "sql"
+          ? textToPlainTextHtml(originalText, fileExt === "sql" ? "sql" : undefined)
+          : textToHtml(originalText);
         const tree = buildOutlineTree(docName);
         const leaf = flattenOutlineNodes(tree).find((node) => node.children.length === 0) ?? tree[0];
         const doc = {
           ...createStoredDoc(docName, tree, { [leaf.id]: html }),
-          source: fileExt === "txt" ? { ext: "txt" as const, originalText, dirty: false } : undefined,
+          source: fileExt === "txt" || fileExt === "sql"
+            ? { ext: fileExt as "txt" | "sql", originalText, dirty: false }
+            : undefined,
         };
-        apply(doc, tree, leaf.id, true, fileExt === "txt" ? { filePath: file.path, ext: fileExt, originalText, lineEnding: getDominantLineEnding(originalText) } : undefined);
+        apply(doc, tree, leaf.id, true, fileExt === "txt" || fileExt === "sql"
+          ? { filePath: file.path, ext: fileExt, originalText, lineEnding: getDominantLineEnding(originalText) }
+          : undefined);
       }
     } catch (error) {
       console.error("open folder file failed:", error);
@@ -1474,7 +1487,7 @@ export default function DocumentAssistant() {
         return;
       }
       const ext = projectName.includes(".") ? `.${projectName.split(".").pop()?.toLowerCase()}` : "";
-      const isFile = [".mdoc", ".md", ".txt", ".docx", ".html", ".htm"].includes(ext);
+      const isFile = [".mdoc", ".md", ".txt", ".docx", ".html", ".htm", ".sql"].includes(ext);
       const now = new Date().toISOString();
       const project: Project = {
         id: `project-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -1737,7 +1750,7 @@ export default function DocumentAssistant() {
             saveDisabled={!selectedDoc}
             saveAsDisabled={!selectedDoc}
           />
-          <input ref={importInputRef} type="file" accept=".mdoc,.md,.txt,.html,.htm,.docx" className="hidden" onChange={handleImport} />
+          <input ref={importInputRef} type="file" accept=".mdoc,.md,.txt,.html,.htm,.docx,.sql" className="hidden" onChange={handleImport} />
           <SidebarSearch value={searchQuery} onChange={setSearchQuery} mode={mode} onEnter={handleSearchEnter} />
           {mode === "outline" && selectedDoc && (
             <div className="absolute left-[20px] top-[170px] w-[274px] flex items-center gap-[8px] px-[8px] py-[9.5px]">

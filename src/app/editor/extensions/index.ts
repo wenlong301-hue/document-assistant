@@ -8,6 +8,9 @@ import { formatFileSize, mergeHtmlAttrs } from "../utils/html";
 import { fitImageSize, imageRatioLockedRef, syncContainerToImage } from "../utils/image";
 import { renderMermaidSourceToSvg } from "../utils/mermaid";
 
+/** Mermaid 编辑会话：按 editor+pos 记录，NodeView 重建后恢复，避免闪回「图表渲染中」 */
+const mermaidEditSessions = new WeakMap<object, { pos: number; baseline: string }>();
+
 export const ResizableImage = Image.extend({
   addNodeView() {
     if (!this.options.resize || !this.options.resize.enabled || typeof document === "undefined") {
@@ -108,6 +111,33 @@ export const isCurrentCodeLineEmpty = (editor: any) => {
   return currentLine.replace(/\u00a0/g, "").trim().length === 0;
 };
 
+/** 空行回车退出代码块：去掉尾部空行，再在块后插入正文（与引用一致，不残留空行） */
+export const exitCodeBlockCleanly = (editor: any) => editor.chain().focus().command(({ state, dispatch }: any) => {
+  const { $from } = state.selection;
+  if ($from.parent.type.name !== "codeBlock") return false;
+  const posBefore = $from.before($from.depth);
+  const posAfter = $from.after($from.depth);
+  const codeNode = $from.parent;
+  const raw = String(codeNode.textContent || "").replace(/\u00a0/g, " ");
+  const trimmed = raw.replace(/\n+$/, "");
+  const paragraph = state.schema.nodes.paragraph.create();
+  const codeType = codeNode.type;
+  let tr = state.tr;
+  if (!trimmed) {
+    // 整块为空：直接换成正文，不留空代码块
+    tr = tr.replaceWith(posBefore, posAfter, paragraph);
+    tr.setSelection(state.selection.constructor.near(tr.doc.resolve(posBefore + 1)));
+  } else {
+    const nextCode = codeType.create(codeNode.attrs, trimmed ? state.schema.text(trimmed) : undefined);
+    tr = tr.replaceWith(posBefore, posAfter, nextCode);
+    const insertAt = tr.mapping.map(posAfter);
+    tr = tr.insert(insertAt, paragraph);
+    tr.setSelection(state.selection.constructor.near(tr.doc.resolve(insertAt + 1)));
+  }
+  dispatch?.(tr);
+  return true;
+}).run();
+
 export const insertParagraphAfterAncestor = (editor: any, ancestorName: string) => editor.chain().focus().command(({ state, dispatch }: any) => {
   const { $from } = state.selection;
   let depth = -1;
@@ -118,10 +148,59 @@ export const insertParagraphAfterAncestor = (editor: any, ancestorName: string) 
     }
   }
   if (depth < 0) return false;
+  const ancestor = $from.node(depth);
+  const posBefore = $from.before(depth);
   const posAfter = $from.after(depth);
+  const emptyFrom = $from.before($from.depth);
+  const emptyTo = $from.after($from.depth);
   const paragraph = state.schema.nodes.paragraph.create();
-  const tr = state.tr.insert(posAfter, paragraph);
+  let tr = state.tr;
+  // 语雀式：空行回车直接退出块，不在块内残留空段落
+  if (ancestorName === "blockquote") {
+    if (ancestor.childCount <= 1) {
+      tr = tr.replaceWith(posBefore, posAfter, paragraph);
+      tr.setSelection(state.selection.constructor.near(tr.doc.resolve(posBefore + 1)));
+    } else {
+      tr = tr.delete(emptyFrom, emptyTo);
+      const insertAt = tr.mapping.map(posAfter);
+      tr = tr.insert(insertAt, paragraph);
+      tr.setSelection(state.selection.constructor.near(tr.doc.resolve(insertAt + 1)));
+    }
+    dispatch?.(tr);
+    return true;
+  }
+  tr = tr.insert(posAfter, paragraph);
   tr.setSelection(state.selection.constructor.near(tr.doc.resolve(posAfter + 1)));
+  dispatch?.(tr);
+  return true;
+}).run();
+
+/** 引用块内空段落 Backspace：仅一段则退出为正文；多段则只删空行 */
+export const backspaceEmptyBlockquote = (editor: any) => editor.chain().focus().command(({ state, dispatch }: any) => {
+  const { $from } = state.selection;
+  let depth = -1;
+  for (let d = $from.depth; d > 0; d -= 1) {
+    if ($from.node(d).type.name === "blockquote") {
+      depth = d;
+      break;
+    }
+  }
+  if (depth < 0) return false;
+  const ancestor = $from.node(depth);
+  const posBefore = $from.before(depth);
+  const posAfter = $from.after(depth);
+  const emptyFrom = $from.before($from.depth);
+  const emptyTo = $from.after($from.depth);
+  const paragraph = state.schema.nodes.paragraph.create();
+  let tr = state.tr;
+  if (ancestor.childCount <= 1) {
+    tr = tr.replaceWith(posBefore, posAfter, paragraph);
+    tr.setSelection(state.selection.constructor.near(tr.doc.resolve(posBefore + 1)));
+  } else {
+    const selAt = emptyFrom > posBefore + 1 ? emptyFrom - 1 : emptyTo;
+    tr = tr.delete(emptyFrom, emptyTo);
+    tr.setSelection(state.selection.constructor.near(tr.doc.resolve(tr.mapping.map(selAt))));
+  }
   dispatch?.(tr);
   return true;
 }).run();
@@ -376,23 +455,62 @@ export const MermaidCodeBlock = CodeBlock.extend({
     return ({ node, editor, getPos }) => {
       const dom = document.createElement("div");
       const preview = document.createElement("div");
+      const editHint = document.createElement("button");
+      const toolbar = document.createElement("div");
+      const cancelBtn = document.createElement("button");
+      const confirmBtn = document.createElement("button");
       const pre = document.createElement("pre");
       const code = document.createElement("code");
       let currentNode = node;
-      let selected = false;
+      // 编辑态由「确定/取消」显式控制，选区变化不自动退出
+      let editing = false;
+      let editBaseline = "";
       let renderToken = 0;
       let lastSource = "";
       let debounceTimer = 0;
 
       const isMermaid = () => String(currentNode.attrs.language || "") === "mermaid";
 
+      const nodeRange = () => {
+        const pos = typeof getPos === "function" ? getPos() : null;
+        if (typeof pos !== "number") return null;
+        return { pos, size: currentNode.nodeSize };
+      };
+
+      const readSource = () => String(code.innerText || currentNode.textContent || "").replace(/\u00a0/g, " ");
+
+      const focusAfterNode = () => {
+        const range = nodeRange();
+        if (!range) return;
+        editor.chain().focus().setTextSelection(range.pos + range.size).run();
+      };
+
+      const restoreBaseline = () => {
+        const range = nodeRange();
+        if (!range) return;
+        const from = range.pos + 1;
+        const to = range.pos + range.size - 1;
+        if (from > to) return;
+        editor
+          .chain()
+          .command(({ tr, dispatch }) => {
+            if (dispatch) {
+              tr.insertText(editBaseline, from, to);
+              dispatch(tr);
+            }
+            return true;
+          })
+          .run();
+      };
+
       const syncChrome = () => {
         const mermaid = isMermaid();
-        // 可编辑：选中时编辑源码，未选中时显示预览；只读：始终预览
-        const showSource = mermaid ? (editor.isEditable && selected) : true;
+        const showSource = mermaid ? (editor.isEditable && editing) : true;
         dom.className = mermaid ? `doc-mermaid${showSource ? " is-editing" : ""}` : "doc-code-block-wrap";
         dom.style.position = mermaid ? "relative" : "";
         pre.className = mermaid ? "doc-code-block doc-mermaid-source" : "doc-code-block";
+        toolbar.style.setProperty("display", showSource ? "flex" : "none", "important");
+        editHint.style.setProperty("display", mermaid && editor.isEditable && !showSource ? "inline-flex" : "none", "important");
         if (currentNode.attrs.language) {
           const lang = String(currentNode.attrs.language);
           pre.setAttribute("data-language", lang);
@@ -407,15 +525,20 @@ export const MermaidCodeBlock = CodeBlock.extend({
           preview.style.display = "none";
           preview.innerHTML = "";
           pre.style.cssText = "";
+          toolbar.style.setProperty("display", "none", "important");
+          editHint.style.setProperty("display", "none", "important");
           return;
         }
         if (showSource) {
           preview.style.display = "none";
           pre.style.cssText = "";
         } else {
-          // 预览态：隐藏源码但保持 contentDOM 挂载，避免 ProseMirror 丢更新
           preview.style.display = "block";
+          preview.style.cursor = editor.isEditable ? "pointer" : "default";
+          // 预览态隐藏源码但保持 contentDOM 挂载
           pre.style.position = "absolute";
+          pre.style.left = "0";
+          pre.style.top = "0";
           pre.style.width = "1px";
           pre.style.height = "1px";
           pre.style.opacity = "0";
@@ -428,11 +551,11 @@ export const MermaidCodeBlock = CodeBlock.extend({
       };
 
       const renderPreview = (source: string) => {
-        if (!isMermaid()) return;
+        if (!isMermaid() || editing) return;
         const trimmed = String(source || "").replace(/\u00a0/g, " ").trimEnd();
         if (!trimmed.trim()) {
           preview.className = "doc-mermaid-preview";
-          preview.textContent = "输入 Mermaid 语法后将在此预览";
+          preview.textContent = "点击编辑 Mermaid 源码";
           lastSource = "";
           return;
         }
@@ -441,7 +564,7 @@ export const MermaidCodeBlock = CodeBlock.extend({
         preview.className = "doc-mermaid-preview";
         preview.textContent = "图表渲染中…";
         void renderMermaidSourceToSvg(trimmed).then((svg) => {
-          if (token !== renderToken) return;
+          if (token !== renderToken || editing) return;
           lastSource = trimmed;
           preview.innerHTML = svg;
           const svgEl = preview.querySelector("svg");
@@ -451,9 +574,10 @@ export const MermaidCodeBlock = CodeBlock.extend({
             svgEl.style.height = "auto";
             svgEl.style.display = "block";
             svgEl.style.margin = "0 auto";
+            svgEl.style.pointerEvents = "none";
           }
         }).catch((error) => {
-          if (token !== renderToken) return;
+          if (token !== renderToken || editing) return;
           lastSource = "";
           preview.className = "doc-mermaid-preview doc-mermaid-error";
           preview.textContent = `Mermaid 渲染失败：${error instanceof Error ? error.message : "语法错误"}`;
@@ -463,26 +587,156 @@ export const MermaidCodeBlock = CodeBlock.extend({
       const scheduleRender = () => {
         window.clearTimeout(debounceTimer);
         debounceTimer = window.setTimeout(() => {
-          renderPreview(code.innerText);
-        }, 280);
+          renderPreview(readSource());
+        }, 80);
       };
 
-      preview.className = "doc-mermaid-preview";
-      preview.addEventListener("mousedown", (event) => {
+      const placeCaretInSource = () => {
+        const range = nodeRange();
+        if (!range) return;
+        const end = Math.max(range.pos + 1, range.pos + range.size - 1);
+        try {
+          editor.chain().focus().setTextSelection(end).run();
+        } catch {
+          try { editor.commands.focus(); } catch { /* ignore */ }
+        }
+      };
+
+      const enterEdit = () => {
         if (!editor.isEditable || !isMermaid()) return;
+        if (editing) {
+          placeCaretInSource();
+          return;
+        }
+        const range = nodeRange();
+        if (!range) return;
+        editing = true;
+        editBaseline = readSource().trimEnd();
+        // 取消进行中的预览渲染，避免异步回调把界面打回预览态
+        renderToken += 1;
+        window.clearTimeout(debounceTimer);
+        mermaidEditSessions.set(editor, { pos: range.pos, baseline: editBaseline });
+        syncChrome();
+        placeCaretInSource();
+        requestAnimationFrame(() => {
+          if (!editing) return;
+          placeCaretInSource();
+        });
+      };
+
+      const confirmEdit = () => {
+        if (!editing) return;
+        editing = false;
+        mermaidEditSessions.delete(editor);
+        syncChrome();
+        scheduleRender();
+        focusAfterNode();
+      };
+
+      const cancelEdit = () => {
+        if (!editing) return;
+        const current = readSource().trimEnd();
+        if (current !== editBaseline) restoreBaseline();
+        editing = false;
+        mermaidEditSessions.delete(editor);
+        syncChrome();
+        if (!(lastSource && preview.querySelector("svg"))) scheduleRender();
+        focusAfterNode();
+      };
+
+      const stopPointer = (event: Event) => {
         event.preventDefault();
-        const pos = typeof getPos === "function" ? getPos() : null;
-        if (typeof pos === "number") {
-          editor.chain().focus().setNodeSelection(pos).run();
+        event.stopPropagation();
+      };
+
+      const onEnterPointer = (event: Event) => {
+        if (!editor.isEditable || !isMermaid() || editing) return;
+        const target = event.target as Node | null;
+        if (target && (toolbar.contains(target) || pre.contains(target) || code.contains(target))) return;
+        stopPointer(event);
+        enterEdit();
+      };
+
+      editHint.type = "button";
+      editHint.className = "doc-mermaid-edit-hint";
+      editHint.textContent = "编辑";
+      editHint.contentEditable = "false";
+      // 捕获阶段拦截，避免 ProseMirror 抢先处理导致无法进入编辑
+      dom.addEventListener("pointerdown", onEnterPointer, true);
+      dom.addEventListener("mousedown", onEnterPointer, true);
+      editHint.addEventListener("click", onEnterPointer);
+      preview.addEventListener("click", onEnterPointer);
+
+      cancelBtn.type = "button";
+      cancelBtn.className = "doc-mermaid-btn doc-mermaid-btn-cancel";
+      cancelBtn.textContent = "取消";
+      cancelBtn.addEventListener("mousedown", stopPointer);
+      cancelBtn.addEventListener("click", (event) => {
+        stopPointer(event);
+        cancelEdit();
+      });
+
+      confirmBtn.type = "button";
+      confirmBtn.className = "doc-mermaid-btn doc-mermaid-btn-confirm";
+      confirmBtn.textContent = "确定";
+      confirmBtn.addEventListener("mousedown", stopPointer);
+      confirmBtn.addEventListener("click", (event) => {
+        stopPointer(event);
+        confirmEdit();
+      });
+
+      toolbar.className = "doc-mermaid-toolbar";
+      toolbar.contentEditable = "false";
+      toolbar.appendChild(cancelBtn);
+      toolbar.appendChild(confirmBtn);
+
+      preview.className = "doc-mermaid-preview";
+      preview.contentEditable = "false";
+
+      pre.addEventListener("keydown", (event) => {
+        if (!editing || !isMermaid()) return;
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          cancelEdit();
+          return;
+        }
+        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+          event.preventDefault();
+          event.stopPropagation();
+          confirmEdit();
         }
       });
-      pre.contentEditable = editor.isEditable ? "true" : "false";
+
+      // 勿给 pre 设 contentEditable：会与 ProseMirror contentDOM 嵌套冲突，导致粘贴失效
       pre.appendChild(code);
       dom.appendChild(preview);
+      dom.appendChild(editHint);
       dom.appendChild(pre);
+      dom.appendChild(toolbar);
       code.textContent = currentNode.textContent;
-      syncChrome();
-      if (isMermaid()) renderPreview(currentNode.textContent);
+
+      // NodeView 重建时按位置恢复未结束的编辑会话，避免闪回「图表渲染中」
+      const pendingSession = mermaidEditSessions.get(editor);
+      const currentPos = typeof getPos === "function" ? getPos() : null;
+      if (
+        pendingSession
+        && editor.isEditable
+        && isMermaid()
+        && typeof currentPos === "number"
+        && pendingSession.pos === currentPos
+      ) {
+        editing = true;
+        editBaseline = pendingSession.baseline;
+        syncChrome();
+        requestAnimationFrame(() => {
+          if (!editing) return;
+          placeCaretInSource();
+        });
+      } else {
+        syncChrome();
+        if (isMermaid()) renderPreview(currentNode.textContent);
+      }
 
       return {
         dom,
@@ -490,31 +744,55 @@ export const MermaidCodeBlock = CodeBlock.extend({
         update: (updatedNode) => {
           if (updatedNode.type !== currentNode.type) return false;
           currentNode = updatedNode;
+          if (!isMermaid()) {
+            editing = false;
+            mermaidEditSessions.delete(editor);
+          } else if (editing) {
+            const range = nodeRange();
+            if (range) mermaidEditSessions.set(editor, { pos: range.pos, baseline: editBaseline });
+          }
           syncChrome();
-          if (isMermaid()) scheduleRender();
-          else {
+          if (isMermaid() && !editing) {
+            const src = String(updatedNode.textContent || "").replace(/\u00a0/g, " ").trimEnd();
+            if (src !== lastSource) scheduleRender();
+          } else if (!isMermaid()) {
             preview.innerHTML = "";
             lastSource = "";
           }
           return true;
         },
         selectNode: () => {
-          selected = true;
-          syncChrome();
+          if (editor.isEditable && isMermaid() && !editing) enterEdit();
         },
-        deselectNode: () => {
-          selected = false;
-          syncChrome();
-          if (isMermaid()) scheduleRender();
+        deselectNode: () => {},
+        stopEvent: (event) => {
+          if (!isMermaid()) return false;
+          const target = event.target as Node | null;
+          if (target && (toolbar.contains(target) || editHint.contains(target) || preview.contains(target))) return true;
+          if (!editing) {
+            const type = event.type;
+            if (
+              type === "mousedown" || type === "mouseup" || type === "click" || type === "dblclick"
+              || type === "pointerdown" || type === "pointerup" || type === "touchstart" || type === "touchend"
+            ) {
+              return true;
+            }
+          }
+          return false;
         },
-        stopEvent: () => false,
         ignoreMutation: (mutation) => {
           if (preview.contains(mutation.target as Node)) return true;
+          if (toolbar.contains(mutation.target as Node)) return true;
+          if (editHint.contains(mutation.target as Node)) return true;
           if (code.contains(mutation.target as Node)) return false;
           return true;
         },
         destroy: () => {
           window.clearTimeout(debounceTimer);
+          dom.removeEventListener("pointerdown", onEnterPointer, true);
+          dom.removeEventListener("mousedown", onEnterPointer, true);
+          preview.removeEventListener("click", onEnterPointer);
+          editHint.removeEventListener("click", onEnterPointer);
           renderToken += 1;
         },
       };
@@ -531,11 +809,17 @@ export const TyporaKeymap = Extension.create({
     return {
       "Mod-Shift-b": () => this.editor.chain().focus().toggleBlockquote().run(),
       "Mod-Enter": () => {
-        if (this.editor.isActive("codeBlock")) return this.editor.chain().focus().exitCode().run();
+        if (this.editor.isActive("codeBlock")) {
+          if (this.editor.getAttributes("codeBlock")?.language === "mermaid") return false;
+          return exitCodeBlockCleanly(this.editor);
+        }
         return false;
       },
       Escape: () => {
-        if (this.editor.isActive("codeBlock")) return this.editor.chain().focus().exitCode().run();
+        if (this.editor.isActive("codeBlock")) {
+          if (this.editor.getAttributes("codeBlock")?.language === "mermaid") return false;
+          return exitCodeBlockCleanly(this.editor);
+        }
         return false;
       },
       Tab: () => {
@@ -576,11 +860,14 @@ export const TyporaKeymap = Extension.create({
       },
       Enter: () => {
         if (this.editor.isActive("codeBlock")) {
-          if (isCurrentCodeLineEmpty(this.editor)) return this.editor.chain().focus().exitCode().run();
+          if (this.editor.getAttributes("codeBlock")?.language === "mermaid") {
+            return this.editor.commands.newlineInCode();
+          }
+          if (isCurrentCodeLineEmpty(this.editor)) return exitCodeBlockCleanly(this.editor);
           return this.editor.commands.newlineInCode();
         }
         if (this.editor.isActive("blockquote") && isTiptapBlockEmpty(this.editor)) {
-          return this.editor.chain().focus().toggleBlockquote().setParagraph().run();
+          return insertParagraphAfterAncestor(this.editor, "blockquote");
         }
         if (this.editor.isActive("taskItem") && isTiptapBlockEmpty(this.editor)) {
           return this.editor.chain().focus().liftListItem("taskItem").setParagraph().run();
@@ -592,13 +879,57 @@ export const TyporaKeymap = Extension.create({
       },
       Backspace: () => {
         if (this.editor.isActive("blockquote") && isTiptapBlockEmpty(this.editor)) {
-          return this.editor.chain().focus().toggleBlockquote().setParagraph().run();
+          return backspaceEmptyBlockquote(this.editor);
         }
         if (this.editor.isActive("taskItem") && isTiptapBlockEmpty(this.editor)) {
           return this.editor.chain().focus().liftListItem("taskItem").setParagraph().run();
         }
         if (this.editor.isActive("listItem") && isTiptapBlockEmpty(this.editor)) {
           return this.editor.chain().focus().liftListItem("listItem").setParagraph().run();
+        }
+        const { state } = this.editor;
+        const { $from, empty } = state.selection;
+        if (!empty) return false;
+        // 空段落紧贴 Mermaid/代码块：删除该空行（默认 join 常会失败）
+        if ($from.parent.type.name === "paragraph" && $from.parent.content.size === 0) {
+          const from = $from.before();
+          const to = $from.after();
+          const next = state.doc.nodeAt(to);
+          if (next?.type.name === "codeBlock") {
+            return this.editor.chain().focus().deleteRange({ from, to }).setTextSelection(from).run();
+          }
+        }
+        // 空代码块 Backspace：直接退出为正文（与引用一致）
+        if (this.editor.isActive("codeBlock") && this.editor.getAttributes("codeBlock")?.language !== "mermaid") {
+          const codeText = String($from.parent.textContent || "").replace(/\u00a0/g, "").replace(/\n/g, "");
+          if (codeText.trim().length === 0) {
+            return exitCodeBlockCleanly(this.editor);
+          }
+        }
+        // 代码块开头 Backspace：若上一块是空段落则删掉空段落
+        if (this.editor.isActive("codeBlock") && $from.parentOffset === 0) {
+          const codePos = $from.before($from.depth);
+          if (codePos > 0) {
+            const prev = state.doc.resolve(codePos).nodeBefore;
+            if (prev?.type.name === "paragraph" && prev.content.size === 0) {
+              const from = codePos - prev.nodeSize;
+              return this.editor.chain().focus().deleteRange({ from, to: codePos }).setTextSelection(from).run();
+            }
+          }
+        }
+        return false;
+      },
+      Delete: () => {
+        const { state } = this.editor;
+        const { $from, empty } = state.selection;
+        if (!empty) return false;
+        if ($from.parent.type.name === "paragraph" && $from.parent.content.size === 0) {
+          const from = $from.before();
+          const to = $from.after();
+          const next = state.doc.nodeAt(to);
+          if (next?.type.name === "codeBlock") {
+            return this.editor.chain().focus().deleteRange({ from, to }).setTextSelection(from).run();
+          }
         }
         return false;
       },

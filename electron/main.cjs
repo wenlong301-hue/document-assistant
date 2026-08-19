@@ -664,7 +664,7 @@ function prepareImageTagsForWord(html) {
 function wordHtmlDocument(title, content, options = {}) {
   const clean = prepareImageTagsForWord(cleanExportHtml(content));
   const body = options.skipTitle ? clean : `<h1>${escapeHtml(title || '未命名文档')}</h1>${clean}`;
-  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><style>body{font-family:'PingFang SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;color:#131212}.word-page{width:100%}p{margin:0 0 4px}ul,ol{margin:2px 0 4px;padding-left:22px}li{margin:0}img{max-width:560px;width:auto;height:auto;display:block;margin:4px auto}table{border-collapse:collapse;width:100%;margin:4px 0}th,td{border:1px solid #EEF0F5;padding:4px 8px;text-align:left;vertical-align:top;font-size:13px}th{background:#f7f8fa;font-weight:700}blockquote{border-left:3px solid #134CFF;padding:3px 10px;margin:4px 0;background:#f7f8fa;color:#606266}pre{background:#F5F7FA;padding:5px 10px;margin:4px 0;white-space:pre-wrap}code{background:#F2F3F5;padding:1px 3px}hr{border:none;border-top:1px solid #DDE1E6;margin:6px 0}</style></head><body><div class="word-page">${headingsToWordParagraphs(body)}</div></body></html>`;
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><style>body{font-family:'PingFang SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;color:#131212}.word-page{width:100%}p{margin:0 0 4px}ul,ol{margin:2px 0 4px;padding-left:22px}li{margin:0}img{max-width:560px;width:auto;height:auto;display:block;margin:4px auto}table{border-collapse:collapse;width:100%;margin:4px 0}th,td{border:1px solid #EEF0F5;padding:4px 8px;text-align:left;vertical-align:top;font-size:13px}th{background:#f7f8fa;font-weight:700}blockquote{border-left:3px solid #EBECF0;padding:3px 10px;margin:4px 0;background:transparent;color:#606266}pre{background:#F5F7FA;padding:5px 10px;margin:4px 0;white-space:pre-wrap}code{background:#F2F3F5;padding:1px 3px}hr{border:none;border-top:1px solid #DDE1E6;margin:6px 0}</style></head><body><div class="word-page">${headingsToWordParagraphs(body)}</div></body></html>`;
 }
 
 function pdfHtmlDocument(title, content, options = {}) {
@@ -689,7 +689,7 @@ video,.doc-video{display:none!important}
 table{width:100%;border-collapse:collapse;margin:12px 0;page-break-inside:avoid}
 th,td{border:1px solid #ebecf0;padding:8px 12px;text-align:left;vertical-align:top;font-size:14px}
 th{background:#f7f8fa;font-weight:600}
-blockquote{border-left:3px solid #134CFF;padding:8px 14px;margin:10px 0;background:#f7f8fa;color:#606266;border-radius:0 8px 8px 0}blockquote p{margin:0 0 4px;line-height:1.65}blockquote p:last-child{margin-bottom:0}
+blockquote{border-left:3px solid #EBECF0;padding:8px 14px;margin:10px 0;background:transparent;color:#606266;border-radius:0}blockquote p{margin:0 0 4px;line-height:1.65}blockquote p:last-child{margin-bottom:0}
 pre{background:#f7f8fa;padding:12px 16px;margin:12px 0;white-space:pre-wrap;border-radius:8px;font-size:13px}
 code{background:#f2f3f5;padding:1px 4px;border-radius:4px;font-size:0.92em}
 hr{border:none;border-top:1px solid #ebecf0;margin:20px 0}
@@ -782,7 +782,7 @@ function deleteDoc(docId) {
   if (fs.existsSync(fp)) fs.unlinkSync(fp);
 }
 
-const FOLDER_SUPPORTED_EXTS = new Set(['.mdoc', '.md', '.txt', '.docx', '.html', '.htm']);
+const FOLDER_SUPPORTED_EXTS = new Set(['.mdoc', '.md', '.txt', '.docx', '.html', '.htm', '.sql']);
 const FOLDER_SKIP_DIRS = new Set(['node_modules', '.git', '.svn', '.hg', 'dist', 'build', '.next', '.nuxt', '.cache', '.idea', '.vscode', '__pycache__', '.DS_Store', 'Pods', '.venv', 'venv', '.trash', '$RECYCLE.BIN']);
 let activeFolderWatcher = null;
 let activeFolderPath = null;
@@ -920,7 +920,7 @@ async function writeFolderFile(filePath, payload) {
         throw new Error('内容为空，已阻止覆盖原 Markdown 文件');
       }
       fs.writeFileSync(filePath, markdown, 'utf-8');
-    } else if (ext === '.txt' || ext === '.html' || ext === '.htm') {
+    } else if (ext === '.txt' || ext === '.sql' || ext === '.html' || ext === '.htm') {
       fs.writeFileSync(filePath, String(payload?.content ?? ''), 'utf-8');
     } else {
       fs.writeFileSync(filePath, String(payload?.content ?? ''), 'utf-8');
@@ -1103,7 +1103,7 @@ body::-webkit-scrollbar{width:6px}body::-webkit-scrollbar-thumb{background:#d0d1
 .content li[data-type="taskItem"]>div>p,.content li.doc-task-item>div>p{margin:0}
 .content [data-task-item="true"]{display:flex;align-items:flex-start;gap:8px;margin:4px 0;list-style:none}
 .content table{border-collapse:collapse;width:100%;margin:16px 0;display:block;overflow-x:auto}.content td,.content th{border:1px solid #eef0f5;padding:10px 14px;text-align:left;font-size:14px}.content tr:nth-child(odd) td,.content tr:nth-child(odd) th{background:rgba(238,240,245,.502)}
-.content img{max-width:100%;border-radius:8px;border:1px solid #ebecf0}.content blockquote{border-left:3px solid #134CFF;background:#f7f8fa;margin:10px 0;padding:10px 16px;color:#606266;border-radius:0 12px 12px 0}.content blockquote p{margin:0 0 4px;line-height:1.65}.content blockquote p:last-child{margin-bottom:0}
+.content img{max-width:100%;border-radius:8px;border:1px solid #ebecf0}.content blockquote{border-left:3px solid #EBECF0;background:transparent;margin:10px 0;padding:10px 16px;color:#606266;border-radius:0}.content blockquote p{margin:0 0 4px;line-height:1.65}.content blockquote p:last-child{margin-bottom:0}
 .content pre{background:#f5f6f8;border:1px solid #ebecf0;border-radius:12px;padding:20px 24px;overflow-x:auto;font-size:13px;line-height:1.7;position:relative;margin:16px 0}.content pre code{font-family:'SF Mono',Menlo,Monaco,Consolas,monospace;font-size:13px;line-height:1.7}.content hr{border:none;border-top:1px solid #ebecf0;margin:24px 0}
 .copy-btn{position:absolute;top:8px;right:8px;z-index:2;height:26px;padding:0 10px;border:none;border-radius:6px;background:rgba(255,255,255,.85);backdrop-filter:blur(4px);color:#707277;font-size:12px;cursor:pointer;display:none;align-items:center;font-family:inherit;transition:color .15s}.content pre:hover .copy-btn{display:flex}.copy-btn:hover{color:#131212;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .sidebar-right{overflow-y:auto;padding:48px 0 0;position:sticky;top:28px;align-self:start;max-height:calc(100vh - 56px);scrollbar-width:none}.sidebar-right::-webkit-scrollbar{display:none}
@@ -1856,7 +1856,7 @@ ipcMain.handle('import-folder', async (_e, kind) => {
   };
   if (isFileOnly) {
     options.filters = [
-      { name: '支持的文档', extensions: ['mdoc', 'md', 'txt', 'docx', 'html', 'htm'] },
+      { name: '支持的文档', extensions: ['mdoc', 'md', 'txt', 'docx', 'html', 'htm', 'sql'] },
       { name: '所有文件', extensions: ['*'] },
     ];
   }

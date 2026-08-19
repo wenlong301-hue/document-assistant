@@ -1,7 +1,7 @@
 {
   "name": "doc-assistant",
   "private": true,
-  "version": "0.1.11",
+  "version": "0.1.12",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {

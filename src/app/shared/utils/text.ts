@@ -20,7 +20,7 @@ export const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
 
 export const getDisplayFileName = (value: string) => {
   const name = String(value || "文档").split(/[\\/]/).pop() || "文档";
-  return name.replace(/\.(mdoc|md|txt|html|htm|docx)$/i, "") || name;
+  return name.replace(/\.(mdoc|md|txt|html|htm|docx|sql)$/i, "") || name;
 };
 
 /** 折叠空白后比较，用于判断编辑是否只是导入/渲染造成的空格差异 */

@@ -35,9 +35,9 @@ export const docContentCss = (prefix: string): string => {
     `${p} li[data-type="taskItem"]>div>p,${p} li.doc-task-item>div>p{margin:0}`,
     `${p} [data-task-item="true"]{display:flex;align-items:flex-start;gap:8px;margin:4px 0;list-style:none}`,
 
-    /* 引用 */
-    `${p} blockquote,${p} .doc-blockquote{border-left:3px solid #134CFF;background:#f7f8fa;margin:10px 0;padding:8px 14px;color:#606266;border-radius:0 8px 8px 0}`,
-    `${p} blockquote p,${p} .doc-blockquote p{margin:0 0 4px;line-height:1.65}`,
+    /* 引用：仅左侧线条，无背景 */
+    `${p} blockquote,${p} .doc-blockquote{border-left:3px solid #EBECF0;background:transparent;margin:6px 0;padding:2px 12px;color:#606266;border-radius:0}`,
+    `${p} blockquote p,${p} .doc-blockquote p{margin:0;line-height:1.8}`,
     `${p} blockquote p:last-child,${p} .doc-blockquote p:last-child{margin-bottom:0}`,
 
     /* 代码 */

@@ -61,3 +61,6 @@ tmp/
 temp/
 *.tmp
 *.temp
+
+# Playwright CLI local dumps
+.playwright-cli/

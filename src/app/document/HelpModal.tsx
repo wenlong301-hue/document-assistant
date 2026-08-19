@@ -50,11 +50,11 @@ const SECTIONS: HelpSection[] = [
     body: (
       <ul>
         <li><strong>文件树</strong>：管理项目文件列表；<strong>大纲树</strong>：编辑结构与正文。</li>
-        <li><strong>导入</strong>：支持 <code>.mdoc</code> / <code>.md</code> / <code>.txt</code> / <code>.html</code> / <code>.docx</code>。</li>
+        <li><strong>导入</strong>：支持 <code>.mdoc</code> / <code>.md</code> / <code>.txt</code> / <code>.html</code> / <code>.docx</code> / <code>.sql</code>。</li>
         <li><strong>保存</strong>：项目文件写回原路径；库内文档可另存。</li>
         <li><strong>另存为</strong>：始终导出 L1 无损 .mdoc 格式（桌面选目录 / Web 下载），适合从 md/docx 转入长期精编。</li>
         <li><strong>更多</strong>：导入、导出、删除、帮助。</li>
-        <li>项目中打开 <code>.md</code>/<code>.txt</code>/<code>.docx</code> 等：未编辑原样写回；编辑后按该格式最优策略写回（可能有损）。</li>
+        <li>项目中打开 <code>.md</code>/<code>.txt</code>/<code>.sql</code>/<code>.docx</code> 等：未编辑原样写回；编辑后按该格式最优策略写回（可能有损）。</li>
         <li>桌面端默认库：用户「文档」下的 <code>DocAssistant/*.mdoc</code>。</li>
         <li>删除不可撤销，请谨慎操作。</li>
       </ul>
