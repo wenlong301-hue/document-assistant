@@ -4,6 +4,8 @@ import CodeBlock from "@tiptap/extension-code-block";
 import Image from "@tiptap/extension-image";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
+import { TextSelection } from "@tiptap/pm/state";
+import { isInTable, moveCellForward, nextCell, selectionCell } from "@tiptap/pm/tables";
 import { formatFileSize, mergeHtmlAttrs } from "../utils/html";
 import { fitImageSize, imageRatioLockedRef, syncContainerToImage } from "../utils/image";
 import { renderMermaidSourceToSvg } from "../utils/mermaid";
@@ -171,6 +173,43 @@ export const insertParagraphAfterAncestor = (editor: any, ancestorName: string) 
   }
   tr = tr.insert(posAfter, paragraph);
   tr.setSelection(state.selection.constructor.near(tr.doc.resolve(posAfter + 1)));
+  dispatch?.(tr);
+  return true;
+}).run();
+
+/** Typora 式：表格内 Enter → 同列下一行；末行则跳出表格 */
+export const moveToNextTableRowOrExit = (editor: any) => editor.chain().focus().command(({ state, dispatch }: any) => {
+  if (!isInTable(state)) return false;
+  let $cell;
+  try {
+    $cell = selectionCell(state);
+  } catch {
+    return false;
+  }
+  if (!$cell) return false;
+  const $next = nextCell($cell, "vert", 1);
+  if ($next) {
+    if (dispatch) {
+      dispatch(state.tr.setSelection(TextSelection.between($next, moveCellForward($next))).scrollIntoView());
+    }
+    return true;
+  }
+  let tableDepth = -1;
+  for (let d = $cell.depth; d > 0; d -= 1) {
+    if ($cell.node(d).type.spec.tableRole === "table") {
+      tableDepth = d;
+      break;
+    }
+  }
+  if (tableDepth < 0) return false;
+  const posAfter = $cell.after(tableDepth);
+  const paragraph = state.schema.nodes.paragraph.create();
+  let tr = state.tr;
+  const nodeAfter = state.doc.nodeAt(posAfter);
+  if (!nodeAfter || nodeAfter.type.name !== "paragraph") {
+    tr = tr.insert(posAfter, paragraph);
+  }
+  tr = tr.setSelection(TextSelection.near(tr.doc.resolve(posAfter + 1))).scrollIntoView();
   dispatch?.(tr);
   return true;
 }).run();
@@ -813,6 +852,30 @@ export const TyporaKeymap = Extension.create({
           if (this.editor.getAttributes("codeBlock")?.language === "mermaid") return false;
           return exitCodeBlockCleanly(this.editor);
         }
+        // Typora：表格内 ⌘/Ctrl+Enter 在下方插入一行并移到同列新行
+        if (this.editor.isActive("table")) {
+          if (!this.editor.can().addRowAfter()) return false;
+          return this.editor.chain().focus().addRowAfter().command(({ state, dispatch }: any) => {
+            try {
+              const $cell = selectionCell(state);
+              const $next = nextCell($cell, "vert", 1);
+              if (!$next) return true;
+              if (dispatch) {
+                dispatch(state.tr.setSelection(TextSelection.between($next, moveCellForward($next))).scrollIntoView());
+              }
+              return true;
+            } catch {
+              return true;
+            }
+          }).run();
+        }
+        return false;
+      },
+      "Shift-Enter": () => {
+        // Typora：表格内 Shift+Enter 为单元格内换行（hardBreak）
+        if (this.editor.isActive("table")) {
+          return this.editor.commands.setHardBreak();
+        }
         return false;
       },
       Escape: () => {
@@ -865,6 +928,10 @@ export const TyporaKeymap = Extension.create({
           }
           if (isCurrentCodeLineEmpty(this.editor)) return exitCodeBlockCleanly(this.editor);
           return this.editor.commands.newlineInCode();
+        }
+        // Typora：表格内 Enter → 同列下一行；末行则跳出表格
+        if (this.editor.isActive("table")) {
+          return moveToNextTableRowOrExit(this.editor);
         }
         if (this.editor.isActive("blockquote") && isTiptapBlockEmpty(this.editor)) {
           return insertParagraphAfterAncestor(this.editor, "blockquote");
