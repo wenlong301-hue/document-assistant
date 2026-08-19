@@ -122,7 +122,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   const editorInstanceRef = useRef<any>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   imageRatioLockedRef.current = imageRatioLocked;
-  const savedSelectionRef = useRef<{ from: number; to: number } | null>(null);
+  const savedSelectionRef = useRef<{ from: number; to: number; anchorCell?: number; headCell?: number } | null>(null);
   const pendingSlashCleanupRef = useRef<{ from: number; to: number } | null>(null);
   const tocListRef = useRef<HTMLDivElement>(null);
   const tocButtonRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -136,12 +136,42 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     onContentChangeRef.current = onContentChange;
   }, [onContentChange]);
 
-  const saveEditorSelection = useCallback(() => {
-    const activeEditor = editorInstanceRef.current;
+  const captureEditorSelection = useCallback((activeEditor = editorInstanceRef.current) => {
     if (!activeEditor) return null;
-    const selection = { from: activeEditor.state.selection.from, to: activeEditor.state.selection.to };
-    savedSelectionRef.current = selection;
-    return selection;
+    const selection = activeEditor.state.selection;
+    const next = {
+      from: selection.from,
+      to: selection.to,
+      ...(typeof selection.$anchorCell?.pos === "number" && typeof selection.$headCell?.pos === "number"
+        ? { anchorCell: selection.$anchorCell.pos, headCell: selection.$headCell.pos }
+        : {}),
+    };
+    savedSelectionRef.current = next;
+    return next;
+  }, []);
+
+  const saveEditorSelection = useCallback(() => captureEditorSelection(), [captureEditorSelection]);
+
+  const applySavedSelection = useCallback((activeEditor = editorInstanceRef.current, selection = savedSelectionRef.current) => {
+    if (!activeEditor) return false;
+    if (!selection) {
+      activeEditor.chain().focus().run();
+      return true;
+    }
+    const maxPos = activeEditor.state.doc.content.size;
+    if (typeof selection.anchorCell === "number" && typeof selection.headCell === "number") {
+      const anchorCell = Math.max(0, Math.min(selection.anchorCell, maxPos));
+      const headCell = Math.max(0, Math.min(selection.headCell, maxPos));
+      try {
+        if (activeEditor.chain().focus().setCellSelection({ anchorCell, headCell }).run()) return true;
+      } catch {
+        // fall through to text selection
+      }
+    }
+    const from = Math.max(0, Math.min(selection.from, maxPos));
+    const to = Math.max(0, Math.min(selection.to, maxPos));
+    activeEditor.chain().focus().setTextSelection({ from, to }).run();
+    return true;
   }, []);
 
   const updateTableToolbar = useCallback((activeEditor = editorInstanceRef.current) => {
@@ -610,7 +640,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       const text = editor.getText();
       lastExternalHtmlRef.current = html;
       setCharCount(getEditorTextCount(text));
-      onContentChange?.(html, text);
+      onContentChangeRef.current?.(html, text);
       setToolbarTick((tick) => tick + 1);
       refreshToc(editor);
       updateImageToolbar(editor);
@@ -820,22 +850,15 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       return false;
     }
     try {
-      const selection = savedSelectionRef.current;
-      if (selection) {
-        const maxPos = activeEditor.state.doc.content.size;
-        const from = Math.max(0, Math.min(selection.from, maxPos));
-        const to = Math.max(0, Math.min(selection.to, maxPos));
-        activeEditor.chain().focus().setTextSelection({ from, to }).run();
-      } else if (!activeEditor.isFocused) {
-        activeEditor.chain().focus().run();
-      }
+      if (savedSelectionRef.current) applySavedSelection(activeEditor);
+      else if (!activeEditor.isFocused) activeEditor.chain().focus().run();
       return command(activeEditor) !== false;
     } catch (error) {
       console.error("Editor command failed:", error);
       setToast({ message: "编辑命令执行失败，请重新选择内容后重试", type: "error" });
       return false;
     }
-  }, []);
+  }, [applySavedSelection]);
 
   const getCurrentHeading = () => {
     if (!editor) return "正文";
@@ -852,7 +875,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   if (editor?.isActive("strike")) activeFormats.add("strikeThrough");
   if (editor?.isActive("underline")) activeFormats.add("underline");
   if (editor?.isActive("blockquote")) activeFormats.add("blockquote");
-  if (editor?.isActive("link")) activeFormats.add("link");
+  if (editor?.isActive("link") || showLinkModal) activeFormats.add("link");
   void toolbarTick;
   void propTheme;
 
@@ -955,19 +978,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     setToolbarPanel("link");
   };
 
-  const restoreEditorSelection = (activeEditor = editorInstanceRef.current) => {
-    if (!activeEditor) return false;
-    const selection = savedSelectionRef.current;
-    if (!selection) {
-      activeEditor.chain().focus().run();
-      return true;
-    }
-    const maxPos = activeEditor.state.doc.content.size;
-    const from = Math.max(0, Math.min(selection.from, maxPos));
-    const to = Math.max(0, Math.min(selection.to, maxPos));
-    activeEditor.chain().focus().setTextSelection({ from, to }).run();
-    return true;
-  };
+  const restoreEditorSelection = (activeEditor = editorInstanceRef.current) => applySavedSelection(activeEditor);
 
   const markSlashCleanup = () => {
     const activeEditor = editorInstanceRef.current;
@@ -1172,17 +1183,84 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     document.addEventListener("keydown", onKeyDown, true);
   };
 
+  const tableAlignActive = (() => {
+    if (!editor) return "left";
+    const cellAlign = editor.getAttributes("tableCell").align || editor.getAttributes("tableHeader").align;
+    if (cellAlign === "left" || cellAlign === "center" || cellAlign === "right") return cellAlign;
+    if (editor.isActive({ textAlign: "center" })) return "center";
+    if (editor.isActive({ textAlign: "right" })) return "right";
+    if (editor.isActive({ textAlign: "justify" })) return "justify";
+    return "left";
+  })();
+
   const runTableCommand = (command: "addRowBefore" | "addRowAfter" | "deleteRow" | "addColumnBefore" | "addColumnAfter" | "deleteColumn" | "deleteTable" | "mergeCells" | "splitCell") => {
     const activeEditor = editorInstanceRef.current;
     if (!activeEditor) return;
     restoreEditorSelection(activeEditor);
-    activeEditor.chain().focus()[command]().run();
+    const ok = activeEditor.chain().focus()[command]().run();
+    if (!ok && (command === "mergeCells" || command === "splitCell")) {
+      setToast({
+        message: command === "mergeCells" ? "请先框选至少两个单元格再合并" : "当前单元格无法拆分，请先合并单元格",
+        type: "info",
+      });
+    }
     if (command === "deleteTable") setShowTableToolbar(false);
     window.setTimeout(() => updateTableToolbar(activeEditor), 0);
   };
 
   const applyTableAlign = (align: "left" | "center" | "right") => {
-    applyTextAlign(align);
+    runEditorCommand((activeEditor) => {
+      const { state, view } = activeEditor;
+      const { selection } = state;
+      const types = new Set(["paragraph", "heading"]);
+      const tr = state.tr;
+      let changed = false;
+
+      const applyTextAt = (pos: number, node: any) => {
+        if (!types.has(node.type.name) || node.attrs?.textAlign === align) return;
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, textAlign: align });
+        changed = true;
+      };
+
+      const applyCellAt = (pos: number, node: any) => {
+        if (!(node.type.name === "tableCell" || node.type.name === "tableHeader")) return;
+        if (node.attrs?.align === align) return;
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, align });
+        changed = true;
+      };
+
+      if (typeof selection.forEachCell === "function") {
+        selection.forEachCell((cell: any, cellPos: number) => {
+          applyCellAt(cellPos, cell);
+          cell.forEach((child: any, offset: number) => applyTextAt(cellPos + 1 + offset, child));
+        });
+      } else {
+        const { from, to, $from } = selection;
+        for (let depth = $from.depth; depth > 0; depth -= 1) {
+          const node = $from.node(depth);
+          if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
+            applyCellAt($from.before(depth), node);
+            break;
+          }
+        }
+        if (from === to) {
+          for (let depth = $from.depth; depth > 0; depth -= 1) {
+            const node = $from.node(depth);
+            if (types.has(node.type.name)) {
+              applyTextAt($from.before(depth), node);
+              break;
+            }
+          }
+        } else {
+          state.doc.nodesBetween(from, to, (node: any, pos: number) => applyTextAt(pos, node));
+        }
+      }
+
+      if (!changed) return false;
+      view.dispatch(tr);
+      activeEditor.commands.focus();
+      return true;
+    });
     window.setTimeout(() => updateTableToolbar(editorInstanceRef.current), 0);
   };
 
@@ -1403,9 +1481,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         </button>
         <Btn label="引用块" cmd="blockquote" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleBlockquote().run())}><IconSvg path={[editorSvg.p339d6600, editorSvg.p3a810c00, editorSvg.p27c3d000, editorSvg.p2e7ee0c0]} isFill /></Btn>
         <Btn label="代码块" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleCodeBlock().run())}><IconSvg path={editorSvg.p36d5aa00} /></Btn>
-        <div className={`rounded-[6px] transition-colors ${showLinkModal || activeFormats.has("link") ? "bg-[#fff5f5] ring-1 ring-[#ff4d4f]" : ""}`}>
-          <Btn label="插入链接" action={openLinkModal} getBtnRef={(el) => { linkBtnRef.current = el; }}><IconSvg path={editorSvg.pda5c3c0} stroke={showLinkModal || activeFormats.has("link") ? "#ff4d4f" : "#131212"} /></Btn>
-        </div>
+        <Btn label="插入链接" cmd="link" action={openLinkModal} getBtnRef={(el) => { linkBtnRef.current = el; }}><IconSvg path={editorSvg.pda5c3c0} /></Btn>
         <Btn label="清除链接" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().unsetLink().run())}><IconSvg path={editorSvg.p3418c200} /></Btn>
         <Btn label="插入图片" action={openImagePicker}><IconSvg path={editorSvg.p2a7b5cf0} isFill fill="#131212" /></Btn>
         <Btn label="插入视频" action={openVideoPicker}><IconSvg path={editorSvg.p1a4aa900} /></Btn>
@@ -1484,9 +1560,9 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
           <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("addColumnAfter"); }}>右列</button>
           <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("deleteColumn"); }}>删列</button>
           <div className="doc-table-float-sep" />
-          <button type="button" className={`doc-table-float-btn${editor?.isActive({ textAlign: "left" }) || (!editor?.isActive({ textAlign: "center" }) && !editor?.isActive({ textAlign: "right" }) && !editor?.isActive({ textAlign: "justify" })) ? " is-active" : ""}`} onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); applyTableAlign("left"); }}>左齐</button>
-          <button type="button" className={`doc-table-float-btn${editor?.isActive({ textAlign: "center" }) ? " is-active" : ""}`} onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); applyTableAlign("center"); }}>居中</button>
-          <button type="button" className={`doc-table-float-btn${editor?.isActive({ textAlign: "right" }) ? " is-active" : ""}`} onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); applyTableAlign("right"); }}>右齐</button>
+          <button type="button" className={`doc-table-float-btn${tableAlignActive === "left" ? " is-active" : ""}`} onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); applyTableAlign("left"); }}>左齐</button>
+          <button type="button" className={`doc-table-float-btn${tableAlignActive === "center" ? " is-active" : ""}`} onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); applyTableAlign("center"); }}>居中</button>
+          <button type="button" className={`doc-table-float-btn${tableAlignActive === "right" ? " is-active" : ""}`} onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); applyTableAlign("right"); }}>右齐</button>
           <div className="doc-table-float-sep" />
           <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("mergeCells"); }}>合并</button>
           <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("splitCell"); }}>拆分</button>

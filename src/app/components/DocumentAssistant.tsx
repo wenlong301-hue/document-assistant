@@ -82,7 +82,7 @@ export default function DocumentAssistant() {
   const saveTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const webPersistErrorShownRef = useRef(false);
   const anchorNavigationHandledRef = useRef(false);
-  const editorContentRef = useRef({ html: "", text: "" });
+  const editorContentRef = useRef({ html: "", text: "", nodeId: "" });
   const importInputRef = useRef<HTMLInputElement>(null);
   const [shareUrl, setShareUrl] = useState("http://localhost:6535");
   const webShareUrlRef = useRef<string | null>(null);
@@ -109,9 +109,11 @@ export default function DocumentAssistant() {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const docStoreRef = useRef<DocStore>({});
   const selectedDocRef = useRef("");
+  const selectedNodeIdRef = useRef("");
 
   useEffect(() => { docStoreRef.current = docStore; }, [docStore]);
   useEffect(() => { selectedDocRef.current = selectedDoc; }, [selectedDoc]);
+  useEffect(() => { selectedNodeIdRef.current = selectedNodeId; }, [selectedNodeId]);
 
   /**
    * L2 项目原文件写回（产品 A 三层策略）：
@@ -595,11 +597,17 @@ export default function DocumentAssistant() {
   useEffect(() => () => revokeWebShareUrl(), [revokeWebShareUrl]);
 
   const buildCurrentShareHtml = useCallback(async () => {
-    if (!selectedDoc) throw new Error("请先新建或选择文档");
-    const doc = docStore[selectedDoc] ?? createStoredDoc(selectedDoc, getOutlineTree(selectedDoc));
-    const displayName = getDisplayFileName(doc.name || selectedDoc);
-    const tree = doc.children?.length ? doc.children : getOutlineTree(selectedDoc);
-    const sections = buildPreviewSections(tree, doc.content);
+    const docName = selectedDocRef.current || selectedDoc;
+    if (!docName) throw new Error("请先新建或选择文档");
+    const doc = docStoreRef.current[docName] ?? createStoredDoc(docName, getOutlineTree(docName));
+    const nodeId = selectedNodeIdRef.current || selectedNodeId;
+    const live = editorContentRef.current;
+    const content = nodeId && live.nodeId === nodeId && live.html
+      ? { ...doc.content, [nodeId]: live.html }
+      : { ...doc.content };
+    const displayName = getDisplayFileName(doc.name || docName);
+    const tree = doc.children?.length ? doc.children : getOutlineTree(docName);
+    const sections = buildPreviewSections(tree, content);
     const bodyHtml = sections.length > 0
       ? sections.map((section) => section.html).join('\n<hr style="border:none;border-top:1px solid #ebecf0;margin:24px 0"/>\n')
       : `<h1>${escapeHtml(displayName)}</h1>${emptyParagraph}`;
@@ -607,8 +615,8 @@ export default function DocumentAssistant() {
       displayName,
       sections.length > 0 ? sections : [{ id: "root", name: displayName, html: bodyHtml }],
       tree,
-      selectedNodeId || sections[0]?.id,
-      doc.content,
+      nodeId || sections[0]?.id,
+      content,
     );
   }, [selectedDoc, selectedNodeId, docStore, outlineTrees]);
 
@@ -756,7 +764,7 @@ export default function DocumentAssistant() {
         setOutlineNodes(tree);
         setSelectedNodeId(leaf.id);
         setMode("outline");
-        editorContentRef.current = { html, text: parsedText };
+        editorContentRef.current = { html, text: parsedText, nodeId: leaf.id };
         persistDoc(title, doc, 0);
       } catch { setToast({ message: "导入失败", type: "error" }); }
     } else {
@@ -1638,12 +1646,14 @@ export default function DocumentAssistant() {
   };
 
   const handleNodeContentChange = (html: string, text: string) => {
-    if (!selectedNode) return;
-    editorContentRef.current = { html, text };
-    setAndPersistDoc(selectedDoc, (doc) => markSourceDirty({
+    const docName = selectedDocRef.current;
+    const nodeId = selectedNodeIdRef.current;
+    if (!docName || !nodeId) return;
+    editorContentRef.current = { html, text, nodeId };
+    setAndPersistDoc(docName, (doc) => markSourceDirty({
       ...doc,
-      children: getOutlineTree(selectedDoc),
-      content: { ...doc.content, [selectedNode.id]: html },
+      children: getOutlineTree(docName),
+      content: { ...doc.content, [nodeId]: html },
     }));
   };
 

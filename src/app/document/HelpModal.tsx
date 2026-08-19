@@ -145,6 +145,7 @@ const SECTIONS: HelpSection[] = [
         <li><strong>macOS 提示「已损坏，无法打开」？</strong> 多为下载隔离误报，不要移到废纸篓。终端执行：<code>xattr -cr "/Applications/文档助手.app"</code> 后再打开。</li>
         <li><strong>手机打不开分享链接？</strong> 确认桌面端已开启分享、同一 Wi-Fi、防火墙放行 6535、链接为局域网 IP。</li>
         <li><strong>预览缺章节？</strong> 节点可能为空或设置了「预览时隐藏本层」；请重新分享/导出。</li>
+        <li><strong>分享页还是旧内容？</strong> 开启分享后继续编辑，分享页约 1–2 秒会自动刷新；若仍旧，请手动刷新浏览器。</li>
         <li><strong>浏览器存储失败？</strong> 媒体过大，请减少图片视频或改用桌面端并导出备份。</li>
         <li><strong>导入 md/docx 后样式或空格变了？</strong> 跨格式转换为「尽力而为」。未编辑再保存会原样写回；长期精编请另存 <code>.mdoc</code>。</li>
         <li><strong>如何更新软件？</strong> 启动会自动提示；也可在帮助页点「检查更新」。安装包来自 GitHub Releases。</li>

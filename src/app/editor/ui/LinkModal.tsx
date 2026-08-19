@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import editorSvg from "../../../imports/首页大纲模式根节点未编写内容-1/svg-208e2u96ym";
 
 export function LinkModal({ position, initialText, initialUrl, mode, triggerRef, onClose, onConfirm }: {
   position: { x: number; y: number };
@@ -45,19 +46,21 @@ export function LinkModal({ position, initialText, initialUrl, mode, triggerRef,
   return createPortal(
     <div
       ref={ref}
-      className="fixed z-[300] w-[360px] rounded-[10px] border border-[#EBECF0] bg-white p-[10px] shadow-[0px_12px_24px_-8px_rgba(36,36,36,0.18)]"
+      className="fixed z-[300] w-[360px] rounded-[12px] border border-[#ebecf0] bg-white p-[12px] shadow-[0px_12px_24px_-4px_rgba(36,36,36,0.12)]"
       style={{ left: Math.max(12, Math.min(position.x, window.innerWidth - 372)), top: position.y }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="mb-[8px] flex items-center justify-between px-[2px]">
-        <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[14px] leading-[20px]">{mode === "edit" ? "编辑链接" : "插入链接"}</p>
+      <div className="mb-[8px] flex items-center justify-between">
+        <p className="m-0 font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[16px] font-medium leading-[24px]">{mode === "edit" ? "编辑链接" : "插入链接"}</p>
         <button
-          className="size-[24px] flex items-center justify-center rounded-[6px] text-[#8D8E99] hover:bg-[#F5F6F8] hover:text-[#131212] active:bg-[#EBECF0] transition-colors cursor-pointer"
+          type="button"
+          className="size-[28px] flex items-center justify-center rounded-[6px] border-0 p-0 bg-transparent text-[#131212] hover:bg-[#EBECF0] active:bg-[#dddee3] transition-colors cursor-pointer outline-none appearance-none"
           onClick={onClose}
+          aria-label="关闭"
         >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M10.5 3.5L3.5 10.5M3.5 3.5L10.5 10.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+            <path d="M13.3333 2.66667L2.66667 13.3333M13.3333 13.3333L2.66667 2.66667" stroke="currentColor" strokeLinecap="round" strokeWidth="1.2" />
           </svg>
         </button>
       </div>
@@ -83,8 +86,8 @@ export function LinkModal({ position, initialText, initialUrl, mode, triggerRef,
             className="h-[34px] flex-1 rounded-[6px] flex items-center gap-[6px] px-[10px] transition-all duration-150"
             style={{ border: focusedField === "url" ? "1px solid #131212" : "1px solid #EBECF0", background: "white" }}
           >
-            <svg className="size-[14px] shrink-0" fill="none" viewBox="0 0 16 16">
-              <path d="M6.5 8.8L9.5 5.8M5.7 5.2L5.1 5.8C3.9 7 3.9 8.9 5.1 10.1C6.3 11.3 8.2 11.3 9.4 10.1L10 9.5M10.3 10.8L10.9 10.2C12.1 9 12.1 7.1 10.9 5.9C9.7 4.7 7.8 4.7 6.6 5.9L6 6.5" stroke="#8D8E99" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" />
+            <svg className="size-[16px] shrink-0" fill="none" viewBox="0 0 20 20" aria-hidden>
+              <path d={editorSvg.pda5c3c0} stroke="#8D8E99" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" />
             </svg>
             <input
               autoFocus

@@ -31,6 +31,73 @@ let tray = null;
 let shareServer = null;
 let activeShareDocId = null;
 let activeShareHtml = null;
+let activeShareVersion = 0;
+
+function setActiveShareHtml(html) {
+  if (html == null) return;
+  const next = String(html);
+  if (next === activeShareHtml) return;
+  activeShareHtml = next;
+  activeShareVersion += 1;
+}
+
+function injectShareLiveReload(html, version) {
+  const ver = Number(version) || 0;
+  const snippet = `<script data-share-live-reload>
+(function(){
+  var current=${ver};
+  function activeNode(){
+    var el=document.querySelector('.tree-item.active');
+    return el?el.getAttribute('data-node-id')||'':'';
+  }
+  function findTreeItem(id){
+    if(!id)return null;
+    var items=document.querySelectorAll('.tree-item');
+    for(var i=0;i<items.length;i++){
+      if(items[i].getAttribute('data-node-id')===id)return items[i];
+    }
+    return null;
+  }
+  function restoreView(){
+    try{
+      var n=sessionStorage.getItem('da-share-node');
+      var s=sessionStorage.getItem('da-share-scroll');
+      if(!n&&s==null)return;
+      sessionStorage.removeItem('da-share-node');
+      sessionStorage.removeItem('da-share-scroll');
+      setTimeout(function(){
+        try{
+          var item=findTreeItem(n);
+          if(item)item.click();
+          if(s!=null)window.scrollTo(0,Number(s)||0);
+        }catch(e){}
+      },60);
+    }catch(e){}
+  }
+  restoreView();
+  setInterval(function(){
+    fetch('/share-version',{cache:'no-store'})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(!d||d.version==null||Number(d.version)===current)return;
+        try{
+          sessionStorage.setItem('da-share-node',activeNode());
+          sessionStorage.setItem('da-share-scroll',String(window.scrollY||0));
+        }catch(e){}
+        location.reload();
+      })
+      .catch(function(){});
+  },1500);
+})();
+</script>`;
+  const source = String(html || '');
+  // 已注入过时替换整段脚本，确保 version 与当前 activeShareVersion 一致
+  if (source.includes('data-share-live-reload')) {
+    return source.replace(/<script data-share-live-reload>[\s\S]*?<\/script>/, snippet);
+  }
+  if (source.includes('</body>')) return source.replace('</body>', `${snippet}</body>`);
+  return `${source}${snippet}`;
+}
 let updateCheckInFlight = false;
 let lastDownloadedUpdatePath = null;
 let closeBehavior = 'ask'; // 'ask', 'tray', 'quit'
@@ -1160,7 +1227,9 @@ function openToc(){if(!tocDrawer)return;closeNav();tocDrawer.classList.add('open
 function syncMobileNavTree(){if(!navBody||!sidebarLeft)return;if(navBody.childElementCount)return;var tree=sidebarLeft.querySelector('.doc-tree');if(tree)navBody.appendChild(tree.cloneNode(true))}
 function updateActiveToc(){if(!content)return;var headings=Array.prototype.slice.call(content.querySelectorAll('h1,h2,h3,h4,h5,h6'));if(!headings.length)return;var active=headings[0];var top=window.scrollY+72;headings.forEach(function(h){if(h.getBoundingClientRect().top+window.scrollY<=top)active=h});[tocList,tocListMobile].forEach(function(list){if(!list)return;list.querySelectorAll('.toc-item').forEach(function(a){a.classList.toggle('active',!!(active&&a.getAttribute('href')==='#'+active.id))})})}
 function buildToc(){if(!content)return;var ids={};var items=[];content.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(function(h){var text=(h.textContent||'').trim();if(!text)return;var key=slug(text);var count=ids[key]||0;ids[key]=count+1;var id=count>0?key+'-'+count:key;h.id=id;items.push({level:Number(h.tagName.slice(1)),text:text,id:id})});var html=items.map(function(i){var indent=(i.level-1)*12;var size=i.level===1?'14px':'13px';var weight=i.level===1?'600':'400';var color=i.level===1?'#131212':'#8d8e99';return '<a href="#'+i.id+'" class="toc-item" style="padding-left:'+(indent+12)+'px;font-size:'+size+';font-weight:'+weight+';color:'+color+'">'+escapeText(i.text)+'</a>'}).join('');if(tocList)tocList.innerHTML=html;if(tocListMobile)tocListMobile.innerHTML=html;updateActiveToc()}
-function bindCopy(){if(!content)return;content.querySelectorAll('pre').forEach(function(p){if(p.querySelector('.copy-btn'))return;var b=document.createElement('button');b.className='copy-btn';b.type='button';b.textContent='复制';b.addEventListener('click',function(){var c=(p.querySelector('code')||{}).textContent||p.textContent||'';var done=function(){b.textContent='已复制';setTimeout(function(){b.textContent='复制'},2000)};if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(c).then(done).catch(function(){b.textContent='复制失败'})}else{done()}});p.appendChild(b)})}
+function copyText(text){var value=String(text==null?'':text);if(navigator.clipboard&&navigator.clipboard.writeText&&window.isSecureContext){return navigator.clipboard.writeText(value).then(function(){return true}).catch(function(){return copyTextFallback(value)})}return Promise.resolve(copyTextFallback(value))}
+function copyTextFallback(text){try{var ta=document.createElement('textarea');ta.value=String(text==null?'':text);ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:none;outline:none;box-shadow:none;background:transparent;opacity:0';document.body.appendChild(ta);ta.focus();ta.select();ta.setSelectionRange(0,ta.value.length);var ok=document.execCommand('copy');document.body.removeChild(ta);return !!ok}catch(e){return false}}
+function bindCopy(){if(!content)return;content.querySelectorAll('pre').forEach(function(p){if(p.querySelector('.copy-btn'))return;var b=document.createElement('button');b.className='copy-btn';b.type='button';b.textContent='复制';b.addEventListener('click',function(){var codeEl=p.querySelector('code');var c=codeEl?codeEl.textContent:(function(){var clone=p.cloneNode(true);var btn=clone.querySelector('.copy-btn');if(btn)btn.remove();return clone.textContent||''})();copyText(c).then(function(ok){b.textContent=ok?'已复制':'复制失败';setTimeout(function(){b.textContent='复制'},2000)})});p.appendChild(b)})}
 function updateTreeIcon(node){var btn=node&&node.querySelector('.tree-toggle:not(:disabled)');var path=btn&&btn.querySelector('.tree-toggle-path');if(path)path.setAttribute('d',node.classList.contains('expanded')?btn.getAttribute('data-expanded-path'):btn.getAttribute('data-collapsed-path'))}
 function directChildNodes(node){if(!node)return[];var wrap=null;for(var i=0;i<node.children.length;i++){if(node.children[i].classList&&node.children[i].classList.contains('tree-children')){wrap=node.children[i];break}}if(!wrap)return[];var out=[];for(var j=0;j<wrap.children.length;j++){if(wrap.children[j].classList&&wrap.children[j].classList.contains('tree-node'))out.push(wrap.children[j])}return out}
 function resolveId(id){if(id&&sections[id])return id;function firstIn(node){if(!node)return null;var nid=node.getAttribute('data-node-id');if(node.getAttribute('data-previewable')==='1'&&nid&&sections[nid])return nid;var kids=directChildNodes(node);for(var i=0;i<kids.length;i++){var f=firstIn(kids[i]);if(f)return f}return null}if(id){var start=document.querySelector('.tree-node[data-node-id="'+cssEscape(id)+'"]');var from=firstIn(start);if(from)return from}for(var k in sections){if(Object.prototype.hasOwnProperty.call(sections,k))return k}return id}
@@ -1190,9 +1259,15 @@ selectNode(window.__DOC_INITIAL__,{skipScroll:true,keepNav:true});
 }
 
 function respondWithDoc(res, docId) {
+  // 正在分享的文档优先用内存 HTML（含未落盘编辑），避免 /view 读到磁盘旧 .mdoc
+  if (activeShareHtml && activeShareDocId && String(docId) === String(activeShareDocId)) {
+    return respondWithActiveShare(res);
+  }
   const doc = getDocContent(docId);
   if (doc) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
     res.end(buildDocViewPage(doc));
     return true;
   }
@@ -1204,13 +1279,23 @@ function respondWithDoc(res, docId) {
 function respondWithActiveShare(res) {
   if (!activeShareHtml) return false;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.end(activeShareHtml);
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.end(injectShareLiveReload(activeShareHtml, activeShareVersion));
+  return true;
+}
+
+function respondWithShareVersion(res) {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.end(JSON.stringify({ version: activeShareVersion, docId: activeShareDocId || null }));
   return true;
 }
 
 async function startShareServer(port = 6535, docId = null, html = null) {
   if (docId) activeShareDocId = docId;
-  if (html != null) activeShareHtml = String(html);
+  if (html != null) setActiveShareHtml(html);
   if (shareServer?.listening) {
     const bound = shareServer.address()?.port || port;
     return { server: shareServer, port: bound };
@@ -1226,6 +1311,10 @@ async function startShareServer(port = 6535, docId = null, html = null) {
       const boundPort = shareServer?.address()?.port || listenPort || preferred;
       const url = new URL(req.url, `http://localhost:${boundPort}`);
       const viewMatch = url.pathname.match(/^\/view\/(.+)$/);
+      if (url.pathname === '/share-version') {
+        respondWithShareVersion(res);
+        return;
+      }
       if (viewMatch) {
         respondWithDoc(res, decodeURIComponent(viewMatch[1]));
         return;
@@ -1285,6 +1374,7 @@ function stopShareServer() {
   if (shareServer) { try { shareServer.close(); } catch {} shareServer = null; }
   activeShareDocId = null;
   activeShareHtml = null;
+  activeShareVersion = 0;
 }
 
 function createWindow() {
@@ -1453,8 +1543,8 @@ ipcMain.handle('start-share', async (_e, port, docId, html) => {
 });
 ipcMain.handle('update-share-html', (_e, docId, html) => {
   if (docId) activeShareDocId = docId;
-  if (html != null) activeShareHtml = String(html);
-  return true;
+  if (html != null) setActiveShareHtml(html);
+  return { version: activeShareVersion };
 });
 ipcMain.handle('stop-share', () => { stopShareServer(); });
 ipcMain.handle('get-platform', () => process.platform);
