@@ -8,7 +8,7 @@ import { TextSelection } from "@tiptap/pm/state";
 import { isInTable, moveCellForward, nextCell, selectionCell } from "@tiptap/pm/tables";
 import { formatFileSize, mergeHtmlAttrs } from "../utils/html";
 import { fitImageSize, imageRatioLockedRef, syncContainerToImage } from "../utils/image";
-import { isDiagramLanguage } from "../utils/codeLanguages";
+import { codeLanguageLabel, isDiagramLanguage } from "../utils/codeLanguages";
 import {
   closeCodeLangPicker,
   isCodeLangPickerFor,
@@ -24,6 +24,9 @@ const codeBlockEditSessions = new WeakMap<object, {
   pos: number;
   diagram: boolean;
 }>();
+
+/** 图表预览武装态：NodeView 重建后恢复 20px 下拉条 */
+const codeBlockArmedSessions = new WeakMap<object, { pos: number }>();
 
 /** 当前编辑中的代码块控制器：失焦/Esc 时提交并退出编辑 */
 const codeBlockEditControllers = new WeakMap<object, Set<{
@@ -536,6 +539,9 @@ export const MermaidCodeBlock = CodeBlock.extend({
       const preview = document.createElement("div");
       const editHint = document.createElement("button");
       const deleteHint = document.createElement("button");
+      const expandBar = document.createElement("button");
+      const expandBarLabel = document.createElement("span");
+      const expandBarChevron = document.createElement("span");
       const actionBar = document.createElement("div");
       const pre = document.createElement("pre");
       const code = document.createElement("code");
@@ -545,6 +551,8 @@ export const MermaidCodeBlock = CodeBlock.extend({
       let currentNode = node;
       // 编辑态：进入后实时写入文档；失焦/离开块时自动保存并退出
       let editing = false;
+      // 图表预览态：点击预览先「武装」出 20px 下拉条，再点条才展开源码
+      let armed = false;
       let renderToken = 0;
       let lastSource = "";
       let debounceTimer = 0;
@@ -731,6 +739,15 @@ export const MermaidCodeBlock = CodeBlock.extend({
         pre.style.cssText = "position:relative";
       };
 
+      const syncExpandBar = () => {
+        const diagram = isDiagram();
+        const show = diagram && editor.isEditable && !editing && armed;
+        expandBarLabel.textContent = codeLanguageLabel(currentNode.attrs.language);
+        expandBar.style.setProperty("display", show ? "flex" : "none", "important");
+        if (show) dom.classList.add("is-armed");
+        else dom.classList.remove("is-armed");
+      };
+
       const syncChrome = () => {
         const diagram = isDiagram();
         const showSource = diagram ? (editor.isEditable && editing) : true;
@@ -740,8 +757,11 @@ export const MermaidCodeBlock = CodeBlock.extend({
         // 普通代码块：编辑态才显示底栏（语言）
         const plainEditing = !diagram && editor.isEditable && editing;
         if (diagram) {
-          dom.className = `doc-code-block-wrap doc-diagram${showSource ? " is-editing" : " is-preview"}`;
+          const modeClass = showSource ? " is-editing" : " is-preview";
+          const armedClass = !showSource && armed ? " is-armed" : "";
+          dom.className = `doc-code-block-wrap doc-diagram${modeClass}${armedClass}`;
         } else {
+          armed = false;
           dom.className = `doc-code-block-wrap${plainEditing ? " is-plain-editing" : ""}`;
         }
         if (busy) dom.classList.add("is-lang-open");
@@ -766,6 +786,7 @@ export const MermaidCodeBlock = CodeBlock.extend({
         }
         if (langBar.parentElement !== actionBar) actionBar.appendChild(langBar);
         syncLangPicker();
+        syncExpandBar();
         if (!diagram) {
           preview.style.display = "none";
           preview.innerHTML = "";
@@ -852,6 +873,8 @@ export const MermaidCodeBlock = CodeBlock.extend({
         const range = nodeRange();
         if (!range) return;
         editing = true;
+        armed = false;
+        clearArmedSession();
         if (isDiagram()) {
           // 取消进行中的预览渲染，避免异步回调把界面打回预览态
           renderToken += 1;
@@ -868,10 +891,45 @@ export const MermaidCodeBlock = CodeBlock.extend({
         }
       };
 
+      const rememberArmedSession = () => {
+        const range = nodeRange();
+        if (!range) return;
+        codeBlockArmedSessions.set(editor, { pos: range.pos });
+      };
+
+      const clearArmedSession = () => {
+        codeBlockArmedSessions.delete(editor);
+      };
+
+      /** 图表预览：显示 20px 下拉条，不进入源码编辑 */
+      const armExpandBar = () => {
+        if (!editor.isEditable || !isDiagram() || editing) return;
+        if (armed) {
+          rememberArmedSession();
+          syncExpandBar();
+          return;
+        }
+        armed = true;
+        rememberArmedSession();
+        syncChrome();
+      };
+
+      const disarmExpandBar = () => {
+        if (!armed) return;
+        armed = false;
+        clearArmedSession();
+        syncChrome();
+      };
+
       /** 保存当前内容并退出编辑；keepSelection=true 时不挪动光标（失焦到正文时用） */
       const commitEdit = (opts?: { keepSelection?: boolean }) => {
-        if (!editing) return;
+        if (!editing) {
+          disarmExpandBar();
+          return;
+        }
         editing = false;
+        armed = false;
+        clearArmedSession();
         if (langPickerBusy()) closeCodeLangPicker();
         clearEditSession();
         if (!opts?.keepSelection) focusAfterNode();
@@ -889,10 +947,12 @@ export const MermaidCodeBlock = CodeBlock.extend({
         if (!editor.isEditable || editing) return;
         const target = event.target as Node | null;
         if (target && (actionBar.contains(target) || langBar.contains(target) || deleteHint.contains(target))) return;
+        if (target && expandBar.contains(target)) return;
         if (isDiagram()) {
           if (target && (pre.contains(target) || code.contains(target))) return;
           stopPointer(event);
-          enterEdit();
+          // 图表：点预览先出 20px 条，不直接展开源码
+          armExpandBar();
           return;
         }
         // 普通代码块：点进源码区域即进入编辑态
@@ -901,11 +961,19 @@ export const MermaidCodeBlock = CodeBlock.extend({
         }
       };
 
+      const onExpandBarPointer = (event: Event) => {
+        stopPointer(event);
+        if (!editor.isEditable || editing) return;
+        enterEdit();
+      };
+
       const deleteBlock = () => {
         const range = nodeRange();
         if (!range || !editor.isEditable) return;
         if (langPickerBusy()) closeCodeLangPicker();
         editing = false;
+        armed = false;
+        clearArmedSession();
         clearEditSession();
         editor.chain().focus().deleteRange({ from: range.pos, to: range.pos + range.size }).run();
       };
@@ -917,6 +985,8 @@ export const MermaidCodeBlock = CodeBlock.extend({
         const range = nodeRange();
         if (!range) return;
         editing = false;
+        armed = false;
+        clearArmedSession();
         clearEditSession();
         editor.chain().focus().deleteRange({ from: range.pos, to: range.pos + range.size }).run();
       };
@@ -926,10 +996,13 @@ export const MermaidCodeBlock = CodeBlock.extend({
         if (next === null) return;
         const wasInside = selectionInside;
         selectionInside = next;
-        // 选区离开代码块：自动保存并退出编辑
-        if (editing && !next) {
-          commitEdit({ keepSelection: true });
-          return;
+        // 选区离开代码块：编辑中则提交；武装条改由外部点击收起，避免点预览瞬间误关
+        if (!next) {
+          if (editing) {
+            commitEdit({ keepSelection: true });
+            return;
+          }
+          if (armed) return;
         }
         if (langPickerBusy()) {
           syncChrome();
@@ -943,6 +1016,7 @@ export const MermaidCodeBlock = CodeBlock.extend({
         }
         if (isDiagram()) {
           if (editing) syncLangPicker();
+          else syncExpandBar();
           return;
         }
         if (editing) {
@@ -957,6 +1031,13 @@ export const MermaidCodeBlock = CodeBlock.extend({
         }
       };
 
+      const onDocPointerDown = (event: Event) => {
+        if (!armed || editing) return;
+        const target = event.target as Node | null;
+        if (target && dom.contains(target)) return;
+        disarmExpandBar();
+      };
+
       preview.className = "doc-diagram-preview";
       preview.contentEditable = "false";
 
@@ -964,6 +1045,19 @@ export const MermaidCodeBlock = CodeBlock.extend({
       editHint.className = "doc-diagram-edit-hint";
       editHint.textContent = "编辑";
       editHint.contentEditable = "false";
+
+      expandBar.type = "button";
+      expandBar.className = "doc-diagram-expand-bar";
+      expandBar.contentEditable = "false";
+      expandBar.setAttribute("aria-label", "展开源码");
+      expandBarLabel.className = "doc-diagram-expand-label";
+      expandBarChevron.className = "doc-diagram-expand-chevron";
+      expandBarChevron.setAttribute("aria-hidden", "true");
+      expandBar.appendChild(expandBarLabel);
+      expandBar.appendChild(expandBarChevron);
+      expandBar.style.setProperty("display", "none", "important");
+      expandBar.addEventListener("mousedown", onExpandBarPointer);
+      expandBar.addEventListener("click", onExpandBarPointer);
 
       deleteHint.type = "button";
       deleteHint.className = "doc-code-delete-hint";
@@ -1010,16 +1104,18 @@ export const MermaidCodeBlock = CodeBlock.extend({
       dom.addEventListener("mousedown", onEnterPointer, true);
       editHint.addEventListener("click", onEnterPointer);
       preview.addEventListener("click", onEnterPointer);
+      document.addEventListener("pointerdown", onDocPointerDown, true);
       let blurCommitTimer = 0;
       const onEditorBlur = () => {
         // 点到编辑器外：自动保存并退出（语言选择器 portal 除外）
+        // 武装条不在此收起：点预览常带 preventDefault，易误触发 blur；改由 document pointerdown 收起
         window.clearTimeout(blurCommitTimer);
         blurCommitTimer = window.setTimeout(() => {
           if (!editing) return;
           if (langPickerBusy()) return;
           const active = document.activeElement as HTMLElement | null;
           if (active?.closest?.(".doc-code-lang-portal, .doc-code-lang-menu")) return;
-          if (active && (dom.contains(active) || actionBar.contains(active))) return;
+          if (active && (dom.contains(active) || actionBar.contains(active) || expandBar.contains(active))) return;
           if (!editor.isFocused) {
             commitEdit({ keepSelection: true });
           }
@@ -1049,16 +1145,18 @@ export const MermaidCodeBlock = CodeBlock.extend({
       // 勿给 pre 设 contentEditable：会与 ProseMirror contentDOM 嵌套冲突，导致粘贴失效
       pre.appendChild(highlightLayer);
       pre.appendChild(code);
-      // 普通：源码 → 底栏；图表编辑：源码 → 底栏 → 预览（设计稿）
+      // 普通：源码 → 底栏；图表：展开条 → 预览；编辑：源码 → 底栏 → 预览
       dom.appendChild(pre);
       dom.appendChild(actionBar);
+      dom.appendChild(expandBar);
       dom.appendChild(preview);
       dom.appendChild(editHint);
       dom.appendChild(deleteHint);
       code.textContent = currentNode.textContent;
 
-      // NodeView 重建时按位置恢复未结束的编辑会话
+      // NodeView 重建时按位置恢复未结束的编辑会话 / 武装条
       const pendingSession = codeBlockEditSessions.get(editor);
+      const pendingArmed = codeBlockArmedSessions.get(editor);
       const currentPos = typeof getPos === "function" ? getPos() : null;
       if (
         pendingSession
@@ -1067,6 +1165,7 @@ export const MermaidCodeBlock = CodeBlock.extend({
         && pendingSession.pos === currentPos
       ) {
         editing = true;
+        armed = false;
         selectionInside = selectionInThisBlock() ?? true;
         syncChrome();
         requestAnimationFrame(() => {
@@ -1075,6 +1174,15 @@ export const MermaidCodeBlock = CodeBlock.extend({
         });
       } else {
         selectionInside = selectionInThisBlock() ?? false;
+        if (
+          pendingArmed
+          && editor.isEditable
+          && typeof currentPos === "number"
+          && pendingArmed.pos === currentPos
+          && isDiagram()
+        ) {
+          armed = true;
+        }
         if (selectionInside && editor.isEditable && !isDiagram()) {
           editing = true;
           rememberEditSession();
@@ -1106,6 +1214,7 @@ export const MermaidCodeBlock = CodeBlock.extend({
           if (updatedNode.type !== currentNode.type) return false;
           currentNode = updatedNode;
           if (editing) rememberEditSession();
+          else if (armed) rememberArmedSession();
           syncChrome();
           if (langPickerBusy()) rebindCodeLangPickerAnchor(buildLangPickerSession());
           if (isDiagram()) {
@@ -1119,16 +1228,20 @@ export const MermaidCodeBlock = CodeBlock.extend({
           return true;
         },
         selectNode: () => {
-          if (editor.isEditable && !editing) enterEdit();
-          else if (!isDiagram()) syncHighlight();
+          if (editor.isEditable && !editing) {
+            // 图表：节点选中只武装下拉条；普通代码块直接进编辑
+            if (isDiagram()) armExpandBar();
+            else enterEdit();
+          } else if (!isDiagram()) syncHighlight();
         },
         deselectNode: () => {
           if (editing) commitEdit({ keepSelection: true });
+          // 武装条不在此收起：点预览后选区常立刻离开节点，会误关；改由外部 pointerdown 收起
           else if (!isDiagram()) syncHighlight();
         },
         stopEvent: (event) => {
           const target = event.target as Node | null;
-          if (target && (langBar.contains(target) || deleteHint.contains(target) || actionBar.contains(target))) return true;
+          if (target && (langBar.contains(target) || deleteHint.contains(target) || actionBar.contains(target) || expandBar.contains(target))) return true;
           if (isDiagram()) {
             if (target && (editHint.contains(target) || preview.contains(target))) return true;
             if (!editing) {
@@ -1146,6 +1259,7 @@ export const MermaidCodeBlock = CodeBlock.extend({
         ignoreMutation: (mutation) => {
           if (preview.contains(mutation.target as Node)) return true;
           if (actionBar.contains(mutation.target as Node)) return true;
+          if (expandBar.contains(mutation.target as Node)) return true;
           if (editHint.contains(mutation.target as Node)) return true;
           if (deleteHint.contains(mutation.target as Node)) return true;
           if (langBar.contains(mutation.target as Node)) return true;
@@ -1161,8 +1275,11 @@ export const MermaidCodeBlock = CodeBlock.extend({
           window.clearTimeout(blurCommitTimer);
           dom.removeEventListener("pointerdown", onEnterPointer, true);
           dom.removeEventListener("mousedown", onEnterPointer, true);
+          document.removeEventListener("pointerdown", onDocPointerDown, true);
           preview.removeEventListener("click", onEnterPointer);
           editHint.removeEventListener("click", onEnterPointer);
+          expandBar.removeEventListener("mousedown", onExpandBarPointer);
+          expandBar.removeEventListener("click", onExpandBarPointer);
           codeBlockEditControllers.get(editor)?.delete(editController);
           renderToken += 1;
         },

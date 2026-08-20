@@ -38,6 +38,11 @@ export default function CodeBlockLangHarness() {
         .doc-tiptap-content .doc-diagram.is-preview{background:#fff;cursor:pointer}
         .doc-tiptap-content .doc-diagram.is-editing .doc-diagram-preview{border-top:0;background:#fff;padding:16px;min-height:120px;border-radius:0 0 8px 8px}
         .doc-tiptap-content .doc-diagram.is-preview .doc-diagram-preview{padding:16px;min-height:120px}
+        .doc-tiptap-content .doc-diagram-expand-bar{display:none;align-items:center;justify-content:center;gap:6px;height:20px;width:100%;padding:0 12px;margin:0;border:0;border-bottom:1px solid #E8E9EE;background:#F6F7FA;color:#8D8E99;font-size:12px;font-family:PingFang SC,sans-serif;cursor:pointer;flex-shrink:0;box-sizing:border-box}
+        .doc-tiptap-content .doc-diagram.is-armed .doc-diagram-expand-bar{display:flex!important}
+        .doc-tiptap-content .doc-diagram-expand-bar:hover{background:#F5F6F8;color:#131212}
+        .doc-tiptap-content .doc-diagram-expand-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%}
+        .doc-tiptap-content .doc-diagram-expand-chevron{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor;flex-shrink:0}
         .doc-tiptap-content .doc-diagram-preview{overflow-x:auto;text-align:center;box-sizing:border-box;color:#8D8E99;font-size:13px;display:flex;align-items:center;justify-content:center}
         .doc-tiptap-content .doc-code-actionbar{display:none;position:relative;z-index:6;align-items:center;justify-content:flex-end;gap:12px;height:64px;padding:0 16px;background:#fff;border-top:1px solid #E8E9EE;flex-shrink:0;border-radius:0;overflow:visible}
         .doc-tiptap-content .doc-code-block-wrap.is-plain-editing .doc-code-actionbar{display:flex!important;justify-content:flex-end;border-top:1px solid #E8E9EE;border-radius:0 0 8px 8px}

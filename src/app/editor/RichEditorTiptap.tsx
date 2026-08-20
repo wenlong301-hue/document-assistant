@@ -1370,10 +1370,17 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         .doc-tiptap-content .doc-diagram.is-preview:hover{border-color:#D8DAE0}
         .doc-tiptap-content .doc-diagram.is-editing .doc-diagram-preview{border-top:0;background:#fff;padding:16px;min-height:120px;border-radius:0 0 8px 8px}
         .doc-tiptap-content .doc-diagram.is-preview .doc-diagram-preview{padding:16px;min-height:120px}
+        .doc-tiptap-content .doc-diagram-expand-bar{display:none;align-items:center;justify-content:center;gap:6px;height:20px;width:100%;padding:0 12px;margin:0;border:0;border-bottom:1px solid #E8E9EE;border-radius:0;background:#F6F7FA;color:#8D8E99;font-size:12px;font-family:PingFang SC,sans-serif;font-weight:400;line-height:1;cursor:pointer;flex-shrink:0;box-sizing:border-box;appearance:none;-webkit-appearance:none}
+        .doc-tiptap-content .doc-diagram.is-armed .doc-diagram-expand-bar{display:flex!important}
+        .doc-tiptap-content .doc-diagram-expand-bar:hover{background:#F5F6F8;color:#131212}
+        .doc-tiptap-content .doc-diagram-expand-bar:active{background:#EBECF0;color:#131212}
+        .doc-tiptap-content .doc-diagram-expand-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%}
+        .doc-tiptap-content .doc-diagram-expand-chevron{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor;flex-shrink:0}
         .doc-tiptap-content .doc-diagram-preview{overflow-x:auto;text-align:center;box-sizing:border-box;color:#8D8E99;font-size:13px;font-family:PingFang SC,sans-serif;line-height:1.6;display:flex;align-items:center;justify-content:center}
         .doc-tiptap-content .doc-diagram-preview svg{max-width:100%;height:auto;display:block;margin:0 auto;pointer-events:none}
         .doc-tiptap-content .doc-diagram-error{color:#E53E3E;font-size:12px;line-height:1.5;text-align:left;white-space:pre-wrap;word-break:break-word;width:100%}
         .doc-tiptap-content .doc-code-delete-hint{display:none;position:absolute;top:16px;right:16px;z-index:4;width:44px;height:28px;padding:0;border-radius:4px;border:1px solid #E8E9EE;background:#fff;color:#131212;font-size:12px;font-family:PingFang SC,sans-serif;font-weight:400;line-height:1;cursor:pointer;align-items:center;justify-content:center;box-sizing:border-box}
+        .doc-tiptap-content .doc-diagram.is-armed .doc-code-delete-hint{top:0;right:8px;height:20px;border:0;border-radius:0;background:transparent}
         .doc-tiptap-content .doc-code-delete-hint:hover{background:#F7F8FA}
         .doc-tiptap-content .doc-code-delete-hint:active{background:#EBECF0}
         .doc-tiptap-content .doc-code-actionbar{display:none;position:relative;z-index:6;align-items:center;justify-content:flex-end;gap:12px;height:64px;padding:0 16px;box-sizing:border-box;background:#fff;border-top:1px solid #E8E9EE;flex-shrink:0;border-radius:0;overflow:visible}
