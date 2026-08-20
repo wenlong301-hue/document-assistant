@@ -62,11 +62,16 @@ export const docContentCss = (prefix: string): string => {
     `${p} .doc-attachment:hover{border-color:#cfd4df;background:#f2f4f7}`,
     `${p} hr{border:none;border-top:1px solid #ebecf0;margin:24px 0}`,
 
-    /* Mermaid */
-    `${p} .mermaid-diagram{margin:16px 0;padding:12px;background:#fff;border:1px solid #ebecf0;border-radius:8px;overflow-x:auto;text-align:center}`,
-    `${p} .mermaid-diagram svg{max-width:100%;height:auto;display:block;margin:0 auto}`,
-    `${p} .mermaid-error{border-color:#FF4D4F}`,
-    `${p} .mermaid-error-msg{color:#E53E3E;font-size:12px;margin:8px 0 0}`,
+    /* Mermaid / Sequence / Flow */
+    `${p} .mermaid-diagram,${p} .doc-diagram{margin:16px 0;padding:12px;background:#fff;border:1px solid #ebecf0;border-radius:8px;overflow-x:auto;text-align:center}`,
+    `${p} .mermaid-diagram svg,${p} .doc-diagram svg{max-width:100%;height:auto;display:block;margin:0 auto}`,
+    `${p} .mermaid-error,${p} .doc-diagram-error{border-color:#FF4D4F}`,
+    `${p} .mermaid-error-msg,${p} .doc-diagram-error-msg{color:#E53E3E;font-size:12px;margin:8px 0 0}`,
+    `${p} .hljs-keyword,${p} .hljs-selector-tag{color:#0550ae}`,
+    `${p} .hljs-string{color:#0a3069}`,
+    `${p} .hljs-number,${p} .hljs-built_in{color:#0550ae}`,
+    `${p} .hljs-comment{color:#8D8E99}`,
+    `${p} .hljs-title,${p} .hljs-section{color:#953800}`,
   ].join("");
 };
 

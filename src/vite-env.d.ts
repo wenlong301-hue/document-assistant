@@ -28,3 +28,20 @@ declare module "mammoth" {
   };
   export default mammoth;
 }
+
+declare module "flowchart.js" {
+  const flowchart: {
+    parse: (source: string) => {
+      drawSVG: (container: HTMLElement, options?: Record<string, unknown>) => void;
+      clean?: () => void;
+    };
+  };
+  export default flowchart;
+}
+
+declare module "js-sequence-diagrams/dist/sequence-diagram-raphael.js";
+
+declare module "raphael" {
+  const Raphael: any;
+  export default Raphael;
+}

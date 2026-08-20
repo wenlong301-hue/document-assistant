@@ -671,18 +671,31 @@ function contentHtmlToMarkdown(content, imageWriter) {
       return '\n\n```mermaid\n' + String(source).trimEnd() + '\n```\n\n';
     },
   });
+  turndown.addRule('docDiagram', {
+    filter: (node) => node.nodeName === 'DIV' && node.classList && node.classList.contains('doc-diagram'),
+    replacement: (_content, node) => {
+      const kind = String(node.getAttribute('data-diagram-kind') || 'mermaid').toLowerCase();
+      const source = node.getAttribute('data-diagram-source') || '';
+      if (!String(source).trim()) return '\n\n';
+      return '\n\n```' + kind + '\n' + String(source).trimEnd() + '\n```\n\n';
+    },
+  });
   turndown.addRule('mermaidCodeBlock', {
     filter: (node) => {
       if (node.nodeName !== 'PRE') return false;
       const code = node.querySelector && node.querySelector('code');
       const cls = String(node.className || '') + ' ' + String(code && code.className || '');
-      return /language-mermaid|\bmermaid\b/i.test(cls);
+      const data = String(node.getAttribute && node.getAttribute('data-language') || '') + ' ' + String(code && code.getAttribute && code.getAttribute('data-language') || '');
+      return /language-(mermaid|sequence|flow)|\b(mermaid|sequence|flow)\b/i.test(cls + ' ' + data);
     },
     replacement: (_content, node) => {
       const code = node.querySelector && node.querySelector('code');
+      const data = String(node.getAttribute && node.getAttribute('data-language') || '') || String(code && code.getAttribute && code.getAttribute('data-language') || '');
+      const cls = String(node.className || '') + ' ' + String(code && code.className || '');
+      const hit = (data.match(/^(mermaid|sequence|flow)$/i) || cls.match(/language-(mermaid|sequence|flow)/i) || [])[1] || 'mermaid';
       const source = String((code && code.textContent) || node.textContent || '').trimEnd();
       if (!source) return '\n\n';
-      return '\n\n```mermaid\n' + source + '\n```\n\n';
+      return '\n\n```' + String(hit).toLowerCase() + '\n' + source + '\n```\n\n';
     },
   });
   return turndown.turndown(content || '').trim() + '\n';

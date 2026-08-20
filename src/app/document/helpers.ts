@@ -9,6 +9,7 @@ import {
   textToHtml,
   textToPlainTextHtml,
 } from "../editor/utils/html";
+import { hasDiagramBlocks, renderDiagramsInHtml } from "../editor/utils/diagrams";
 import { hasMermaidBlocks, renderMermaidInHtml } from "../editor/utils/mermaid";
 import outlineSvg from "../../imports/首页大纲模式根节点/svg-4qt61e0wiv";
 import { docContentCss, docContentCssMobile } from "./documentContentCss";
@@ -225,14 +226,17 @@ export const buildPreviewSections = (nodes: OutlineNode[], contentMap?: DocConte
       };
     });
 
-/** 将各 section 内 language-mermaid 代码块预渲染为 SVG，供分享/导出离线展示 */
+/** 将各 section 内图表代码块预渲染为 SVG，供分享/导出离线展示 */
 export const hydratePreviewSections = async (sections: PreviewSection[]): Promise<PreviewSection[]> => {
   if (!sections.length) return sections;
-  if (!sections.some((section) => hasMermaidBlocks(section.html))) return sections;
-  return Promise.all(sections.map(async (section) => ({
-    ...section,
-    html: await renderMermaidInHtml(section.html),
-  })));
+  const need = sections.some((section) => hasMermaidBlocks(section.html) || hasDiagramBlocks(section.html));
+  if (!need) return sections;
+  return Promise.all(sections.map(async (section) => {
+    let html = section.html;
+    if (hasMermaidBlocks(html)) html = await renderMermaidInHtml(html);
+    if (hasDiagramBlocks(html)) html = await renderDiagramsInHtml(html);
+    return { ...section, html };
+  }));
 };
 
 export const buildPreviewHtmlAsync = async (

@@ -1,0 +1,13 @@
+- generic [ref=e5]:
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]: 文档助手
+      - generic [ref=e9]: V0.1.7
+    - generic [ref=e10]:
+      - button "帮助" [ref=e11] [cursor=pointer]
+      - button "添加项目" [ref=e13]
+      - textbox "搜索项目" [ref=e16]
+      - generic [ref=e17]:
+        - button "列表视图" [ref=e18]
+        - button "卡片视图" [ref=e19]
+  - paragraph [ref=e22]: 当前没有内容，点击上方 添加项目 去选择本地文件、文件夹或新增一个项目吧

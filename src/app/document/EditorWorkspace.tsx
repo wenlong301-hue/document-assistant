@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, Suspense, lazy } from "react";
 import type { OutlineNode } from "../document/types";
 import { ErrorBoundary } from "../editor/ui/ErrorBoundary";
+import { renderDiagramsInElement } from "../editor/utils/diagrams";
 import { renderMermaidInElement } from "../editor/utils/mermaid";
 import { IllustrationSvg, OutlineIllustration } from "./illustrations";
 import { docContentCss } from "./documentContentCss";
@@ -26,7 +27,11 @@ export function EditorWorkspace({ docName, mode, selectedNode, nodeDepth, nodeCo
     if (!el) return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      if (!cancelled) void renderMermaidInElement(el);
+      if (!cancelled) {
+        void renderMermaidInElement(el).then(() => {
+          if (!cancelled) void renderDiagramsInElement(el);
+        });
+      }
     }, 0);
     return () => {
       cancelled = true;

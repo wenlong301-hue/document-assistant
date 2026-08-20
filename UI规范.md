@@ -67,6 +67,9 @@
 | `bg-selected` / `bg-press` | `#EBECF0` | 选中行、active 按压 |
 | `bg-close-press` | `#DDDEE3` | 关闭按钮 active |
 | `surface` | `#FFFFFF` | 卡片、弹窗、编辑器面板 |
+| `code-bg` | `#F6F7FA` | 代码块/图表源码区背景 |
+| `code-border` | `#E8E9EE` | 代码块描边、代码块内分割线 |
+| `code-text` | `#3F4046` | 代码块正文 |
 
 ### 2.2 语义色
 

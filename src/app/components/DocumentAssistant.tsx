@@ -55,6 +55,7 @@ const SettingsModal = lazy(() => import("@/app/document/SettingsModal").then((m)
 const UpdateModal = lazy(() => import("@/app/document/UpdateModal").then((m) => ({ default: m.UpdateModal })));
 const ShareModal = lazy(() => import("@/app/document/ShareModal").then((m) => ({ default: m.ShareModal })));
 const ExportModal = lazy(() => import("@/app/document/ExportModal").then((m) => ({ default: m.ExportModal })));
+const UnsavedConfirmModal = lazy(() => import("@/app/document/UnsavedConfirmModal").then((m) => ({ default: m.UnsavedConfirmModal })));
 
 export default function DocumentAssistant() {
   const [selectedDoc, setSelectedDoc] = useState("");
@@ -62,6 +63,7 @@ export default function DocumentAssistant() {
   const [modal, setModal] = useState<{ type: "new" } | { type: "new-file" } | { type: "new-level" } | { type: "rename"; target: string } | null>(null);
   const [docDeleteConfirm, setDocDeleteConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [showBackUnsavedConfirm, setShowBackUnsavedConfirm] = useState(false);
   const [shared, setShared] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -92,6 +94,7 @@ export default function DocumentAssistant() {
   const [folderFiles, setFolderFiles] = useState<FolderFileItem[]>([]);
   const [folderGone, setFolderGone] = useState(false);
   const openFileInfoRef = useRef<{ docName: string; filePath: string; ext: string; originalText?: string; lineEnding?: string } | null>(null);
+  const dirtyOpenDocsRef = useRef<Set<string>>(new Set());
 
   // Project-level navigation state
   const [level, setLevel] = useState<"projects" | "project">("projects");
@@ -395,7 +398,18 @@ export default function DocumentAssistant() {
       void (async () => {
         if (isElectron) {
           const ok = await flushCurrentDoc();
-          if (ok) setLastSavedAt(formatSavedAt(false));
+          if (ok) {
+            const name = selectedDocRef.current;
+            if (name) dirtyOpenDocsRef.current.delete(name);
+            setDocStore((prev) => {
+              const doc = prev[name];
+              if (!name || !doc?.source?.dirty) return prev;
+              const nextStore = { ...prev, [name]: { ...doc, source: { ...doc.source, dirty: false } } };
+              docStoreRef.current = nextStore;
+              return nextStore;
+            });
+            setLastSavedAt(formatSavedAt(false));
+          }
           return;
         }
         if (!webStoreHydrated) return;
@@ -863,8 +877,29 @@ export default function DocumentAssistant() {
   const getNodeContent = (docName: string, nodeId: string) =>
     normalizeEditorHtml(docStore[docName]?.content?.[nodeId] ?? emptyParagraph);
 
-  const markSourceDirty = (doc: StoredDoc): StoredDoc =>
-    doc.source ? { ...doc, source: { ...doc.source, dirty: true } } : doc;
+  const markSourceDirty = (doc: StoredDoc): StoredDoc => {
+    if (doc.name) dirtyOpenDocsRef.current.add(doc.name);
+    return doc.source ? { ...doc, source: { ...doc.source, dirty: true } } : doc;
+  };
+
+  const isOpenDocDirty = (docName: string) => {
+    if (!docName) return false;
+    const doc = docStoreRef.current[docName];
+    return dirtyOpenDocsRef.current.has(docName) || !!doc?.source?.dirty;
+  };
+
+  const clearOpenDocDirty = (docName: string) => {
+    if (!docName) return;
+    dirtyOpenDocsRef.current.delete(docName);
+    setDocStore((prev) => {
+      const doc = prev[docName];
+      if (!doc) return prev;
+      if (!doc.source?.dirty) return prev;
+      const nextStore = { ...prev, [docName]: { ...doc, source: { ...doc.source, dirty: false } } };
+      docStoreRef.current = nextStore;
+      return nextStore;
+    });
+  };
 
   const findDisplayNodeForFile = (doc: StoredDoc) => {
     const hasContent = (node: OutlineNode) => !isHtmlContentEmpty(doc.content?.[node.id]);
@@ -890,7 +925,8 @@ export default function DocumentAssistant() {
   const updateOutlineTree = (docName: string, nodes: OutlineNode[]) => {
     setOutlineNodes(nodes);
     setOutlineTrees((prev) => ({ ...prev, [docName]: nodes }));
-    setAndPersistDoc(docName, (doc) => markSourceDirty({ ...doc, children: nodes }));
+    dirtyOpenDocsRef.current.add(docName);
+    setAndPersistDoc(docName, (doc) => markSourceDirty({ ...doc, name: docName, children: nodes }));
   };
 
   const getDocChildCount = (docName: string) => {
@@ -932,6 +968,7 @@ export default function DocumentAssistant() {
     const fileExt = file.ext.replace(/^\./, "").toLowerCase();
     const apply = (doc: StoredDoc, tree: OutlineNode[], nodeId: string, enterOutline = true, writeInfo?: { filePath: string; ext: string; originalText?: string; lineEnding?: string }) => {
       openFileInfoRef.current = { docName, filePath: writeInfo?.filePath || file.path, ext: writeInfo?.ext || fileExt, originalText: writeInfo?.originalText, lineEnding: writeInfo?.lineEnding };
+      dirtyOpenDocsRef.current.delete(docName);
       setSelectedDoc(docName);
       setDocStore((prev) => ({ ...prev, [docName]: doc }));
       setOutlineTrees((prev) => ({ ...prev, [docName]: tree }));
@@ -1057,6 +1094,7 @@ export default function DocumentAssistant() {
       const doc = docStoreRef.current[selectedDoc] ?? createStoredDoc(selectedDoc, getOutlineTree(selectedDoc));
       const result = await writeFolderDocBack(selectedDoc, doc);
       if (result.ok) {
+        clearOpenDocDirty(selectedDoc);
         setLastSavedAt(formatSavedAt(false));
         saveResultToast(result.mode);
       }
@@ -1571,7 +1609,10 @@ export default function DocumentAssistant() {
     }
   }, [selectedProject, openFolderFile]);
 
-  const handleBackToProjects = useCallback(() => {
+  const leaveProjectToList = useCallback(() => {
+    dirtyOpenDocsRef.current.clear();
+    openFileInfoRef.current = null;
+    setShowBackUnsavedConfirm(false);
     setLevel("projects");
     setSelectedProject(null);
     setFolderTree([]);
@@ -1584,6 +1625,36 @@ export default function DocumentAssistant() {
     setSelectedNodeId("");
     setMode("document");
   }, []);
+
+  const handleBackToProjects = useCallback(() => {
+    const docName = selectedDocRef.current;
+    if (docName && isOpenDocDirty(docName)) {
+      setShowBackUnsavedConfirm(true);
+      return;
+    }
+    leaveProjectToList();
+  }, [leaveProjectToList]);
+
+  const handleBackSaveAndLeave = useCallback(async () => {
+    const docName = selectedDocRef.current;
+    if (!docName) {
+      leaveProjectToList();
+      return;
+    }
+    clearTimeout(saveTimersRef.current[docName]);
+    const ok = await flushDoc(docName);
+    if (!ok) {
+      setToast({ message: "保存失败，仍停留在当前文件", type: "error" });
+      return;
+    }
+    clearOpenDocDirty(docName);
+    setLastSavedAt(formatSavedAt(false));
+    leaveProjectToList();
+  }, [flushDoc, leaveProjectToList]);
+
+  const handleBackDiscardAndLeave = useCallback(() => {
+    leaveProjectToList();
+  }, [leaveProjectToList]);
 
   const handleSearchEnter = () => {
     const q = searchQuery.trim().toLowerCase();
@@ -1650,8 +1721,10 @@ export default function DocumentAssistant() {
     const nodeId = selectedNodeIdRef.current;
     if (!docName || !nodeId) return;
     editorContentRef.current = { html, text, nodeId };
+    dirtyOpenDocsRef.current.add(docName);
     setAndPersistDoc(docName, (doc) => markSourceDirty({
       ...doc,
+      name: docName,
       children: getOutlineTree(docName),
       content: { ...doc.content, [nodeId]: html },
     }));
@@ -1841,6 +1914,17 @@ export default function DocumentAssistant() {
           onClose={handleCancelCloseWindow}
           onConfirm={handleCloseWindowChoice}
         />
+      )}
+      {showBackUnsavedConfirm && (
+        <Suspense fallback={null}>
+          <UnsavedConfirmModal
+            title="未保存的更改"
+            message="当前文件有未保存的内容，返回项目前是否保存？"
+            onClose={() => setShowBackUnsavedConfirm(false)}
+            onDiscard={handleBackDiscardAndLeave}
+            onSave={() => { void handleBackSaveAndLeave(); }}
+          />
+        </Suspense>
       )}
       {modal?.type === "new" && (
         <NewDocModal

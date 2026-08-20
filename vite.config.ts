@@ -55,6 +55,15 @@ export default defineConfig({
           ) return 'document-export';
           if (id.includes('node_modules/mermaid') || id.includes('node_modules\\mermaid')) return 'mermaid';
           if (
+            id.includes('flowchart.js')
+            || id.includes('js-sequence-diagrams')
+            || id.includes('node_modules/raphael')
+            || id.includes('node_modules\\raphael')
+            || id.includes('node_modules/underscore')
+            || id.includes('node_modules\\underscore')
+          ) return 'diagrams';
+          if (id.includes('highlight.js')) return 'highlight';
+          if (
             id.includes('node_modules/react-dom')
             || id.includes('node_modules/react/')
             || id.includes('node_modules\\react\\')
