@@ -1,68 +1,49 @@
 // @ts-nocheck — TipTap 多版本类型冲突（starter-kit 嵌套 @tiptap/core），运行时无问题
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { createPortal } from "react-dom";
 import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import TextAlign from "@tiptap/extension-text-align";
-import { BackgroundColor, FontSize, LineHeight, TextStyle } from "@tiptap/extension-text-style";
-import Color from "@tiptap/extension-color";
-import FontFamily from "@tiptap/extension-font-family";
-import Placeholder from "@tiptap/extension-placeholder";
-import Link from "@tiptap/extension-link";
-import { Table } from "@tiptap/extension-table";
-import { TableRow } from "@tiptap/extension-table-row";
-import TaskList from "@tiptap/extension-task-list";
-import TaskItem from "@tiptap/extension-task-item";
-import editorSvg from "../../imports/首页大纲模式根节点未编写内容-1/svg-208e2u96ym";
-import { assetUrl } from "@/app/shared/utils/assetUrl";
+import { EDITOR_CONTENT_CSS } from "./editorContentCss";
+import { createEditorContentAttributes, createEditorExtensions } from "./rich-editor/extensions";
+import { applyIndentCommand, applyTableAlignCommand, applyTextAlignCommand } from "./rich-editor/commands";
 import {
-  AttachmentNode,
-  BlockAnchorExtension,
-  IndentExtension,
-  commitActiveCodeBlockEdit,
-  insertParagraphAfterAncestor,
-  isTiptapBlockEmpty,
-  MermaidCodeBlock,
-  ResizableImage,
-  TableCellWithRowHeight,
-  TableHeaderWithRowHeight,
-  TyporaKeymap,
-  VideoNode,
-} from "./extensions";
+  applyMarkdownSpaceShortcut,
+  handleCodeBlockCommitKeys,
+  handleEditorDomKeydown,
+  handleEmptyBlockEnter,
+  handleListTab,
+  handleSlashMenuKeys,
+  tryOpenSlashMenu,
+} from "./rich-editor/editorKeymap";
+import { EditorToolbar } from "./rich-editor/EditorToolbar";
+import { InsertTableModal, TableFloatBar, TableRowResizeHandles } from "./rich-editor/EditorTableOverlays";
+import { EditorImageToolbar } from "./rich-editor/EditorImageToolbar";
+import { EditorSlashMenu } from "./rich-editor/EditorSlashMenu";
+import { EditorToc } from "./rich-editor/EditorToc";
+import { EditorStatusBar } from "./rich-editor/EditorStatusBar";
+import { buildSlashItems } from "./rich-editor/slashItems";
 import {
   FONT_FAMILIES,
   FONT_SIZES,
   getEditorTextCount,
-  getSlashMenuPlacement,
   HEADING_OPTIONS,
   normalizeHexColor,
 } from "./constants";
 import {
   compressImageForEmbed,
-  emptyParagraph,
+  escapeHtml,
   fileToDataUrl,
-  formatFileSize,
   MAX_ATTACHMENT_BYTES,
   MAX_VIDEO_BYTES,
   normalizeEditorHtml,
-  sanitizeHtml,
 } from "./utils/html";
 import { fitImageSize, imageRatioLockedRef, syncContainerToImage } from "./utils/image";
 import { ColorPicker } from "./ui/ColorPicker";
 import { Dropdown } from "./ui/Dropdown";
-import { ContextMenuPanel } from "../components/shared/ContextMenu";
-import { EditorToolBtn } from "./ui/EditorToolBtn";
-import { IconSvg } from "./ui/IconSvg";
-import { InlineIconSvg } from "./ui/InlineIconSvg";
 import { LinkModal } from "./ui/LinkModal";
 import { Toast } from "./ui/Toast";
 import { getElectronAPI } from "@/app/shared/electron";
+import type { RichEditorTiptapProps, SavedSelection, SlashMenuState, TableRowHandle, ToastState, TocHeading, ToolbarPanel } from "./rich-editor/types";
 
-export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange, autoSaveEnabled = false, lastSavedAt = null, onAutoSaveChange, fontSize: propFontSize, lineHeight: propLineHeight, theme: propTheme }: {
-  docName: string; nodeId: string; initialHtml?: string; onContentChange?: (html: string, text: string) => void;
-  autoSaveEnabled?: boolean; lastSavedAt?: string | null; onAutoSaveChange?: (enabled: boolean) => void;
-  fontSize?: string; lineHeight?: string; theme?: string;
-}) {
+export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange, autoSaveEnabled = false, lastSavedAt = null, onAutoSaveChange, fontSize: propFontSize, lineHeight: propLineHeight, theme: propTheme }: RichEditorTiptapProps) {
   const imgInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const attachInputRef = useRef<HTMLInputElement>(null);
@@ -71,8 +52,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   const lastSyncedNodeIdRef = useRef<string | null>(null);
   const [charCount, setCharCount] = useState(0);
   const [toolbarTick, setToolbarTick] = useState(0);
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
-  type ToolbarPanel = null | "heading" | "font" | "size" | "align" | "fore" | "back" | "link" | "table";
+  const [toast, setToast] = useState<ToastState | null>(null);
   const [toolbarPanel, setToolbarPanel] = useState<ToolbarPanel>(null);
   const [colorPickerPos, setColorPickerPos] = useState({ x: 0, y: 0 });
   const [headingDropPos, setHeadingDropPos] = useState({ x: 0, y: 0 });
@@ -99,7 +79,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   const setShowTableModal = (v: boolean) => setToolbarPanel(v ? "table" : null);
   const [showTableToolbar, setShowTableToolbar] = useState(false);
   const [tableToolbarPos, setTableToolbarPos] = useState({ top: 0, left: 0 });
-  const [tableRowHandles, setTableRowHandles] = useState<{ top: number; left: number; width: number; index: number; row: HTMLTableRowElement }[]>([]);
+  const [tableRowHandles, setTableRowHandles] = useState<TableRowHandle[]>([]);
   const [activeRowResizeIndex, setActiveRowResizeIndex] = useState<number | null>(null);
   const [tableRows, setTableRows] = useState("3");
   const [tableCols, setTableCols] = useState("3");
@@ -109,19 +89,19 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   const [imageCustomPct, setImageCustomPct] = useState("");
   const [imgBarSlider, setImgBarSlider] = useState(false);
   const selectedImagePosRef = useRef<number | null>(null);
-  const [tocHeadings, setTocHeadings] = useState<{ tag: string; text: string; id: string }[]>([]);
+  const [tocHeadings, setTocHeadings] = useState<TocHeading[]>([]);
   const [tocActiveId, setTocActiveId] = useState<string | null>(null);
-  const [slashMenu, setSlashMenu] = useState<{ top: number; left: number; maxHeight?: number } | null>(null);
+  const [slashMenu, setSlashMenu] = useState<SlashMenuState | null>(null);
   const [slashActive, setSlashActive] = useState(-1);
   const [slashPressIdx, setSlashPressIdx] = useState<number | null>(null);
   const slashMenuRef = useRef<typeof slashMenu>(null);
   const slashActiveRef = useRef(-1);
   const slashMenuElRef = useRef<HTMLDivElement | null>(null);
-  const slashItemsRef = useRef<{ label: string; icon: React.ReactNode; action: () => void; kind?: "file" }[]>([]);
+  const slashItemsRef = useRef<ReturnType<typeof buildSlashItems>>([]);
   const editorInstanceRef = useRef<any>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   imageRatioLockedRef.current = imageRatioLocked;
-  const savedSelectionRef = useRef<{ from: number; to: number; anchorCell?: number; headCell?: number } | null>(null);
+  const savedSelectionRef = useRef<SavedSelection | null>(null);
   const pendingSlashCleanupRef = useRef<{ from: number; to: number } | null>(null);
   const tocListRef = useRef<HTMLDivElement>(null);
   const tocButtonRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -369,212 +349,45 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
 
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: [
-      StarterKit.configure({
-        link: false,
-        codeBlock: false,
-        blockquote: {
-          HTMLAttributes: { class: "doc-blockquote" },
-        },
-        bulletList: {
-          keepMarks: true,
-          HTMLAttributes: { class: "doc-list doc-bullet-list" },
-        },
-        orderedList: {
-          keepMarks: true,
-          HTMLAttributes: { class: "doc-list doc-ordered-list" },
-        },
-      }),
-      MermaidCodeBlock,
-      TyporaKeymap,
-      TextStyle,
-      Color,
-      BackgroundColor,
-      FontFamily,
-      FontSize,
-      LineHeight,
-      IndentExtension,
-      TextAlign.configure({ types: ["heading", "paragraph"], alignments: ["left", "center", "right", "justify"] }),
-      Placeholder.configure({
-        placeholder: ({ node }) => {
-          if (node.type.name === "codeBlock") return "";
-          return "输入 / 呼出命令，或直接开始写作";
-        },
-        showOnlyWhenEditable: true,
-        showOnlyCurrent: true,
-        includeChildren: false,
-        emptyNodeClass: "is-empty",
-        emptyEditorClass: "is-editor-empty",
-      }),
-      Link.configure({
-        openOnClick: false,
-        autolink: true,
-        linkOnPaste: true,
-        HTMLAttributes: { class: "doc-link", target: "_blank", rel: "noreferrer" },
-      }),
-      BlockAnchorExtension,
-      VideoNode,
-      AttachmentNode,
-      ResizableImage.configure({
-        allowBase64: true,
-        HTMLAttributes: { class: "doc-image" },
-        resize: { enabled: true, alwaysPreserveAspectRatio: false, minWidth: 48, minHeight: 48 },
-      }),
-      Table.configure({
-        resizable: true,
-        cellMinWidth: 96,
-        handleWidth: 6,
-        lastColumnResizable: false,
-        HTMLAttributes: { class: "doc-table" },
-      }),
-      TableRow,
-      TableHeaderWithRowHeight,
-      TableCellWithRowHeight,
-      TaskList.configure({ HTMLAttributes: { class: "doc-task-list" } }),
-      TaskItem.configure({ nested: true, HTMLAttributes: { class: "doc-task-item" } }),
-    ],
+    extensions: createEditorExtensions(),
     content: normalizeEditorHtml(initialHtml),
     editorProps: {
       handleDOMEvents: {
         keydown: (view, event) => {
           const activeEditor = editorInstanceRef.current;
           if (!activeEditor) return false;
-          if (slashMenuRef.current) {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              event.stopImmediatePropagation();
-              setSlashMenu(null);
-              return true;
-            }
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-              event.preventDefault();
-              event.stopImmediatePropagation();
-              const count = slashItemsRef.current.length;
-              if (count > 0) {
-                const cur = slashActiveRef.current;
-                const next = event.key === "ArrowDown"
-                  ? (cur < 0 ? 0 : (cur + 1) % count)
-                  : (cur < 0 ? count - 1 : (cur - 1 + count) % count);
-                slashActiveRef.current = next;
-                setSlashActive(next);
-                requestAnimationFrame(() => {
-                  const el = slashMenuElRef.current?.querySelector<HTMLElement>(`[data-slash-idx="${next}"]`);
-                  el?.scrollIntoView({ block: "nearest" });
-                });
-              }
-              return true;
-            }
-            if (event.key === "Enter") {
-              event.preventDefault();
-              event.stopImmediatePropagation();
-              const item = slashItemsRef.current[slashActiveRef.current] ?? slashItemsRef.current[0];
-              if (item) {
-                if (item.kind === "file") runSlashFileAction(item.action);
-                else runSlashAction(item.action);
-              }
-              return true;
-            }
-          }
-          if (event.key === "Tab") {
-            if (activeEditor.isActive("listItem") || activeEditor.isActive("taskItem")) {
-              event.preventDefault();
-              const itemName = activeEditor.isActive("taskItem") ? "taskItem" : "listItem";
-              return event.shiftKey
-                ? activeEditor.chain().focus().liftListItem(itemName).run()
-                : activeEditor.chain().focus().sinkListItem(itemName).run();
-            }
-            return false;
-          }
-          if ((event.key === "Escape" || ((event.metaKey || event.ctrlKey) && event.key === "Enter")) && activeEditor.isActive("codeBlock")) {
-            event.preventDefault();
-            return commitActiveCodeBlockEdit(activeEditor);
-          }
-          if (event.key !== "Enter" || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false;
-          if (activeEditor.isActive("codeBlock")) {
-            return false;
-          }
-          if (activeEditor.isActive("blockquote") && isTiptapBlockEmpty(activeEditor)) {
-            event.preventDefault();
-            return insertParagraphAfterAncestor(activeEditor, "blockquote");
-          }
-          if ((activeEditor.isActive("listItem") || activeEditor.isActive("taskItem")) && isTiptapBlockEmpty(activeEditor)) {
-            event.preventDefault();
-            const itemName = activeEditor.isActive("taskItem") ? "taskItem" : "listItem";
-            return activeEditor.chain().focus().liftListItem(itemName).setParagraph().run();
-          }
-          return false;
+          if (handleSlashMenuKeys(event, {
+            slashMenuRef,
+            slashItemsRef,
+            slashActiveRef,
+            slashMenuElRef,
+            setSlashMenu,
+            setSlashActive,
+            runSlashAction,
+            runSlashFileAction,
+          })) return true;
+          return handleEditorDomKeydown(activeEditor, event);
         },
       },
-      attributes: {
-        class: "doc-tiptap-content ProseMirror h-full min-h-0 w-full max-w-full overflow-y-auto overflow-x-auto overscroll-contain px-[8px] pt-[24px] pb-[12px] outline-none box-border",
-        style: `font-size:${propFontSize || "15px"};line-height:${propLineHeight || "1.8"};font-family:PingFang SC, sans-serif;`,
-      },
+      attributes: createEditorContentAttributes(propFontSize, propLineHeight),
       handleKeyDown(view, event) {
         const activeEditor = editorInstanceRef.current;
         if (!activeEditor) return false;
-        if (event.key === "Tab") {
-          if (activeEditor.isActive("listItem") || activeEditor.isActive("taskItem")) {
-            event.preventDefault();
-            const itemName = activeEditor.isActive("taskItem") ? "taskItem" : "listItem";
-            return event.shiftKey
-              ? activeEditor.chain().focus().liftListItem(itemName).run()
-              : activeEditor.chain().focus().sinkListItem(itemName).run();
-          }
-          return false;
-        }
-        if ((event.key === "Escape" || ((event.metaKey || event.ctrlKey) && event.key === "Enter")) && activeEditor.isActive("codeBlock")) {
-          event.preventDefault();
-          return commitActiveCodeBlockEdit(activeEditor);
-        }
-        if (event.key !== "Enter" || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false;
-        if (activeEditor.isActive("codeBlock")) {
-          return false;
-        }
-        if (activeEditor.isActive("blockquote") && isTiptapBlockEmpty(activeEditor)) {
-          event.preventDefault();
-          return insertParagraphAfterAncestor(activeEditor, "blockquote");
-        }
-        if ((activeEditor.isActive("listItem") || activeEditor.isActive("taskItem")) && isTiptapBlockEmpty(activeEditor)) {
-          event.preventDefault();
-          const itemName = activeEditor.isActive("taskItem") ? "taskItem" : "listItem";
-          return activeEditor.chain().focus().liftListItem(itemName).setParagraph().run();
-        }
-        return false;
+        return handleEditorDomKeydown(activeEditor, event);
       },
       handleTextInput(view, from, to, text) {
         const activeEditor = editorInstanceRef.current;
-        if (text === "/") {
-          const { $from } = view.state.selection;
-          const lineText = view.state.doc.textBetween($from.start(), from, "\n", "\n");
-          if (!lineText.trim()) {
-            const rect = view.coordsAtPos(from);
-            window.setTimeout(() => {
-              if (activeEditor?.isDestroyed) return;
-              setSlashMenu(getSlashMenuPlacement(
-                { left: rect.left, top: rect.top, bottom: rect.bottom },
-                { itemCount: slashItemsRef.current.length || 14 },
-              ));
-              setSlashActive(-1);
-            }, 0);
-          }
-          return false;
-        }
+        if (tryOpenSlashMenu(view, from, text, {
+          editor: activeEditor,
+          slashItemsRef,
+          setSlashMenu,
+          setSlashActive,
+        })) return false;
         if (text !== " " || !activeEditor) return false;
         const { $from } = view.state.selection;
         const start = $from.start();
         const textBefore = view.state.doc.textBetween(start, from, "\n", "\n");
-        const clearTrigger = () => activeEditor.chain().focus().deleteRange({ from: start, to: from });
-        if (/^#{1,6}$/.test(textBefore)) {
-          return clearTrigger().toggleHeading({ level: textBefore.length as 1 | 2 | 3 | 4 | 5 | 6 }).run();
-        }
-        if (textBefore === ">") return clearTrigger().toggleBlockquote().run();
-        if (/^\d+\.$/.test(textBefore)) return clearTrigger().toggleOrderedList().run();
-        if (/^[-*+]$/.test(textBefore)) return clearTrigger().toggleBulletList().run();
-        if (textBefore === "```mermaid") return clearTrigger().toggleCodeBlock({ language: "mermaid" }).run();
-        if (textBefore === "```sequence") return clearTrigger().toggleCodeBlock({ language: "sequence" }).run();
-        if (textBefore === "```flow") return clearTrigger().toggleCodeBlock({ language: "flow" }).run();
-        if (textBefore === "```") return clearTrigger().toggleCodeBlock().run();
-        return false;
+        return applyMarkdownSpaceShortcut(activeEditor, start, from, textBefore);
       },
       handlePaste(view, event) {
         const items = event.clipboardData?.items;
@@ -590,7 +403,6 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
             }
           }
         }
-        // 代码块内强制纯文本粘贴，避免 NodeView/HTML 粘贴丢失
         const $from = view.state.selection.$from;
         if ($from.parent.type.name === "codeBlock") {
           const text = event.clipboardData?.getData("text/plain");
@@ -644,7 +456,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
 
   const refreshToc = useCallback((activeEditor: any) => {
     if (!activeEditor || activeEditor.isDestroyed) return;
-    const headings: { tag: string; text: string; id: string }[] = [];
+    const headings: TocHeading[] = [];
     activeEditor.state.doc.descendants((node: any) => {
       if (node.type.name !== "heading") return;
       const text = String(node.textContent || "").trim().slice(0, 50);
@@ -744,34 +556,17 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Tab") {
         if (editor.isActive("listItem") || editor.isActive("taskItem")) {
-          event.preventDefault();
           event.stopImmediatePropagation();
-          const itemName = editor.isActive("taskItem") ? "taskItem" : "listItem";
-          if (event.shiftKey) editor.chain().focus().liftListItem(itemName).run();
-          else editor.chain().focus().sinkListItem(itemName).run();
+          handleListTab(editor, event);
         }
         return;
       }
       if ((event.key === "Escape" || ((event.metaKey || event.ctrlKey) && event.key === "Enter")) && editor.isActive("codeBlock")) {
-        event.preventDefault();
         event.stopImmediatePropagation();
-        commitActiveCodeBlockEdit(editor);
+        handleCodeBlockCommitKeys(editor, event);
         return;
       }
-      if (event.key !== "Enter" || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return;
-      if (editor.isActive("codeBlock")) return;
-      if (editor.isActive("blockquote") && isTiptapBlockEmpty(editor)) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        insertParagraphAfterAncestor(editor, "blockquote");
-        return;
-      }
-      if ((editor.isActive("listItem") || editor.isActive("taskItem")) && isTiptapBlockEmpty(editor)) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        const itemName = editor.isActive("taskItem") ? "taskItem" : "listItem";
-        editor.chain().focus().liftListItem(itemName).setParagraph().run();
-      }
+      if (handleEmptyBlockEnter(editor, event)) event.stopImmediatePropagation();
     };
     const dom = editor.view.dom;
     dom.addEventListener("keydown", handler, true);
@@ -793,7 +588,6 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       clearImageToolbar();
     };
     const onViewportChange = () => {
-      // 全屏/最大化时先卸掉浮动层，再在下一帧按新视口重算，避免 Mac 上遮挡工具栏
       clearFloatingUi();
       if (viewportRaf != null) window.cancelAnimationFrame(viewportRaf);
       viewportRaf = window.requestAnimationFrame(() => {
@@ -861,21 +655,6 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   void toolbarTick;
   void propTheme;
 
-  const Btn = ({ label, cmd, action, children, getBtnRef }: { label: string; cmd?: string; action?: (e: React.MouseEvent<HTMLButtonElement>) => void; children: React.ReactNode; getBtnRef?: (el: HTMLButtonElement | null) => void }) => (
-    <EditorToolBtn
-      label={label}
-      cmd={cmd}
-      activeFormats={activeFormats}
-      action={(e) => {
-        saveEditorSelection();
-        action?.(e);
-      }}
-      getBtnRef={getBtnRef}
-    >{children}</EditorToolBtn>
-  );
-
-  const closeAllToolbarPanels = () => setToolbarPanel(null);
-
   const toggleToolbarPanel = (panel: Exclude<ToolbarPanel, null>, pos?: { x: number; y: number }) => {
     if (pos) {
       if (panel === "heading") setHeadingDropPos(pos);
@@ -887,64 +666,10 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     setToolbarPanel((cur) => (cur === panel ? null : panel));
   };
 
-  const applyTextAlign = (align: "left" | "center" | "right" | "justify") => runEditorCommand((activeEditor) => {
-    if (activeEditor.chain().focus().setTextAlign(align).run()) return true;
-    const { state, view } = activeEditor;
-    const { $from, from, to } = state.selection;
-    const types = new Set(["paragraph", "heading"]);
-    const tr = state.tr;
-    let changed = false;
-    const applyAt = (pos: number, node: any) => {
-      if (!types.has(node.type.name)) return;
-      if (node.attrs?.textAlign === align) return;
-      tr.setNodeMarkup(pos, undefined, { ...node.attrs, textAlign: align });
-      changed = true;
-    };
-    if (from === to) {
-      for (let depth = $from.depth; depth > 0; depth -= 1) {
-        const node = $from.node(depth);
-        if (types.has(node.type.name)) {
-          applyAt($from.before(depth), node);
-          break;
-        }
-      }
-    } else {
-      state.doc.nodesBetween(from, to, (node: any, pos: number) => {
-        applyAt(pos, node);
-      });
-    }
-    if (!changed) {
-      for (let depth = $from.depth; depth > 0; depth -= 1) {
-        const node = $from.node(depth);
-        if (types.has(node.type.name)) {
-          applyAt($from.before(depth), node);
-          break;
-        }
-      }
-    }
-    if (changed) {
-      view.dispatch(tr);
-      activeEditor.commands.focus();
-      return true;
-    }
-    return false;
-  });
+  const applyTextAlign = (align: "left" | "center" | "right" | "justify") => runEditorCommand((activeEditor) => applyTextAlignCommand(activeEditor, align));
+  const applyIndent = (dir: 1 | -1) => runEditorCommand((activeEditor) => applyIndentCommand(activeEditor, dir));
 
-  const applyIndent = (dir: 1 | -1) => runEditorCommand((activeEditor) => {
-    if (activeEditor.isActive("taskItem")) {
-      return dir > 0
-        ? activeEditor.chain().focus().sinkListItem("taskItem").run()
-        : activeEditor.chain().focus().liftListItem("taskItem").run();
-    }
-    if (activeEditor.isActive("listItem")) {
-      return dir > 0
-        ? activeEditor.chain().focus().sinkListItem("listItem").run()
-        : activeEditor.chain().focus().liftListItem("listItem").run();
-    }
-    return dir > 0
-      ? activeEditor.chain().focus().indent().run()
-      : activeEditor.chain().focus().outdent().run();
-  });
+  const restoreEditorSelection = (activeEditor = editorInstanceRef.current) => applySavedSelection(activeEditor);
 
   const openLinkDialog = (anchorRect?: DOMRect) => {
     const activeEditor = editorInstanceRef.current;
@@ -959,8 +684,6 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     setLinkModalPos(anchorRect ? { x: anchorRect.left - 150, y: anchorRect.bottom + 8 } : { x: caretPos.left - 150, y: caretPos.top + 8 });
     setToolbarPanel("link");
   };
-
-  const restoreEditorSelection = (activeEditor = editorInstanceRef.current) => applySavedSelection(activeEditor);
 
   const markSlashCleanup = () => {
     const activeEditor = editorInstanceRef.current;
@@ -1085,7 +808,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
 
   const startTableRowResize = (
     event: React.PointerEvent<HTMLDivElement>,
-    handle: { index: number; row: HTMLTableRowElement },
+    handle: TableRowHandle,
   ) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1191,58 +914,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   };
 
   const applyTableAlign = (align: "left" | "center" | "right") => {
-    runEditorCommand((activeEditor) => {
-      const { state, view } = activeEditor;
-      const { selection } = state;
-      const types = new Set(["paragraph", "heading"]);
-      const tr = state.tr;
-      let changed = false;
-
-      const applyTextAt = (pos: number, node: any) => {
-        if (!types.has(node.type.name) || node.attrs?.textAlign === align) return;
-        tr.setNodeMarkup(pos, undefined, { ...node.attrs, textAlign: align });
-        changed = true;
-      };
-
-      const applyCellAt = (pos: number, node: any) => {
-        if (!(node.type.name === "tableCell" || node.type.name === "tableHeader")) return;
-        if (node.attrs?.align === align) return;
-        tr.setNodeMarkup(pos, undefined, { ...node.attrs, align });
-        changed = true;
-      };
-
-      if (typeof selection.forEachCell === "function") {
-        selection.forEachCell((cell: any, cellPos: number) => {
-          applyCellAt(cellPos, cell);
-          cell.forEach((child: any, offset: number) => applyTextAt(cellPos + 1 + offset, child));
-        });
-      } else {
-        const { from, to, $from } = selection;
-        for (let depth = $from.depth; depth > 0; depth -= 1) {
-          const node = $from.node(depth);
-          if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
-            applyCellAt($from.before(depth), node);
-            break;
-          }
-        }
-        if (from === to) {
-          for (let depth = $from.depth; depth > 0; depth -= 1) {
-            const node = $from.node(depth);
-            if (types.has(node.type.name)) {
-              applyTextAt($from.before(depth), node);
-              break;
-            }
-          }
-        } else {
-          state.doc.nodesBetween(from, to, (node: any, pos: number) => applyTextAt(pos, node));
-        }
-      }
-
-      if (!changed) return false;
-      view.dispatch(tr);
-      activeEditor.commands.focus();
-      return true;
-    });
+    runEditorCommand((activeEditor) => applyTableAlignCommand(activeEditor, align));
     window.setTimeout(() => updateTableToolbar(editorInstanceRef.current), 0);
   };
 
@@ -1329,192 +1001,45 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     window.setTimeout(() => cleanupPendingSlash(), 0);
   };
 
-  const slashItems = [
-    { label: "一级标题", icon: <span className="text-[11px] font-semibold text-[#131212]">H1</span>, action: () => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleHeading({ level: 1 }).run()) },
-    { label: "二级标题", icon: <span className="text-[11px] font-semibold text-[#131212]">H2</span>, action: () => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleHeading({ level: 2 }).run()) },
-    { label: "三级标题", icon: <span className="text-[11px] font-semibold text-[#131212]">H3</span>, action: () => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleHeading({ level: 3 }).run()) },
-    { label: "正文", icon: <span className="text-[11px] font-semibold text-[#131212]">T</span>, action: () => runEditorCommand((activeEditor) => activeEditor.chain().focus().setParagraph().run()) },
-    { label: "有序列表", icon: <InlineIconSvg path={editorSvg.p31fc8400} />, action: () => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleOrderedList().run()) },
-    { label: "无序列表", icon: <InlineIconSvg path={editorSvg.p1ddeb0c0} />, action: () => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleBulletList().run()) },
-    { label: "任务列表", icon: <InlineIconSvg path={editorSvg.p30909380} />, action: () => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleTaskList().run()) },
-    { label: "引用块", icon: <InlineIconSvg path={[editorSvg.p339d6600, editorSvg.p3a810c00, editorSvg.p27c3d000, editorSvg.p2e7ee0c0]} isFill />, action: () => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleBlockquote().run()) },
-    { label: "代码块", icon: <InlineIconSvg path={editorSvg.p36d5aa00} />, action: () => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleCodeBlock().run()) },
-    { label: "链接", icon: <InlineIconSvg path={editorSvg.pda5c3c0} />, action: () => openLinkDialog() },
-    { label: "图片", icon: <InlineIconSvg path={editorSvg.p2a7b5cf0} isFill fill="#131212" />, action: openImagePicker, kind: "file" as const },
-    { label: "视频", icon: <InlineIconSvg path={editorSvg.p1a4aa900} />, action: openVideoPicker, kind: "file" as const },
-    { label: "附件", icon: <InlineIconSvg path={editorSvg.p149b2100} />, action: openAttachmentPicker, kind: "file" as const },
-    { label: "表格", icon: <InlineIconSvg path={editorSvg.p808b680} />, action: openTableDialog },
-  ];
+  const slashItems = buildSlashItems({
+    runEditorCommand,
+    openLinkDialog,
+    openImagePicker,
+    openVideoPicker,
+    openAttachmentPicker,
+    openTableDialog,
+  });
   slashItemsRef.current = slashItems;
 
   return (
     <div className="absolute inset-0 flex flex-col">
-      <style>{`
-        .doc-tiptap-content{max-width:100%;box-sizing:border-box;overflow-x:auto;overflow-wrap:anywhere;word-break:break-word}.doc-tiptap-content p{margin:0 0 10px}.doc-tiptap-content h1{font-size:28px;line-height:1.45;margin:18px 0 12px;font-weight:700}.doc-tiptap-content h2{font-size:24px;line-height:1.45;margin:16px 0 10px;font-weight:700}.doc-tiptap-content h3{font-size:20px;line-height:1.5;margin:14px 0 8px;font-weight:650}.doc-tiptap-content h4,.doc-tiptap-content h5,.doc-tiptap-content h6{font-size:17px;line-height:1.55;margin:12px 0 8px;font-weight:650}.doc-tiptap-content>:first-child{margin-top:0}
-        .doc-tiptap-content .doc-blockquote{border-left:3px solid #EBECF0;background:transparent;margin:6px 0;padding:2px 12px;color:#606266;border-radius:0}.doc-tiptap-content .doc-blockquote p{margin:0;line-height:1.8}.doc-tiptap-content .doc-blockquote p:last-child{margin-bottom:0}
-        .doc-tiptap-content .doc-list{margin:8px 0 10px;padding-left:28px}.doc-tiptap-content .doc-ordered-list{list-style:decimal}.doc-tiptap-content .doc-ordered-list .doc-ordered-list{list-style:lower-alpha}.doc-tiptap-content .doc-ordered-list .doc-ordered-list .doc-ordered-list{list-style:lower-roman}.doc-tiptap-content .doc-bullet-list{list-style:disc}.doc-tiptap-content .doc-bullet-list .doc-bullet-list{list-style:circle}.doc-tiptap-content .doc-bullet-list .doc-bullet-list .doc-bullet-list{list-style:square}.doc-tiptap-content li{margin:4px 0;padding-left:2px}.doc-tiptap-content li>p{margin:0}.doc-tiptap-content .doc-task-list{list-style:none;margin:8px 0 10px;padding-left:0}.doc-tiptap-content .doc-task-item{display:flex;gap:8px;align-items:flex-start}.doc-tiptap-content .doc-task-item>label{margin-top:2px}.doc-tiptap-content .doc-task-item>div{flex:1}
-        .doc-tiptap-content .doc-code-block-wrap{margin:16px 0;position:relative;border:1px solid #E8E9EE;border-radius:8px;background:#F6F7FA;overflow:hidden;display:flex;flex-direction:column;box-shadow:none}
-        .doc-tiptap-content .doc-code-block-wrap.is-lang-open{overflow:visible;z-index:30}
-        .doc-tiptap-content .doc-code-block{position:relative;background:#F6F7FA;border:0;border-radius:0;padding:16px;margin:0;font-family:PingFang SC,sans-serif;font-size:16px;line-height:26px;color:#3F4046;white-space:pre-wrap;box-sizing:border-box}
-        .doc-tiptap-content .doc-code-block-wrap.is-plain-editing .doc-code-block{border-bottom:0}
-        .doc-tiptap-content .doc-diagram.is-editing .doc-diagram-source{border-bottom:0}
-        .doc-tiptap-content .doc-code-highlight{position:absolute;inset:0;padding:16px;margin:0;overflow:hidden;pointer-events:none;white-space:pre-wrap;word-break:break-word;font-family:PingFang SC,sans-serif;font-size:16px;line-height:26px;color:#3F4046;box-sizing:border-box;z-index:0}
-        .doc-tiptap-content .doc-code-block>code{position:relative;z-index:1;display:block;background:transparent;outline:none;font-family:inherit;font-size:inherit;line-height:inherit;color:inherit}
-        .doc-tiptap-content .doc-diagram{border:0;border-radius:0;background:#F6F7FA;overflow:visible;box-shadow:none}
-        .doc-tiptap-content .doc-code-block-wrap.doc-diagram{border:1px solid #E8E9EE;border-radius:8px;overflow:hidden}
-        .doc-tiptap-content .doc-code-block-wrap.doc-diagram.is-lang-open{overflow:visible}
-        .doc-tiptap-content .doc-diagram.is-editing{display:flex;flex-direction:column;box-shadow:none}
-        .doc-tiptap-content .doc-diagram-source-shell{display:grid;grid-template-rows:1fr;width:100%;flex-shrink:0;box-sizing:border-box;transition:grid-template-rows .28s ease}
-        .doc-tiptap-content .doc-diagram-source-inner{min-height:0;overflow:hidden;display:flex;flex-direction:column}
-        .doc-tiptap-content .doc-diagram.is-preview .doc-diagram-source-shell{grid-template-rows:0fr}
-        .doc-tiptap-content .doc-diagram.is-editing .doc-diagram-source-shell{grid-template-rows:1fr}
-        .doc-tiptap-content .doc-diagram .doc-diagram-source{margin:0;border:0;border-radius:0;background:#F6F7FA;padding:16px}
-        .doc-tiptap-content .doc-diagram.is-editing .doc-diagram-source .doc-code-highlight{padding:16px}
-        .doc-tiptap-content .doc-diagram.is-preview{cursor:pointer;background:#fff}
-        .doc-tiptap-content .doc-diagram.is-preview:hover{border-color:#D8DAE0}
-        .doc-tiptap-content .doc-diagram.is-editing .doc-diagram-preview{border-top:0;background:#fff;padding:16px;min-height:120px;border-radius:0 0 8px 8px}
-        .doc-tiptap-content .doc-diagram.is-preview .doc-diagram-preview{padding:16px;min-height:120px}
-        .doc-tiptap-content .doc-diagram-expand-bar{display:flex;align-items:center;justify-content:center;gap:6px;height:0;max-height:0;opacity:0;width:100%;padding:0 12px;margin:0;border:0;border-bottom:0 solid #E8E9EE;border-radius:0;background:#F6F7FA;color:#8D8E99;font-size:12px;font-family:PingFang SC,sans-serif;font-weight:400;line-height:1;cursor:pointer;flex-shrink:0;box-sizing:border-box;appearance:none;-webkit-appearance:none;overflow:hidden;pointer-events:none;transition:height .2s ease,max-height .2s ease,opacity .18s ease,border-bottom-width .2s ease}
-        .doc-tiptap-content .doc-diagram.is-armed .doc-diagram-expand-bar{height:20px;max-height:20px;opacity:1;border-bottom-width:1px;pointer-events:auto}
-        .doc-tiptap-content .doc-diagram.is-editing .doc-diagram-expand-bar{height:0;max-height:0;opacity:0;border-bottom-width:0;pointer-events:none}
-        .doc-tiptap-content .doc-diagram-expand-bar:hover{background:#F5F6F8;color:#131212}
-        .doc-tiptap-content .doc-diagram-expand-bar:active{background:#EBECF0;color:#131212}
-        .doc-tiptap-content .doc-diagram-expand-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%}
-        .doc-tiptap-content .doc-diagram-expand-chevron{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor;flex-shrink:0}
-        @media (prefers-reduced-motion:reduce){.doc-tiptap-content .doc-diagram-expand-bar{transition:none!important}.doc-tiptap-content .doc-diagram-source-shell{transition:none!important}}
-        .doc-tiptap-content .doc-diagram-preview{overflow-x:auto;text-align:center;box-sizing:border-box;color:#8D8E99;font-size:13px;font-family:PingFang SC,sans-serif;line-height:1.6;display:flex;align-items:center;justify-content:center}
-        .doc-tiptap-content .doc-diagram-preview svg{max-width:100%;height:auto;display:block;margin:0 auto;pointer-events:none}
-        .doc-tiptap-content .doc-diagram-error{color:#E53E3E;font-size:12px;line-height:1.5;text-align:left;white-space:pre-wrap;word-break:break-word;width:100%}
-        .doc-tiptap-content .doc-code-delete-hint{display:none;position:absolute;top:16px;right:16px;z-index:4;width:44px;height:28px;padding:0;border-radius:4px;border:1px solid #E8E9EE;background:#fff;color:#131212;font-size:12px;font-family:PingFang SC,sans-serif;font-weight:400;line-height:1;cursor:pointer;align-items:center;justify-content:center;box-sizing:border-box}
-        .doc-tiptap-content .doc-diagram.is-armed .doc-code-delete-hint{top:0;right:8px;height:20px;border:0;border-radius:0;background:transparent}
-        .doc-tiptap-content .doc-code-delete-hint:hover{background:#F7F8FA}
-        .doc-tiptap-content .doc-code-delete-hint:active{background:#EBECF0}
-        .doc-tiptap-content .doc-code-actionbar{display:none;position:relative;z-index:6;align-items:center;justify-content:flex-end;gap:12px;height:64px;padding:0 16px;box-sizing:border-box;background:#fff;border-top:1px solid #E8E9EE;flex-shrink:0;border-radius:0;overflow:visible}
-        .doc-tiptap-content .doc-code-block-wrap.is-plain-editing .doc-code-actionbar{display:flex!important;justify-content:flex-end;border-top:1px solid #E8E9EE;border-radius:0 0 8px 8px}
-        .doc-tiptap-content .doc-diagram.is-editing .doc-code-actionbar{display:flex!important;justify-content:flex-end;border-top:1px solid #E8E9EE;border-bottom:1px solid #E8E9EE;border-radius:0}
-        .doc-tiptap-content .doc-code-lang{display:none;align-items:center;justify-content:flex-end;padding:0;position:relative;z-index:8;overflow:visible}
-        .doc-tiptap-content .doc-diagram.is-preview .doc-code-lang{display:none!important}
-        .doc-tiptap-content .doc-code-actionbar .doc-code-lang{display:flex!important}
-        .doc-tiptap-content .doc-code-lang-input,.doc-tiptap-content .doc-code-lang-trigger{width:120px;height:32px;padding:0 12px;border:1px solid #EBECF0;border-radius:8px;background:#fff;color:#131212;font-size:14px;font-family:PingFang SC,sans-serif;outline:none;box-sizing:border-box;text-align:center;letter-spacing:0.01em;transition:color .15s,background-color .15s,border-color .15s;cursor:pointer;pointer-events:auto;appearance:none;-webkit-appearance:none;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-        .doc-tiptap-content .doc-code-lang-trigger.is-placeholder{color:#C0C4CC}
-        .doc-tiptap-content .doc-code-lang-input:hover,.doc-tiptap-content .doc-code-lang-trigger:hover{background:#fff;color:#131212}
-        .doc-tiptap-content .doc-code-lang-input:focus,.doc-tiptap-content .doc-code-lang-trigger:focus{border-color:#131212;box-shadow:none}
-        .doc-tiptap-content .doc-code-lang-input::placeholder{color:#C0C4CC}
-        /* 语言输入框/菜单挂在 document.body，不可加 .doc-tiptap-content 祖先选择器 */
-        .doc-code-lang-portal{position:fixed;z-index:501;display:none;box-sizing:border-box}
-        .doc-code-lang-portal .doc-code-lang-input{width:100%;height:100%;padding:0 12px;border:1px solid #131212;border-radius:8px;background:#fff;color:#131212;font-size:14px;font-family:PingFang SC,sans-serif;outline:none;box-sizing:border-box;text-align:center;letter-spacing:0.01em;cursor:text}
-        .doc-code-lang-menu{position:fixed;z-index:502;width:168px;max-height:260px;display:flex;flex-direction:column;gap:0;overflow:hidden;background:#fff;border:1px solid #EBECF0;border-radius:8px;box-shadow:0 12px 24px -8px rgba(36,36,36,0.14);padding:4px;box-sizing:border-box}
-        .doc-code-lang-list{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:0}
-        .doc-code-lang-empty{height:32px;padding:0 12px;display:flex;align-items:center;font-size:13px;color:#8D8E99;font-family:PingFang SC,sans-serif}
-        .doc-code-lang-item{height:30px;padding:0 10px;border-radius:6px;display:flex;align-items:center;font-size:12px;color:#131212;cursor:pointer;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;flex-shrink:0}
-        .doc-code-lang-item:hover{background:#F7F8FA}
-        .doc-code-lang-item.is-active{background:#EBECF0;font-weight:500}
-        .doc-tiptap-content .hljs-keyword,.doc-tiptap-content .hljs-selector-tag{color:#0550ae}
-        .doc-tiptap-content .hljs-string{color:#0a3069}
-        .doc-tiptap-content .hljs-number{color:#0550ae}
-        .doc-tiptap-content .hljs-comment{color:#8D8E99}
-        .doc-tiptap-content .hljs-title,.doc-tiptap-content .hljs-section{color:#953800}
-        .doc-tiptap-content .hljs-built_in{color:#0550ae}
-        .doc-tiptap-content .doc-link{color:#134CFF;text-decoration:underline}.doc-tiptap-content .doc-image{display:block;max-width:100%;height:auto;margin:0;border-radius:8px;cursor:pointer}.doc-tiptap-content [data-resize-container][data-node="image"]{display:inline-flex;width:fit-content;margin:12px 6px;max-width:calc(100% - 12px);outline:none;position:relative;box-sizing:border-box;padding:4px}.doc-tiptap-content [data-resize-container][data-node="image"].ProseMirror-selectednode{outline:2px solid #134CFF;outline-offset:0;border-radius:8px}.doc-tiptap-content [data-resize-wrapper]{display:block;width:fit-content;max-width:100%;height:auto;line-height:0;position:relative;overflow:visible}.doc-tiptap-content [data-resize-handle]{background:#fff;border:2px solid #134CFF;border-radius:50%;box-sizing:border-box;height:12px;opacity:0;pointer-events:none;position:absolute;width:12px;z-index:3}.doc-tiptap-content [data-resize-container].ProseMirror-selectednode [data-resize-handle],.doc-tiptap-content [data-resize-container][data-resize-state="true"] [data-resize-handle]{opacity:1;pointer-events:auto}.doc-tiptap-content [data-resize-handle="top-left"]{cursor:nwse-resize;left:0;top:0;transform:translate(-50%,-50%)}.doc-tiptap-content [data-resize-handle="top-right"]{cursor:nesw-resize;right:0;top:0;transform:translate(50%,-50%)}.doc-tiptap-content [data-resize-handle="bottom-left"]{bottom:0;cursor:nesw-resize;left:0;transform:translate(-50%,50%)}.doc-tiptap-content [data-resize-handle="bottom-right"]{bottom:0;cursor:nwse-resize;right:0;transform:translate(50%,50%)}.doc-tiptap-content .doc-video{display:block;max-width:100%;margin:12px 0;border-radius:8px;background:#000}.doc-tiptap-content .doc-attachment{align-items:center;background:#f7f8fa;border:1px solid #ebecf0;border-radius:8px;color:#303133;display:flex;font-size:13px;margin:12px 0;max-width:520px;min-height:42px;padding:10px 12px;text-decoration:none}.doc-tiptap-content .doc-attachment:hover{border-color:#cfd4df;background:#f2f4f7}
-        .doc-tiptap-content .tableWrapper{display:block;margin:14px 0;max-width:100%;overflow-x:auto;overflow-y:hidden;padding:2px 0 8px}.doc-tiptap-content .tableWrapper table,.doc-tiptap-content table.doc-table,.doc-tiptap-content table{border:1px solid #EEF0F5;border-collapse:collapse;border-spacing:0;display:table;margin:0;max-width:none;overflow:visible;table-layout:fixed;width:100%}.doc-tiptap-content table td,.doc-tiptap-content table th,.doc-tiptap-content .doc-table td,.doc-tiptap-content .doc-table th{border:1px solid #EEF0F5;box-sizing:border-box;min-width:96px;padding:7px 9px;position:relative;vertical-align:top}.doc-tiptap-content table th,.doc-tiptap-content .doc-table th{background:#f7f8fa;color:#131212;font-weight:600;text-align:left}.doc-tiptap-content table tr:nth-child(odd) td,.doc-tiptap-content .doc-table tr:nth-child(odd) td{background:rgba(238,240,245,0.502)}.doc-tiptap-content table td>*,.doc-tiptap-content table th>*,.doc-tiptap-content .doc-table td>*,.doc-tiptap-content .doc-table th>*{margin-bottom:0!important}.doc-tiptap-content table td p,.doc-tiptap-content table th p{line-height:1.6;margin:0;min-height:20px}.doc-tiptap-content table td p:empty::before,.doc-tiptap-content table th p:empty::before{content:"\\00a0";display:inline-block}.doc-tiptap-content table .selectedCell:after,.doc-tiptap-content .doc-table .selectedCell:after{background:rgba(19,76,255,0.12);content:"";inset:0;pointer-events:none;position:absolute;z-index:2}.doc-tiptap-content table td:focus-within,.doc-tiptap-content table th:focus-within,.doc-tiptap-content .doc-table td:focus-within,.doc-tiptap-content .doc-table th:focus-within{box-shadow:inset 0 0 0 2px rgba(0,94,255,0.18);background:#FAFCFF!important}.doc-tiptap-content .column-resize-handle{background:#134CFF;bottom:-2px;pointer-events:none;position:absolute;right:-3px;top:0;width:3px}.resize-cursor{cursor:col-resize}.table-row-resize-cursor,.table-row-resize-cursor *{cursor:row-resize!important}.doc-table-row-resize-handle{background:transparent;border-radius:0;cursor:row-resize;height:12px;position:fixed;touch-action:none;z-index:280}.doc-table-row-resize-handle::after{background:transparent;border-radius:999px;content:"";height:2px;left:0;position:absolute;right:0;top:5px;transition:background-color .12s ease}.doc-table-row-resize-handle:hover::after{background:rgba(19,76,255,0.18)}.doc-table-row-resize-handle.is-resizing::after{background:rgba(19,76,255,0.42)}
-        .doc-tiptap-content .is-empty::before,.doc-tiptap-content .is-editor-empty::before{color:#b8bbc4;content:attr(data-placeholder);float:left;height:0;pointer-events:none}.doc-tiptap-content p.is-empty:first-child::before{color:#b8bbc4}.doc-tiptap-content pre.is-empty::before,.doc-tiptap-content .doc-code-block.is-empty::before,.doc-tiptap-content .doc-diagram-source.is-empty::before{content:none!important}.doc-tiptap-content:focus{outline:none}
-        .doc-tiptap-content p[style*="text-align"],.doc-tiptap-content h1[style*="text-align"],.doc-tiptap-content h2[style*="text-align"],.doc-tiptap-content h3[style*="text-align"],.doc-tiptap-content h4[style*="text-align"],.doc-tiptap-content h5[style*="text-align"],.doc-tiptap-content h6[style*="text-align"]{display:block}
-        .doc-table-float-bar{background:#FFFFFF!important}
-        .doc-table-float-btn{height:28px;padding:0 8px;border-radius:8px;border:0;background:#FFFFFF;color:#131212;font-size:12px;font-family:PingFang SC,sans-serif;line-height:1;cursor:pointer;transition:background-color .15s;appearance:none;outline:none;white-space:nowrap}
-        .doc-table-float-btn:hover{background:#EBECF0!important;border-radius:8px}
-        .doc-table-float-btn.is-active{background:#EBECF0!important}
-        .doc-table-float-btn.is-danger{background:#FFFFFF;color:#E53E3E}
-        .doc-table-float-btn.is-danger:hover{background:#FFF1F0!important;border-radius:8px}
-        .doc-table-float-label{height:28px;padding:0 8px;border-radius:8px;border:0;background:#FFFFFF;color:#8D8E99;font-size:12px;font-family:PingFang SC,sans-serif;display:inline-flex;align-items:center;user-select:none;white-space:nowrap}
-        .doc-table-float-sep{width:1px;height:16px;background:#EBECF0;margin:0 2px;flex-shrink:0}
-                .doc-editor-toolbar{position:relative;z-index:260;isolation:isolate;pointer-events:auto;scrollbar-gutter:stable both-edges;-webkit-overflow-scrolling:touch}
-        .doc-editor-toolbar button,.doc-editor-toolbar [role="button"]{pointer-events:auto;position:relative;z-index:1}
-        .doc-editor-toolbar button:hover{background-color:#EBECF0!important}
-        .doc-editor-toolbar button:active{background-color:#EBECF0!important}
-        /* macOS overlay 滚动条会压在内容右缘上抢点击：预留右侧安全区 + 非覆盖式滚动条 */
-        .doc-editor-toolbar{padding-right:40px!important}
-        .doc-editor-toolbar::-webkit-scrollbar{height:8px}
-        .doc-editor-toolbar::-webkit-scrollbar-track{background:transparent}
-        .doc-editor-toolbar::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.18);border-radius:4px}
-        .doc-editor-toolbar::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,0.32)}
-      `}</style>
+      <style>{EDITOR_CONTENT_CSS}</style>
       <input ref={imgInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={handleImageUpload} />
       <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={handleVideoUpload} />
       <input ref={attachInputRef} type="file" className="hidden" onChange={(e) => {
         void insertAttachmentFromFile(e.target.files?.[0]);
         e.target.value = "";
       }} />
-      <div ref={toolbarRef} className="doc-editor-toolbar relative z-[260] isolate flex h-[62px] items-center gap-[24px] pl-[24px] pr-[40px] border-b border-[#EBECF0] bg-white flex-shrink-0 overflow-x-auto overscroll-x-contain box-border">
-        <button type="button" className="relative flex h-[24px] items-center gap-[8px] px-[4px] rounded-[4px] shrink-0 cursor-pointer select-none bg-transparent border-0 hover:bg-[#EBECF0] transition-colors"
-          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); saveEditorSelection(); }}
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            toggleToolbarPanel("heading", { x: r.left, y: r.bottom + 4 });
-          }}>
-          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#131212] text-[14px] leading-[24px] w-[56px] truncate">{getCurrentHeading()}</p>
-          <svg className="block size-[12px] shrink-0" fill="none" viewBox="0 0 12 12"><path d="M3.5 5L6.00041 7.29L8.5 5" stroke="#131212" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2"/></svg>
-        </button>
-        <button type="button" className="relative flex h-[24px] items-center gap-[8px] px-[4px] rounded-[4px] shrink-0 cursor-pointer select-none bg-transparent border-0 hover:bg-[#EBECF0] transition-colors"
-          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); saveEditorSelection(); }}
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            toggleToolbarPanel("font", { x: r.left, y: r.bottom + 4 });
-          }}>
-          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#131212] text-[14px] leading-[24px] w-[56px] truncate">{getCurrentFont()}</p>
-          <svg className="block size-[12px] shrink-0" fill="none" viewBox="0 0 12 12"><path d="M3.5 5L6.00041 7.29L8.5 5" stroke="#131212" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2"/></svg>
-        </button>
-        <button type="button" className="relative flex h-[24px] items-center gap-[8px] px-[4px] rounded-[4px] shrink-0 cursor-pointer select-none bg-transparent border-0 hover:bg-[#EBECF0] transition-colors"
-          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); saveEditorSelection(); }}
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            toggleToolbarPanel("size", { x: r.left, y: r.bottom + 4 });
-          }}>
-          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#131212] text-[14px] leading-[24px] w-[46px] truncate">{getCurrentSize()}</p>
-          <svg className="block size-[12px] shrink-0" fill="none" viewBox="0 0 12 12"><path d="M3.5 5L6.00041 7.29L8.5 5" stroke="#131212" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2"/></svg>
-        </button>
-        <Btn label="加粗" cmd="bold" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleBold().run())}><IconSvg path={editorSvg.p3290fd80} /></Btn>
-        <Btn label="斜体" cmd="italic" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleItalic().run())}><IconSvg path={editorSvg.p3837edc0} /></Btn>
-        <Btn label="删除线" cmd="strikeThrough" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleStrike().run())}><IconSvg path={editorSvg.p2ae8080} /></Btn>
-        <Btn label="下划线" cmd="underline" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleUnderline().run())}><IconSvg path={editorSvg.pc604cd0} /></Btn>
-        <Btn label="字体颜色" action={(e) => {
-          saveEditorSelection();
-          const r = e.currentTarget.getBoundingClientRect();
-          toggleToolbarPanel("fore", { x: r.left, y: r.bottom + 4 });
-        }}><IconSvg path={[editorSvg.peaacc00, "M4 17H16"]} stroke="#131212" /></Btn>
-        <Btn label="背景颜色" action={(e) => {
-          saveEditorSelection();
-          const r = e.currentTarget.getBoundingClientRect();
-          toggleToolbarPanel("back", { x: r.left, y: r.bottom + 4 });
-        }}>
-          <div className="absolute left-[2px] size-[20px] top-[2px]"><svg className="absolute block inset-0 size-full" fill="none" viewBox="0 0 20 20"><rect fill="#FEF0F0" height="20" rx="4" width="20"/><path d={editorSvg.p16c26880} stroke="#131212" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" /></svg></div>
-        </Btn>
-        <Btn label="任务列表" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleTaskList().run())}><IconSvg path={editorSvg.p30909380} /></Btn>
-        <Btn label="有序列表" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleOrderedList().run())}><IconSvg path={editorSvg.p31fc8400} /></Btn>
-        <Btn label="无序列表" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleBulletList().run())}><IconSvg path={editorSvg.p1ddeb0c0} /></Btn>
-        <Btn label="减少缩进" action={() => applyIndent(-1)}><IconSvg path={editorSvg.p3244ee00} /></Btn>
-        <Btn label="增加缩进" action={() => applyIndent(1)}><IconSvg path={editorSvg.p25bdc300} /></Btn>
-        <button type="button" className={`relative size-[24px] rounded-[4px] inline-flex items-center justify-center shrink-0 cursor-pointer select-none border-0 p-0 transition-colors hover:bg-[#EBECF0] active:bg-[#EBECF0] ${showAlignDropdown || editor?.isActive({ textAlign: "center" }) || editor?.isActive({ textAlign: "right" }) || editor?.isActive({ textAlign: "justify" }) ? "bg-[#EBECF0]" : "bg-transparent"}`}
-          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); saveEditorSelection(); }}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            saveEditorSelection();
-            const r = e.currentTarget.getBoundingClientRect();
-            toggleToolbarPanel("align", { x: r.left, y: r.bottom + 4 });
-          }}>
-          <IconSvg path={editorSvg.p2c9c5c80} />
-        </button>
-        <Btn label="引用块" cmd="blockquote" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleBlockquote().run())}><IconSvg path={[editorSvg.p339d6600, editorSvg.p3a810c00, editorSvg.p27c3d000, editorSvg.p2e7ee0c0]} isFill /></Btn>
-        <Btn label="代码块" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().toggleCodeBlock().run())}><IconSvg path={editorSvg.p36d5aa00} /></Btn>
-        <Btn label="插入链接" cmd="link" action={openLinkModal} getBtnRef={(el) => { linkBtnRef.current = el; }}><IconSvg path={editorSvg.pda5c3c0} /></Btn>
-        <Btn label="清除链接" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().unsetLink().run())}><IconSvg path={editorSvg.p3418c200} /></Btn>
-        <Btn label="插入图片" action={openImagePicker}><IconSvg path={editorSvg.p2a7b5cf0} isFill fill="#131212" /></Btn>
-        <Btn label="插入视频" action={openVideoPicker}><IconSvg path={editorSvg.p1a4aa900} /></Btn>
-        <Btn label="清除格式" action={() => runEditorCommand((activeEditor) => activeEditor.chain().focus().unsetAllMarks().clearNodes().run())}><IconSvg path={editorSvg.p3e282b00} stroke="#131212" /></Btn>
-        <Btn label="附件" action={openAttachmentPicker}><IconSvg path={editorSvg.p149b2100} /></Btn>
-        <Btn label="表格" action={openTableDialog}><IconSvg path={editorSvg.p808b680} /></Btn>
-        <Btn label="复制锚点链接" action={() => { void copyAnchorLink(); }}><IconSvg path={editorSvg.pda5c3c0} /></Btn>
-      </div>
+      <EditorToolbar
+        toolbarRef={toolbarRef}
+        currentHeading={getCurrentHeading()}
+        currentFont={getCurrentFont()}
+        currentSize={getCurrentSize()}
+        activeFormats={activeFormats}
+        showAlignDropdown={showAlignDropdown}
+        isAlignActive={Boolean(editor?.isActive({ textAlign: "center" }) || editor?.isActive({ textAlign: "right" }) || editor?.isActive({ textAlign: "justify" }))}
+        saveEditorSelection={saveEditorSelection}
+        toggleToolbarPanel={toggleToolbarPanel}
+        runEditorCommand={runEditorCommand}
+        applyIndent={applyIndent}
+        openLinkModal={openLinkModal}
+        openImagePicker={openImagePicker}
+        openVideoPicker={openVideoPicker}
+        openAttachmentPicker={openAttachmentPicker}
+        openTableDialog={openTableDialog}
+        copyAnchorLink={copyAnchorLink}
+        linkBtnRef={linkBtnRef}
+      />
       {showColorPicker && (
         <ColorPicker
           mode={showColorPicker}
@@ -1557,233 +1082,65 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         />
       )}
       {showLinkModal && <LinkModal position={linkModalPos} initialText={linkModalText} initialUrl={linkModalUrl} mode={linkModalMode} triggerRef={linkBtnRef} onClose={() => setShowLinkModal(false)} onConfirm={applyLink} />}
-      {showTableModal && createPortal(
-        <div className="fixed inset-0 z-[400] flex items-center justify-center" onClick={() => setShowTableModal(false)}>
-          <div className="absolute inset-0 bg-black/20" />
-          <div className="relative bg-white rounded-[16px] w-[360px] shadow-[0px_16px_32px_-8px_rgba(36,36,36,0.12)] border border-[#e0e0e0] p-[24px] flex flex-col gap-[20px]" onClick={(e) => e.stopPropagation()}>
-            <p className="font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[16px]">插入表格</p>
-            <div className="flex gap-[16px]">
-              <label className="flex-1 flex flex-col gap-[6px] font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[13px]">行数<input type="number" min="1" max="20" value={tableRows} onChange={(e) => setTableRows(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") insertTable(); if (e.key === "Escape") setShowTableModal(false); }} className="h-[36px] rounded-[8px] border border-solid border-[#e5e7eb] px-[12px] text-[14px] text-[#131212] outline-none focus:border-[#131212]" /></label>
-              <label className="flex-1 flex flex-col gap-[6px] font-['PingFang_SC:Regular',sans-serif] text-[#8d8e99] text-[13px]">列数<input type="number" min="1" max="10" value={tableCols} onChange={(e) => setTableCols(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") insertTable(); if (e.key === "Escape") setShowTableModal(false); }} className="h-[36px] rounded-[8px] border border-solid border-[#e5e7eb] px-[12px] text-[14px] text-[#131212] outline-none focus:border-[#131212]" /></label>
-            </div>
-            <div className="flex justify-end gap-[12px]"><button className="h-[36px] px-[20px] rounded-[8px] border border-[#EBECF0] bg-white text-[#131212] text-[14px] cursor-pointer hover:bg-[#F7F8FA]" onClick={() => setShowTableModal(false)}>取消</button><button className="h-[36px] px-[20px] rounded-[8px] bg-[#131212] text-white text-[14px] cursor-pointer hover:opacity-90" onClick={insertTable}>插入表格</button></div>
-          </div>
-        </div>,
-        document.body,
+      {showTableModal && (
+        <InsertTableModal
+          tableRows={tableRows}
+          tableCols={tableCols}
+          setTableRows={setTableRows}
+          setTableCols={setTableCols}
+          onClose={() => setShowTableModal(false)}
+          onInsert={insertTable}
+        />
       )}
-      {showTableToolbar && createPortal(
-        <div className="doc-table-float-bar fixed z-[280] rounded-[8px] border border-[#EBECF0] p-[6px] flex items-center gap-[4px] shadow-[0_16px_32px_-8px_rgba(36,36,36,0.12)]"
-          style={{ left: tableToolbarPos.left, top: tableToolbarPos.top }}
-          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-          <div className="doc-table-float-label">表格</div>
-          <div className="doc-table-float-sep" />
-          <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("addRowBefore"); }}>上方行</button>
-          <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("addRowAfter"); }}>下方行</button>
-          <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("deleteRow"); }}>删行</button>
-          <div className="doc-table-float-sep" />
-          <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("addColumnBefore"); }}>左列</button>
-          <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("addColumnAfter"); }}>右列</button>
-          <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("deleteColumn"); }}>删列</button>
-          <div className="doc-table-float-sep" />
-          <button type="button" className={`doc-table-float-btn${tableAlignActive === "left" ? " is-active" : ""}`} onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); applyTableAlign("left"); }}>左齐</button>
-          <button type="button" className={`doc-table-float-btn${tableAlignActive === "center" ? " is-active" : ""}`} onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); applyTableAlign("center"); }}>居中</button>
-          <button type="button" className={`doc-table-float-btn${tableAlignActive === "right" ? " is-active" : ""}`} onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); applyTableAlign("right"); }}>右齐</button>
-          <div className="doc-table-float-sep" />
-          <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("mergeCells"); }}>合并</button>
-          <button type="button" className="doc-table-float-btn" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("splitCell"); }}>拆分</button>
-          <div className="doc-table-float-sep" />
-          <button type="button" className="doc-table-float-btn is-danger" onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runTableCommand("deleteTable"); }}>删表格</button>
-        </div>,
-        document.body,
+      {showTableToolbar && (
+        <TableFloatBar
+          tableToolbarPos={tableToolbarPos}
+          tableAlignActive={tableAlignActive}
+          runTableCommand={runTableCommand}
+          applyTableAlign={applyTableAlign}
+        />
       )}
-      {showTableToolbar && createPortal(
-        <>
-          {tableRowHandles.map((handle) => (
-            <div
-              key={handle.index}
-              className={`doc-table-row-resize-handle ${activeRowResizeIndex === handle.index ? "is-resizing" : ""}`}
-              style={{ left: handle.left, top: handle.top, width: handle.width }}
-              onPointerDown={(event) => startTableRowResize(event, handle)}
-              title="拖拽调整行高"
-              aria-label="拖拽调整行高"
-            />
-          ))}
-        </>,
-        document.body,
+      {showTableToolbar && (
+        <TableRowResizeHandles
+          tableRowHandles={tableRowHandles}
+          activeRowResizeIndex={activeRowResizeIndex}
+          onStartResize={startTableRowResize}
+        />
       )}
-      {selectedImgRect && editorVisibleRect && (() => {
-        const r = selectedImgRect;
-        const editorR = editorVisibleRect;
-        const barLeft = r.left + r.width / 2;
-        const barTop = r.bottom + 8;
-        if (barTop < editorR.top || barTop + 48 > editorR.bottom) return null;
-        if (r.bottom < editorR.top || r.top > editorR.bottom) return null;
-        const pctBtns = ["25", "50", "70", "100"] as const;
-        const applyCustomPct = () => {
-          const v = parseInt(imageCustomPct, 10);
-          if (v && v >= 5 && v <= 100) applySelectedImageWidth(v);
-          setImageCustomPct("");
-        };
-        return createPortal(
-          <div
-            className="img-resize-bar fixed z-[280] bg-white border border-[#ebecf0] rounded-[12px] shadow-[0px_12px_16px_-4px_rgba(36,36,36,0.08)] px-[10px] py-[6px] flex items-center gap-[6px]"
-            style={{ left: barLeft, top: Math.max(barTop, (toolbarRef.current?.getBoundingClientRect().bottom ?? 0) + 8), transform: "translateX(-50%)" }}
-            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-          >
-            <span className="px-[4px] text-[13px] text-[#8d8e99] whitespace-nowrap select-none" style={{ fontFamily: "PingFang SC, sans-serif" }}>宽度</span>
-            {pctBtns.map((pct) => (
-              <button
-                key={pct}
-                type="button"
-                className="h-[32px] min-w-[40px] px-[8px] rounded-[6px] border border-[#ebecf0] text-[13px] text-[#131212] cursor-pointer hover:bg-[#f5f6f8] transition-colors whitespace-nowrap bg-white"
-                style={{ fontFamily: "PingFang SC, sans-serif" }}
-                onClick={(e) => { e.stopPropagation(); applySelectedImageWidth(Number(pct)); }}
-              >{pct}%</button>
-            ))}
-            <button
-              type="button"
-              className="h-[32px] min-w-[32px] px-[8px] rounded-[6px] border border-[#ebecf0] text-[13px] text-[#131212] cursor-pointer hover:bg-[#f5f6f8] whitespace-nowrap bg-white"
-              style={{ fontFamily: "PingFang SC, sans-serif" }}
-              title="恢复原图大小"
-              onClick={(e) => { e.stopPropagation(); applySelectedImageWidth("auto"); }}
-            >原</button>
-            <button
-              type="button"
-              className={`size-[32px] rounded-[6px] border border-[#ebecf0] flex items-center justify-center cursor-pointer transition-colors bg-white ${imageRatioLocked ? "bg-[#f0f3ff] border-[#c9d5ff]" : "hover:bg-[#f5f6f8]"}`}
-              title={imageRatioLocked ? "锁定缩放比例（已开）" : "锁定缩放比例（已关）"}
-              onClick={(e) => { e.stopPropagation(); setImageRatioLocked((v) => !v); }}
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M13.3334 6.52874V2.66667H9.47109M13.3334 2.66667L8.82737 7.17242M2.66675 9.47127V13.3333H6.52907M2.66675 13.3333L7.17279 8.82759" stroke={imageRatioLocked ? "#134CFF" : "#131212"} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-            <div className="w-[1px] h-[20px] bg-[#ebecf0] mx-[2px]" />
-            <div className="flex items-center gap-[4px]">
-              <input
-                className="w-[40px] h-[32px] rounded-[6px] border border-solid border-[#ebecf0] text-[13px] text-[#131212] text-center outline-none focus:border-[#131212] bg-white"
-                style={{ fontFamily: "PingFang SC, sans-serif" }}
-                placeholder="%"
-                value={imageCustomPct}
-                onChange={(e) => setImageCustomPct(e.target.value.replace(/[^\d]/g, "").slice(0, 3))}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    applyCustomPct();
-                  }
-                }}
-                onBlur={() => { if (imageCustomPct) applyCustomPct(); }}
-                onMouseDown={(e) => e.stopPropagation()}
-                title="自定义缩放比例"
-              />
-              <span className="text-[13px] text-[#8d8e99] select-none" style={{ fontFamily: "PingFang SC, sans-serif" }}>%</span>
-            </div>
-            <div className="w-[1px] h-[20px] bg-[#ebecf0] mx-[2px]" />
-            <div
-              className={`size-[32px] rounded-[6px] border border-[#ebecf0] flex items-center justify-center cursor-ew-resize bg-white hover:bg-[#f5f6f8] ${imgBarSlider ? "bg-[#f5f6f8]" : ""}`}
-              title="等比缩放（拖拽调整宽度）"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const activeEditor = editorInstanceRef.current;
-                const pos = selectedImagePosRef.current;
-                if (!activeEditor || pos == null) return;
-                const node = activeEditor.state.doc.nodeAt(pos);
-                if (!node || node.type.name !== "image") return;
-                const dom = activeEditor.view.nodeDOM(pos) as HTMLElement | null;
-                const img = (dom?.tagName === "IMG" ? dom : dom?.querySelector("img")) as HTMLImageElement | null;
-                if (!img) return;
-                setImgBarSlider(true);
-                const startX = e.clientX;
-                const startW = img.offsetWidth || Number(node.attrs.width) || 100;
-                const parentW = activeEditor.view.dom.clientWidth || 1;
-                const naturalW = img.naturalWidth || startW;
-                const naturalH = img.naturalHeight || startW;
-                const onMove = (ev: MouseEvent) => {
-                  const dx = ev.clientX - startX;
-                  const nextW = Math.max(48, Math.min(parentW, Math.round(startW + dx)));
-                  const locked = imageRatioLockedRef.current;
-                  const sized = fitImageSize(nextW, nextW * (naturalH / Math.max(1, naturalW)), naturalW, naturalH, locked);
-                  img.style.width = `${sized.width}px`;
-                  img.style.height = locked ? "auto" : `${sized.height}px`;
-                  img.style.maxWidth = "none";
-                  syncContainerToImage(dom);
-                  setSelectedImgRect(img.getBoundingClientRect());
-                };
-                const onUp = () => {
-                  setImgBarSlider(false);
-                  document.removeEventListener("mousemove", onMove);
-                  document.removeEventListener("mouseup", onUp);
-                  const finalW = Math.max(48, Math.round(img.offsetWidth));
-                  const locked = imageRatioLockedRef.current;
-                  const sized = fitImageSize(finalW, img.offsetHeight, naturalW, naturalH, locked);
-                  syncContainerToImage(dom);
-                  activeEditor.chain().setNodeSelection(pos).updateAttributes("image", {
-                    width: sized.width,
-                    height: locked ? null : sized.height,
-                  }).run();
-                  window.requestAnimationFrame(() => {
-                    syncContainerToImage(activeEditor.view.nodeDOM(pos) as HTMLElement | null);
-                    updateImageToolbar(activeEditor);
-                  });
-                };
-                document.addEventListener("mousemove", onMove);
-                document.addEventListener("mouseup", onUp);
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M3.57541 1.60001C2.48447 1.60001 1.6001 2.48438 1.6001 3.57531M9.42232 1.60001H6.57787M14.4001 3.57532C14.4001 2.48438 13.5157 1.60001 12.4248 1.60001M1.6001 6.57778V9.42223M14.4001 9.42223V6.57778M1.6001 12.4247C1.6001 13.5156 2.48447 14.4 3.57541 14.4M12.4248 14.4C13.5157 14.4 14.4001 13.5156 14.4001 12.4247M6.57787 14.4H9.42232M1.6001 8.00001H6.57787C7.36335 8.00001 8.0001 8.63676 8.0001 9.42223V14.4H3.73343C2.55522 14.4 1.6001 13.4449 1.6001 12.2667V8.00001Z" stroke="#131212" strokeWidth="1.2" strokeLinecap="round" />
-              </svg>
-            </div>
-          </div>,
-          document.body,
-        );
-      })()}
-      {slashMenu && createPortal(
-        <ContextMenuPanel
-          menuRef={slashMenuElRef}
-          width={180}
-          className="z-[280] overflow-y-auto overscroll-contain"
-          style={{ left: slashMenu.left, top: slashMenu.top, maxHeight: slashMenu.maxHeight ?? "min(70vh, 480px)" }}
-        >
-          {slashItems.map((item, idx) => {
-            const bg = slashPressIdx === idx ? "#EBECF0" : idx === slashActive ? "#F7F8FA" : "transparent";
-            return (
-              <button
-                key={item.label}
-                type="button"
-                role="menuitem"
-                data-slash-idx={idx}
-                aria-selected={idx === slashActive}
-                className="w-full flex items-center gap-[8px] h-[32px] px-[12px] box-border rounded-[4px] cursor-pointer transition-colors text-left border-0 outline-none"
-                style={{ appearance: "none", WebkitAppearance: "none", backgroundColor: bg }}
-                onMouseEnter={() => setSlashActive(idx)}
-                onMouseLeave={() => {
-                  setSlashPressIdx(null);
-                  setSlashActive((cur) => (cur === idx ? -1 : cur));
-                }}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  if (item.kind !== "file") e.preventDefault();
-                  setSlashPressIdx(idx);
-                }}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (item.kind === "file") runSlashFileAction(item.action);
-                  else runSlashAction(item.action);
-                }}
-              >
-                <div className="size-[20px] flex items-center justify-center text-[11px] font-bold text-[#131212] shrink-0">{item.icon}</div>
-                <span className="text-[14px] leading-none text-[#131212] font-['PingFang_SC:Regular',sans-serif] whitespace-nowrap">{item.label}</span>
-              </button>
-            );
-          })}
-        </ContextMenuPanel>,
-        document.body,
+      {selectedImgRect && editorVisibleRect && (
+        <EditorImageToolbar
+          selectedImgRect={selectedImgRect}
+          editorVisibleRect={editorVisibleRect}
+          toolbarRef={toolbarRef}
+          imageCustomPct={imageCustomPct}
+          setImageCustomPct={setImageCustomPct}
+          imageRatioLocked={imageRatioLocked}
+          setImageRatioLocked={setImageRatioLocked}
+          imgBarSlider={imgBarSlider}
+          applySelectedImageWidth={applySelectedImageWidth}
+          editorInstanceRef={editorInstanceRef}
+          selectedImagePosRef={selectedImagePosRef}
+          setImgBarSlider={setImgBarSlider}
+          setSelectedImgRect={setSelectedImgRect}
+          updateImageToolbar={updateImageToolbar}
+        />
+      )}
+      {slashMenu && (
+        <EditorSlashMenu
+          slashMenu={slashMenu}
+          slashMenuElRef={slashMenuElRef}
+          slashItems={slashItems}
+          slashActive={slashActive}
+          slashPressIdx={slashPressIdx}
+          setSlashActive={setSlashActive}
+          setSlashPressIdx={setSlashPressIdx}
+          runSlashAction={runSlashAction}
+          runSlashFileAction={runSlashFileAction}
+        />
       )}
       <div className="flex-1 min-h-0 bg-white flex justify-center items-stretch overflow-hidden" onKeyDown={(e) => {
         if (!editor) return;
-        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); /* 实际保存由 DocumentAssistant 快捷键处理 */ }
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); }
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); const pos = getCaretMenuPosition(); setLinkModalPos({ x: pos.left - 150, y: pos.top + 8 }); setLinkModalMode("insert"); setLinkModalText(""); setLinkModalUrl(""); setShowLinkModal(true); }
         if (slashMenu && e.key === "Escape") { e.preventDefault(); setSlashMenu(null); }
         if (slashMenu && e.key === "ArrowDown") {
@@ -1819,73 +1176,22 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       }}>
         <div className="flex h-full min-h-0 w-full max-w-[1248px] px-[24px] gap-[60px] overflow-hidden">
           <div className="min-w-0 min-h-0 flex-1 h-full max-w-full overflow-hidden"><EditorContent editor={editor} className="h-full min-h-0 w-full max-w-full min-w-0" /></div>
-          <div className="w-[264px] max-w-[264px] shrink-0 min-w-0 min-h-0 self-stretch pt-[24px] pb-[12px] overflow-hidden hidden xl:flex xl:flex-col gap-[4px] box-border">
-            <div className="flex items-center gap-[8px] shrink-0 min-w-0">
-              <img src={assetUrl("icons/figma-ref/menu-02.svg")} alt="" width={16} height={16} className="size-4 shrink-0" />
-              <p className="font-['PingFang_SC:Regular',sans-serif] font-normal text-[#3F4046] text-[14px] leading-[24px]">在本页</p>
-            </div>
-            <div ref={tocListRef} className="h-0 flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain">
-              {tocHeadings.length === 0 ? <p className="text-[#b8bbc4] text-[14px] leading-[24px] font-normal">暂无标题</p> : tocHeadings.map((h) => {
-                const level = Math.min(Math.max(Number(h.tag.slice(1)) || 1, 1), 6);
-                const padLeft = (level - 1) * 16;
-                const isActive = tocActiveId === h.id;
-                return (
-                  <button
-                    key={`${h.id}-${h.text}`}
-                    ref={(element) => {
-                      if (element) tocButtonRefs.current.set(h.id, element);
-                      else tocButtonRefs.current.delete(h.id);
-                    }}
-                    type="button"
-                    title={h.text}
-                    className={`block w-full max-w-full min-w-0 shrink-0 h-8 text-left font-['PingFang_SC:Regular',sans-serif] font-normal text-[14px] leading-[24px] py-1 truncate bg-transparent border-0 outline-none appearance-none ${isActive ? "text-[#134CFF]" : "text-[#505257] hover:text-[#3F4046]"}`}
-                    style={{ paddingLeft: `${padLeft}px`, paddingRight: 0 }}
-                    onClick={() => { scrollToHeading(h.id); }}
-                  >
-                    {h.text}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <EditorToc
+            tocListRef={tocListRef}
+            tocButtonRefs={tocButtonRefs}
+            tocHeadings={tocHeadings}
+            tocActiveId={tocActiveId}
+            onScrollToHeading={scrollToHeading}
+          />
         </div>
       </div>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-      <div className="flex items-center justify-between h-[44px] px-[24px] border-t border-[#EBECF0] bg-white flex-shrink-0 box-border">
-        <div className="flex items-center gap-[8px]">
-          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#8D8E99] text-[14px] leading-none whitespace-nowrap">自动保存</p>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={autoSaveEnabled}
-            aria-label="自动保存"
-            className="relative shrink-0 w-[40px] h-[20px] rounded-full transition-colors duration-300 cursor-pointer border-0 p-0"
-            style={{ background: autoSaveEnabled ? "#131212" : "#EBECF0" }}
-            onClick={() => onAutoSaveChange?.(!autoSaveEnabled)}
-          >
-            <span
-              className="absolute top-[2px] size-[16px] rounded-full transition-all duration-300"
-              style={{ left: autoSaveEnabled ? "22px" : "2px", background: autoSaveEnabled ? "#FFFFFF" : "#131212" }}
-            />
-          </button>
-          <p className="font-['PingFang_SC:Light',sans-serif] font-light text-[#8D8E99] text-[14px] leading-none whitespace-nowrap">
-            {autoSaveEnabled
-              ? (lastSavedAt ? `于 ${lastSavedAt} 更新保存` : "开启后每隔 30 秒自动保存")
-              : "需手动保存"}
-          </p>
-        </div>
-        <div className="flex items-center gap-[25px]">
-          <div className="flex items-center gap-[8px]">
-            <div className="relative shrink-0 size-[14px]">
-              <svg className="absolute block inset-0 size-full" fill="none" viewBox="0 0 14 14">
-                <path d={editorSvg.p2ce2bc00} stroke="#8D8E99" strokeLinecap="round" strokeWidth="1.2" />
-              </svg>
-            </div>
-            <p className="font-['PingFang_SC:Regular',sans-serif] text-[#8D8E99] text-[14px]">大纲</p>
-          </div>
-          <p className="font-['PingFang_SC:Regular',sans-serif] text-[#8D8E99] text-[14px]">{charCount}字符</p>
-        </div>
-      </div>
+      <EditorStatusBar
+        autoSaveEnabled={autoSaveEnabled}
+        lastSavedAt={lastSavedAt}
+        onAutoSaveChange={onAutoSaveChange}
+        charCount={charCount}
+      />
     </div>
   );
 }
