@@ -75,7 +75,12 @@ export function createChrome(ctx: CodeBlockViewCtx) {
     });
   };
   ctx.clearEditSession = () => {
-    codeBlockEditSessions.delete(ctx.editor);
+    const range = ctx.nodeRange();
+    const cur = codeBlockEditSessions.get(ctx.editor);
+    // 只清自己的会话，避免其它代码块 commit 误删图表展开会话
+    if (!cur || (range && cur.pos === range.pos)) {
+      codeBlockEditSessions.delete(ctx.editor);
+    }
   };
   ctx.buildLangPickerSession = () => ({
     editor: ctx.editor,

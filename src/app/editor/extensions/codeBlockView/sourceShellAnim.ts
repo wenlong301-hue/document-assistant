@@ -38,18 +38,21 @@ export function createSourceShellAnim(ctx: CodeBlockViewCtx) {
     ctx.sourceAnimTimer = window.setTimeout(finish, ctx.SOURCE_EXPAND_MS + 80);
   };
   ctx.finishExpandOpen = () => {
+    const shouldFocus = ctx.pendingFocusAfterExpand;
+    // 先落点再清 pendingFocus：focus 可能先抛出「选区仍在块外」的 selectionUpdate
+    ctx.lockEnteringEdit(shouldFocus ? 320 : 80);
     ctx.sourceOpen = true;
     ctx.resetSourceShellStyle();
     ctx.rememberEditSession();
     ctx.syncChrome();
-    if (ctx.pendingFocusAfterExpand) {
-      ctx.pendingFocusAfterExpand = false;
-      // 落点后再锁一段：overflow 壳刚打开时 focus 可能失败并触发 blur，避免立刻 commit 收回
-      ctx.lockEnteringEdit(160);
+    if (!shouldFocus) return;
+    ctx.afterPaint(() => {
+      if (!ctx.editing) return;
+      ctx.lockEnteringEdit(320);
       if (!ctx.langPickerBusy()) ctx.placeCaretInSource();
-    } else {
-      ctx.lockEnteringEdit(80);
-    }
+      ctx.pendingFocusAfterExpand = false;
+      ctx.lockEnteringEdit(320);
+    });
   };
   ctx.expandSourceShell = () => {
     if (ctx.prefersReducedMotion()) {
@@ -110,8 +113,11 @@ export function createSourceShellAnim(ctx: CodeBlockViewCtx) {
     });
   };
   /** 展开动画中、待落点、或锁定期：禁止 selection/blur 立刻 commit 收回 */
-  ctx.isEnteringEdit = () =>
-    Date.now() < ctx.editLockUntil
-    || ctx.pendingFocusAfterExpand
-    || (ctx.editing && isDiagramLanguage(ctx.currentNode.attrs.language) && !ctx.sourceOpen && !ctx.sourceCollapsing);
+  ctx.isEnteringEdit = () => {
+    if (Date.now() < ctx.editLockUntil || ctx.pendingFocusAfterExpand) return true;
+    if (!ctx.editing || !isDiagramLanguage(ctx.currentNode.attrs.language)) return false;
+    // 源码壳尚未完全打开，或收起动画中：禁止误 commit
+    if (!ctx.sourceOpen || ctx.sourceCollapsing) return true;
+    return false;
+  };
 }

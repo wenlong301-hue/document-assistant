@@ -26,8 +26,15 @@ export function createEvents(ctx: CodeBlockViewCtx) {
   };
   ctx.onExpandBarPointer = (event: Event) => {
     ctx.stopPointer(event);
-    // 只在 pointerdown/mousedown 进入编辑；随后 click 可能因条收起而穿透到预览
-    if (event.type !== "mousedown" && event.type !== "pointerdown") return;
+    // 只认 pointerdown（兼容无 PointerEvent 时的 mousedown）；click 可能因条收起穿透到预览
+    if (event.type === "pointerdown") {
+      (ctx as { _expandPtr?: number })._expandPtr = Date.now();
+    } else if (event.type === "mousedown") {
+      const recent = (ctx as { _expandPtr?: number })._expandPtr || 0;
+      if (Date.now() - recent < 400) return;
+    } else {
+      return;
+    }
     if (!ctx.editor.isEditable || ctx.editing) return;
     ctx.enterEdit();
   };

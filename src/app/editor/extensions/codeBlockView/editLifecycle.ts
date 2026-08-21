@@ -8,14 +8,16 @@ export function createEditLifecycle(ctx: CodeBlockViewCtx) {
     if (ctx.langPickerBusy()) return;
     const range = ctx.nodeRange();
     if (!range) return;
-    const end = Math.max(range.pos + 1, range.pos + range.size - 1);
-    // 落点前再锁一轮，挡住 focus 抖动触发的 blur/selectionUpdate commit
-    ctx.lockEnteringEdit(160);
+    // 落在内容区内，避免 pos+size-1 落在块边界被判定为离开
+    const end = Math.min(Math.max(range.pos + 1, range.pos + range.size - 2), range.pos + range.size - 1);
+    // 落点全过程加锁：focus 可能先触发 selectionUpdate（选区仍在块外）
+    ctx.lockEnteringEdit(240);
     try {
-      ctx.editor.chain().focus().setTextSelection(end).run();
+      ctx.editor.chain().setTextSelection(end).focus().run();
     } catch {
       try { ctx.editor.commands.focus(); } catch { /* ignore */ }
     }
+    ctx.lockEnteringEdit(240);
   };
   ctx.enterEdit = (opts?: { focusSource?: boolean }) => {
     if (!ctx.editor.isEditable) return;
