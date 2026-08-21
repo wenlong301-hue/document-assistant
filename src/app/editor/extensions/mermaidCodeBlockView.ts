@@ -65,7 +65,10 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
     sourceCollapsing: false,
     sourceOpen: false,
     pendingFocusAfterExpand: false,
+    sourceFocusToken: 0,
     blurCommitTimer: 0,
+    langPickerHold: false,
+    destroyed: false,
   } as CodeBlockViewCtx;
 
   createSourceShellAnim(ctx);
@@ -133,6 +136,10 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
   dom.appendChild(deleteHint);
   code.textContent = ctx.currentNode.textContent;
 
+  // 先恢复语言选择器 hold，再恢复编辑会话/排队 placeCaret，避免重建后误 commit 收起源码
+  if (ctx.restoreLangPickerHold() || ctx.langPickerBusy()) {
+    ctx.langPickerHold = true;
+  }
   const pendingSession = codeBlockEditSessions.get(editor);
   const pendingArmed = codeBlockArmedSessions.get(editor);
   const currentPos = typeof getPos === "function" ? getPos() : null;
@@ -147,17 +154,21 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
     ctx.sourceOpen = pendingSession.sourceOpen !== false;
     ctx.selectionInside = ctx.selectionInThisBlock() ?? true;
     if (ctx.isDiagram() && !ctx.sourceOpen) {
-      ctx.pendingFocusAfterExpand = true;
+      // 重建后重放展开动画时也不自动落点，避免与语言选择器抢焦点
+      ctx.pendingFocusAfterExpand = false;
       ctx.lockEnteringEdit();
       ctx.syncChrome();
       ctx.expandSourceShell();
     } else {
       ctx.sourceOpen = true;
       ctx.syncChrome();
-      requestAnimationFrame(() => {
-        if (!ctx.editing || ctx.langPickerBusy()) return;
-        ctx.placeCaretInSource();
-      });
+      // 语言选择器打开 / 图表编辑态：不自动 placeCaret
+      if (!ctx.isDiagram() && !ctx.langPickerHold && !ctx.langPickerBusy()) {
+        requestAnimationFrame(() => {
+          if (ctx.destroyed || !ctx.editing || ctx.langPickerHold || ctx.langPickerBusy()) return;
+          ctx.placeCaretInSource();
+        });
+      }
     }
   } else {
     ctx.selectionInside = ctx.selectionInThisBlock() ?? false;
@@ -179,12 +190,18 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
       if (!ctx.restorePreviewFromCache()) ctx.renderPreview(ctx.currentNode.textContent);
     } else ctx.syncHighlight();
   }
-  if (ctx.langPickerBusy()) rebindCodeLangPickerAnchor(ctx.buildLangPickerSession());
+  if (ctx.langPickerHold || ctx.langPickerBusy()) {
+    ctx.langPickerHold = true;
+    rebindCodeLangPickerAnchor(ctx.buildLangPickerSession());
+  }
 
   ctx.editController = {
-    commit: () => { if (ctx.editing) ctx.commitEdit(); },
+    commit: () => {
+      if (!ctx.editing || ctx.langPickerHold || ctx.langPickerBusy() || ctx.isEnteringEdit()) return;
+      ctx.commitEdit();
+    },
     isActive: () => ctx.editing,
-    hasSelection: () => Boolean(ctx.selectionInThisBlock()) || ctx.langPickerBusy(),
+    hasSelection: () => Boolean(ctx.selectionInThisBlock()) || ctx.langPickerHold || ctx.langPickerBusy(),
   };
   {
     let set = codeBlockEditControllers.get(editor);
@@ -203,6 +220,10 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
       ctx.currentNode = updatedNode;
       if (ctx.editing) ctx.rememberEditSession();
       else if (ctx.armed) ctx.rememberArmedSession();
+      if (ctx.langPickerHold || ctx.restoreLangPickerHold()) {
+        ctx.langPickerHold = true;
+        ctx.rememberLangPickerSession();
+      }
       ctx.syncChrome();
       if (ctx.langPickerBusy()) rebindCodeLangPickerAnchor(ctx.buildLangPickerSession());
       if (ctx.isDiagram()) {
@@ -222,9 +243,9 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
       } else if (!ctx.isDiagram()) ctx.syncHighlight();
     },
     deselectNode: () => {
-      if (ctx.langPickerBusy()) return;
-      if (ctx.editing) {
-        if (ctx.isEnteringEdit()) return;
+      if (ctx.destroyed || ctx.langPickerHold || ctx.langPickerBusy() || ctx.isEnteringEdit()) return;
+      // 图表编辑态不因 Node 取消选中退出：placeCaret/语言选择器会短暂移走选区
+      if (ctx.editing && !ctx.isDiagram()) {
         ctx.commitEdit({ keepSelection: true });
       } else if (!ctx.isDiagram()) ctx.syncHighlight();
     },
@@ -263,6 +284,9 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
       return true;
     },
     destroy: () => {
+      // 不在 destroy 清 langPicker session：NodeView 重建后仍需 hold
+      ctx.destroyed = true;
+      ctx.cancelPendingSourceFocus();
       ctx.stopSourceAnim();
       window.clearTimeout(ctx.debounceTimer);
       unbindDomEvents(ctx);

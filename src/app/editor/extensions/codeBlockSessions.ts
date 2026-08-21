@@ -9,6 +9,9 @@ export const codeBlockEditSessions = new WeakMap<object, {
 /** 图表预览武装态：NodeView 重建后恢复 20px 下拉条 */
 export const codeBlockArmedSessions = new WeakMap<object, { pos: number }>();
 
+/** 语言选择器打开：NodeView 重建后仍禁止 commit 收起源码 */
+export const codeBlockLangPickerSessions = new WeakMap<object, { pos: number }>();
+
 /** 图表预览缓存：NodeView 重建后立刻还原 SVG，避免展开时重新加载 */
 export const codeBlockPreviewCache = new WeakMap<object, Map<number, { source: string; html: string }>>();
 

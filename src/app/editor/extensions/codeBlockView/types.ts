@@ -33,7 +33,17 @@ export type CodeBlockViewCtx = {
   sourceCollapsing: boolean;
   sourceOpen: boolean;
   pendingFocusAfterExpand: boolean;
+  /** 递增以作废已排队的 expand 后 placeCaret（点语言选择器时取消） */
+  sourceFocusToken: number;
   blurCommitTimer: number;
+  /** 语言选择器打开期间禁止 commit（不依赖 picker 模块单例，避免 Electron/HMR 双实例） */
+  langPickerHold: boolean;
+  /** NodeView 已销毁：禁止迟到的 placeCaret / commit */
+  destroyed: boolean;
+  cancelPendingSourceFocus: () => void;
+  rememberLangPickerSession: () => void;
+  clearLangPickerSession: () => void;
+  restoreLangPickerHold: () => boolean;
   lockEnteringEdit: (extraMs?: number) => void;
   isEnteringEdit: () => boolean;
   prefersReducedMotion: () => boolean;
@@ -86,5 +96,6 @@ export type CodeBlockViewCtx = {
   onDocPointerDown: (event: Event) => void;
   onLangTriggerPointer: (event: Event) => void;
   onEditorBlur: () => void;
+  onOutsidePointer: (event: Event) => void;
   editController: any;
 };

@@ -30,6 +30,23 @@ let highlightIndex = -1;
 let pickerInputDirty = false;
 let focusHoldToken = 0;
 
+/** Electron/HMR 双实例时模块单例不可靠，用 window 全局标记跨实例共享 */
+const PICKER_OPEN_FLAG = "__docCodeLangPickerOpen";
+const setPickerOpenFlag = (open: boolean) => {
+  try {
+    (window as any)[PICKER_OPEN_FLAG] = open;
+  } catch {
+    /* ignore */
+  }
+};
+const readPickerOpenFlag = () => {
+  try {
+    return Boolean((window as any)[PICKER_OPEN_FLAG]);
+  } catch {
+    return false;
+  }
+};
+
 const stop = (event: Event) => {
   event.preventDefault();
   event.stopPropagation();
@@ -56,13 +73,15 @@ const focusPickerInput = (session?: CodeLangPickerSession | null, opts?: { selec
   if (!shared?.open) return false;
   if (session && shared.session !== session) return false;
   suppressOutsideCloseUntil = Date.now() + 400;
-  blurEditorView(session);
+  // 不主动 blur 编辑器：由 input.focus 自然抢焦点，避免 TipTap blur 抢先于 hold 触发 commit
   try {
     shared.input.focus({ preventScroll: true });
     if (opts?.select && !pickerInputDirty) shared.input.select();
   } catch {
     try { shared.input.focus(); } catch { /* ignore */ }
   }
+  // 若 contenteditable 仍占焦点，再兜底 blur（此时 session.onDraftEnd / hold 应已就绪）
+  if (document.activeElement !== shared.input) blurEditorView(session);
   return document.activeElement === shared.input;
 };
 
@@ -459,15 +478,25 @@ const ensureShared = (): SharedPicker => {
   return shared;
 };
 
-export const isCodeLangPickerOpen = () => Boolean(shared?.open);
+/** 多路兜底：模块单例 / window 全局 / DOM（防 Electron/HMR 双实例漏判） */
+export const isCodeLangPickerOpen = () => {
+  if (shared?.open || readPickerOpenFlag()) return true;
+  const portal = document.querySelector(".doc-code-lang-portal") as HTMLElement | null;
+  if (!portal) return false;
+  return portal.style.display !== "none" && getComputedStyle(portal).display !== "none";
+};
 
 export const isCodeLangPickerFor = (editor: any, getPos: () => number | undefined | null) => {
   if (!shared?.open || !shared.session) return false;
   if (shared.session.editor !== editor) return false;
   try {
-    return shared.session.getPos() === getPos();
+    const sessionPos = shared.session.getPos();
+    const viewPos = getPos();
+    // NodeView 重建瞬间 getPos 可能暂不可用：同编辑器仍视为 busy，避免误 commit 收起源码
+    if (typeof sessionPos !== "number" || typeof viewPos !== "number") return true;
+    return sessionPos === viewPos;
   } catch {
-    return false;
+    return true;
   }
 };
 
@@ -486,9 +515,10 @@ export const rebindCodeLangPickerAnchor = (session: CodeLangPickerSession) => {
 export const openCodeLangPicker = (session: CodeLangPickerSession) => {
   const picker = ensureShared();
   // 吞掉打开当次 pointer 的 outside-close，避免 mousedown 捕获阶段误关
-  suppressOutsideCloseUntil = Date.now() + 300;
+  suppressOutsideCloseUntil = Date.now() + 400;
   picker.session = session;
   picker.open = true;
+  setPickerOpenFlag(true);
   const lang = currentLangId(session);
   picker.input.value = lang ? codeLanguageLabel(lang) : "";
   pickerInputDirty = false;
@@ -505,6 +535,7 @@ export const closeCodeLangPicker = () => {
   const session = shared.session;
   const editor = session?.editor;
   shared.open = false;
+  setPickerOpenFlag(false);
   shared.session = null;
   shared.portal.style.display = "none";
   shared.menu.style.display = "none";

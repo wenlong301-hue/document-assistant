@@ -37,21 +37,35 @@ export function createSourceShellAnim(ctx: CodeBlockViewCtx) {
     ctx.sourceShell.addEventListener("transitionend", onEnd);
     ctx.sourceAnimTimer = window.setTimeout(finish, ctx.SOURCE_EXPAND_MS + 80);
   };
+  ctx.cancelPendingSourceFocus = () => {
+    ctx.pendingFocusAfterExpand = false;
+    ctx.sourceFocusToken += 1;
+  };
   ctx.finishExpandOpen = () => {
     const shouldFocus = ctx.pendingFocusAfterExpand;
-    // 先落点再清 pendingFocus：focus 可能先抛出「选区仍在块外」的 selectionUpdate
-    ctx.lockEnteringEdit(shouldFocus ? 320 : 80);
+    const focusToken = ctx.sourceFocusToken;
+    ctx.lockEnteringEdit(shouldFocus ? 480 : 80);
     ctx.sourceOpen = true;
     ctx.resetSourceShellStyle();
     ctx.rememberEditSession();
     ctx.syncChrome();
-    if (!shouldFocus) return;
-    ctx.afterPaint(() => {
-      if (!ctx.editing) return;
-      ctx.lockEnteringEdit(320);
-      if (!ctx.langPickerBusy()) ctx.placeCaretInSource();
+    // 图表默认不在展开后自动 placeCaret（由 enterEdit focusSource=false 控制）
+    if (!shouldFocus) {
       ctx.pendingFocusAfterExpand = false;
-      ctx.lockEnteringEdit(320);
+      return;
+    }
+    ctx.afterPaint(() => {
+      window.setTimeout(() => {
+        if (ctx.destroyed || focusToken !== ctx.sourceFocusToken) return;
+        if (!ctx.editing || ctx.langPickerHold || ctx.langPickerBusy()) {
+          ctx.pendingFocusAfterExpand = false;
+          return;
+        }
+        ctx.lockEnteringEdit(320);
+        ctx.placeCaretInSource();
+        ctx.pendingFocusAfterExpand = false;
+        ctx.lockEnteringEdit(320);
+      }, 0);
     });
   };
   ctx.expandSourceShell = () => {
@@ -112,8 +126,9 @@ export function createSourceShellAnim(ctx: CodeBlockViewCtx) {
       ctx.waitHeightTransition(token, finish);
     });
   };
-  /** 展开动画中、待落点、或锁定期：禁止 selection/blur 立刻 commit 收回 */
+  /** 展开动画中、待落点、语言选择器、或锁定期：禁止 selection/blur 立刻 commit 收回 */
   ctx.isEnteringEdit = () => {
+    if (ctx.langPickerHold) return true;
     if (Date.now() < ctx.editLockUntil || ctx.pendingFocusAfterExpand) return true;
     if (!ctx.editing || !isDiagramLanguage(ctx.currentNode.attrs.language)) return false;
     // 源码壳尚未完全打开，或收起动画中：禁止误 commit

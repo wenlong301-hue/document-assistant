@@ -3,13 +3,14 @@ import { TextSelection } from "@tiptap/pm/state";
 import { codeLanguageLabel, isDiagramLanguage } from "../../utils/codeLanguages";
 import {
   isCodeLangPickerFor,
+  isCodeLangPickerOpen,
   openCodeLangPicker,
   rebindCodeLangPickerAnchor,
   syncCodeLangTrigger,
 } from "../../utils/codeLangPicker";
 import { toDiagramKind } from "../../utils/diagrams";
 import { highlightCodeToHtml } from "../../utils/highlight";
-import { codeBlockEditSessions } from "../codeBlockSessions";
+import { codeBlockEditSessions, codeBlockLangPickerSessions } from "../codeBlockSessions";
 import type { CodeBlockViewCtx } from "./types";
 
 export function createChrome(ctx: CodeBlockViewCtx) {
@@ -17,7 +18,39 @@ export function createChrome(ctx: CodeBlockViewCtx) {
   ctx.isCommittedDiagram = () => isDiagramLanguage(ctx.currentNode.attrs.language);
   ctx.diagramKind = () => toDiagramKind(ctx.currentNode.attrs.language);
   ctx.langId = () => String(ctx.currentNode.attrs.language || "").toLowerCase();
-  ctx.langPickerBusy = () => isCodeLangPickerFor(ctx.editor, ctx.getPos);
+  ctx.rememberLangPickerSession = () => {
+    const range = ctx.nodeRange();
+    if (!range) return;
+    codeBlockLangPickerSessions.set(ctx.editor, { pos: range.pos });
+  };
+  ctx.clearLangPickerSession = () => {
+    const range = ctx.nodeRange();
+    const cur = codeBlockLangPickerSessions.get(ctx.editor);
+    if (!cur || (range && cur.pos === range.pos)) {
+      codeBlockLangPickerSessions.delete(ctx.editor);
+    }
+  };
+  ctx.restoreLangPickerHold = () => {
+    const cur = codeBlockLangPickerSessions.get(ctx.editor);
+    if (!cur) return false;
+    const range = ctx.nodeRange();
+    // 重建瞬间 getPos 暂不可用：先恢复 hold，等 update 再校验 pos
+    if (range && cur.pos !== range.pos) return false;
+    ctx.langPickerHold = true;
+    return true;
+  };
+  ctx.langPickerBusy = () => {
+    if (ctx.langPickerHold) return true;
+    if (isCodeLangPickerFor(ctx.editor, ctx.getPos)) return true;
+    // Electron/HMR 双实例时 shared 可能对不上，用 DOM 再兜一层
+    if (isCodeLangPickerOpen()) return true;
+    const cur = codeBlockLangPickerSessions.get(ctx.editor);
+    if (!cur) return false;
+    const range = ctx.nodeRange();
+    // 重建瞬间 getPos 可能暂不可用：同 editor 有会话即视为 busy
+    if (!range) return true;
+    return cur.pos === range.pos;
+  };
   ctx.nodeRange = () => {
     const pos = typeof ctx.getPos === "function" ? ctx.getPos() : null;
     if (typeof pos !== "number") return null;
@@ -86,6 +119,20 @@ export function createChrome(ctx: CodeBlockViewCtx) {
     editor: ctx.editor,
     getPos: ctx.getPos,
     getAnchor: () => ctx.langTrigger,
+    onDraftEnd: () => {
+      ctx.langPickerHold = false;
+      ctx.clearLangPickerSession();
+      window.clearTimeout(ctx.blurCommitTimer);
+      // 关闭选择器后保持编辑态：禁止立刻因选区在块外而 commit 收起源码
+      ctx.lockEnteringEdit(480);
+      if (ctx.editing) ctx.rememberEditSession();
+      requestAnimationFrame(() => {
+        ctx.syncChrome();
+        if (ctx.editing && ctx.isDiagram() && !ctx.selectionInThisBlock()) {
+          ctx.lockEnteringEdit(320);
+        }
+      });
+    },
     // 输入过程不刷新预览；仅回车/点选 apply 后切换
     onBeforeApply: (nextId: string | null) => {
       const wasDiagram = ctx.isCommittedDiagram();
@@ -132,9 +179,22 @@ export function createChrome(ctx: CodeBlockViewCtx) {
   });
   ctx.openLangPicker = () => {
     if (!ctx.editor.isEditable) return;
+    // 必须先于任何 focus/blur：取消首次展开后的 placeCaret，并 hold 住编辑态
+    ctx.cancelPendingSourceFocus();
+    ctx.langPickerHold = true;
+    ctx.rememberLangPickerSession();
+    ctx.lockEnteringEdit(2000);
+    window.clearTimeout(ctx.blurCommitTimer);
+    try {
+      (window as any).__docCodeLangPickerOpen = true;
+    } catch { /* ignore */ }
     if (!ctx.editing) ctx.enterEdit({ focusSource: false });
     ctx.dom.classList.add("is-lang-open");
     openCodeLangPicker(ctx.buildLangPickerSession());
+    ctx.langPickerHold = true;
+    ctx.rememberLangPickerSession();
+    ctx.cancelPendingSourceFocus();
+    ctx.lockEnteringEdit(2000);
     ctx.syncChrome();
   };
   ctx.syncLangPicker = () => {
