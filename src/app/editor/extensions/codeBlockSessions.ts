@@ -2,6 +2,8 @@
 export const codeBlockEditSessions = new WeakMap<object, {
   pos: number;
   diagram: boolean;
+  /** false：展开动画未完成，NodeView 重建后需重放 */
+  sourceOpen?: boolean;
 }>();
 
 /** 图表预览武装态：NodeView 重建后恢复 20px 下拉条 */

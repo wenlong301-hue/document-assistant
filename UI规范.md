@@ -384,8 +384,8 @@ className="h-[32px] rounded-[8px] border border-solid border-[#EBECF0] bg-white
 - **图表代码块（mermaid / sequence / flow）交互**：
   1. 默认：仅渲染预览图（`is-preview`），不展开源码。
   2. 点击预览区域 → 在预览**上方**出现高 **20px** 的下拉条（`doc-diagram-expand-bar` / `is-armed`），条上为语言名 + 下拉箭头；**不要**直接展开源码。
-  3. 再点击该 20px 条 → 进入源码编辑（`is-editing`）。
-  4. 失焦 / 选区离开 / Esc → 退出编辑并收起武装条，回到预览。
+  3. 再点击该 20px 条 → 源码区高度过渡展开进入编辑（`is-editing`，约 280ms；`prefers-reduced-motion` 时无动画）。
+  4. 失焦 / 选区离开 / Esc → 源码区高度过渡收起，退出编辑并收起武装条，回到预览。
   5. 普通非图表代码块仍为点进即编辑，不受此两步交互影响。
 
 ---

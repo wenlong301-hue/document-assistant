@@ -13,10 +13,9 @@ export const EDITOR_CONTENT_CSS = `
         .doc-tiptap-content .doc-code-block-wrap.doc-diagram{border:1px solid #E8E9EE;border-radius:8px;overflow:hidden}
         .doc-tiptap-content .doc-code-block-wrap.doc-diagram.is-lang-open{overflow:visible}
         .doc-tiptap-content .doc-diagram.is-editing{display:flex;flex-direction:column;box-shadow:none}
-        .doc-tiptap-content .doc-diagram-source-shell{display:grid;grid-template-rows:1fr;width:100%;flex-shrink:0;box-sizing:border-box;transition:grid-template-rows .28s ease}
-        .doc-tiptap-content .doc-diagram-source-inner{min-height:0;overflow:hidden;display:flex;flex-direction:column}
-        .doc-tiptap-content .doc-diagram.is-preview .doc-diagram-source-shell{grid-template-rows:0fr}
-        .doc-tiptap-content .doc-diagram.is-editing .doc-diagram-source-shell{grid-template-rows:1fr}
+        .doc-tiptap-content .doc-diagram-source-shell{display:block;width:100%;height:0;min-height:0;flex:0 0 auto;box-sizing:border-box;overflow:hidden}
+        .doc-tiptap-content .doc-diagram-source-inner{display:flex;flex-direction:column}
+        .doc-tiptap-content .doc-diagram.is-source-open .doc-diagram-source-shell{height:auto}
         .doc-tiptap-content .doc-diagram .doc-diagram-source{margin:0;border:0;border-radius:0;background:#F6F7FA;padding:16px}
         .doc-tiptap-content .doc-diagram.is-editing .doc-diagram-source .doc-code-highlight{padding:16px}
         .doc-tiptap-content .doc-diagram.is-preview{cursor:pointer;background:#fff}

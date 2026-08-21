@@ -45,10 +45,116 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
   /** 点条进入编辑后短暂加锁，避免 deselect/selectionUpdate/blur 立刻 commit 收回 */
   let editLockUntil = 0;
   const SOURCE_EXPAND_MS = 280;
+  let sourceAnimToken = 0;
+  let sourceAnimTimer = 0;
+  /** 收起过程中保持 is-editing chrome，避免 syncChrome 把高度瞬间归零 */
+  let sourceCollapsing = false;
+  /** 源码区已完全展开。false 时 CSS 为 height:0；动画用 inline 像素高度 */
+  let sourceOpen = false;
+  let pendingFocusAfterExpand = false;
   const lockEnteringEdit = () => {
-    editLockUntil = Date.now() + SOURCE_EXPAND_MS + 50;
+    editLockUntil = Date.now() + SOURCE_EXPAND_MS + 80;
   };
   const isEnteringEdit = () => Date.now() < editLockUntil;
+  const prefersReducedMotion = () =>
+    Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+  const afterPaint = (fn: () => void) => {
+    requestAnimationFrame(() => requestAnimationFrame(fn));
+  };
+  const resetSourceShellStyle = () => {
+    sourceShell.style.transition = "";
+    sourceShell.style.height = "";
+  };
+  const stopSourceAnim = () => {
+    sourceAnimToken += 1;
+    window.clearTimeout(sourceAnimTimer);
+    sourceCollapsing = false;
+  };
+  const waitHeightTransition = (token: number, onDone: () => void) => {
+    let ended = false;
+    const finish = () => {
+      if (ended) return;
+      ended = true;
+      sourceShell.removeEventListener("transitionend", onEnd);
+      window.clearTimeout(sourceAnimTimer);
+      if (token !== sourceAnimToken) return;
+      onDone();
+    };
+    const onEnd = (event: TransitionEvent) => {
+      if (event.target !== sourceShell || event.propertyName !== "height") return;
+      finish();
+    };
+    sourceShell.addEventListener("transitionend", onEnd);
+    sourceAnimTimer = window.setTimeout(finish, SOURCE_EXPAND_MS + 80);
+  };
+  const finishExpandOpen = () => {
+    sourceOpen = true;
+    resetSourceShellStyle();
+    rememberEditSession();
+    syncChrome();
+    if (pendingFocusAfterExpand) {
+      pendingFocusAfterExpand = false;
+      placeCaretInSource();
+    }
+  };
+  const expandSourceShell = () => {
+    if (prefersReducedMotion()) {
+      finishExpandOpen();
+      return;
+    }
+    const token = ++sourceAnimToken;
+    window.clearTimeout(sourceAnimTimer);
+    sourceOpen = false;
+    sourceShell.style.transition = "none";
+    sourceShell.style.height = "0px";
+    syncChrome();
+    afterPaint(() => {
+      if (token !== sourceAnimToken || !editing) return;
+      sourceShell.style.transition = "none";
+      sourceShell.style.height = "auto";
+      const to = Math.max(sourceShell.scrollHeight, sourceInner.scrollHeight, 1);
+      sourceShell.style.height = "0px";
+      void sourceShell.offsetHeight;
+      sourceShell.style.transition = `height ${SOURCE_EXPAND_MS}ms ease`;
+      sourceShell.style.height = `${to}px`;
+      waitHeightTransition(token, () => {
+        if (!editing) return;
+        finishExpandOpen();
+      });
+    });
+  };
+  const collapseSourceShell = (after: () => void) => {
+    const finish = () => {
+      sourceCollapsing = false;
+      sourceOpen = false;
+      sourceShell.style.transition = "none";
+      sourceShell.style.height = "0px";
+      after();
+      resetSourceShellStyle();
+    };
+    if (prefersReducedMotion()) {
+      finish();
+      return;
+    }
+    const from = sourceShell.getBoundingClientRect().height || sourceInner.scrollHeight;
+    if (from <= 0.5) {
+      finish();
+      return;
+    }
+    sourceCollapsing = true;
+    sourceOpen = true;
+    const token = ++sourceAnimToken;
+    window.clearTimeout(sourceAnimTimer);
+    sourceShell.style.transition = "none";
+    sourceShell.style.height = `${from}px`;
+    syncChrome();
+    afterPaint(() => {
+      if (token !== sourceAnimToken) return;
+      sourceShell.style.transition = `height ${SOURCE_EXPAND_MS}ms ease`;
+      sourceShell.style.height = "0px";
+      waitHeightTransition(token, finish);
+    });
+  };
   const isDiagram = () => isDiagramLanguage(currentNode.attrs.language);
   const isCommittedDiagram = () => isDiagramLanguage(currentNode.attrs.language);
   const diagramKind = () => toDiagramKind(currentNode.attrs.language);
@@ -113,6 +219,7 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
     codeBlockEditSessions.set(editor, {
       pos: range.pos,
       diagram: isCommittedDiagram(),
+      sourceOpen,
     });
   };
 
@@ -225,7 +332,7 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
 
   const syncChrome = () => {
     const diagram = isDiagram();
-    const showSource = diagram ? (editor.isEditable && editing) : true;
+    const showSource = diagram ? (editor.isEditable && (editing || sourceCollapsing)) : true;
     const inside = selectionInThisBlock();
     if (inside !== null) selectionInside = inside;
     const busy = langPickerBusy();
@@ -234,7 +341,8 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
     if (diagram) {
       const modeClass = showSource ? " is-editing" : " is-preview";
       const armedClass = !showSource && armed ? " is-armed" : "";
-      dom.className = `doc-code-block-wrap doc-diagram${modeClass}${armedClass}`;
+      const openClass = showSource && sourceOpen ? " is-source-open" : "";
+      dom.className = `doc-code-block-wrap doc-diagram${modeClass}${armedClass}${openClass}`;
     } else {
       armed = false;
       dom.className = `doc-code-block-wrap${plainEditing ? " is-plain-editing" : ""}`;
@@ -397,6 +505,10 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
     }
     const range = nodeRange();
     if (!range) return;
+    const shouldAnimateExpand = isDiagram();
+    sourceCollapsing = false;
+    sourceOpen = !shouldAnimateExpand;
+    pendingFocusAfterExpand = shouldAnimateExpand && opts?.focusSource !== false;
     editing = true;
     armed = false;
     clearArmedSession();
@@ -406,16 +518,11 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
       window.clearTimeout(debounceTimer);
     }
     rememberEditSession();
-    // 先切 class 开 CSS 高度过渡，再落点。落点会触发 selectionUpdate/deselect，
-    // 用 editLock 挡住误 commit（第一次点条收不回源码的根因）
+    // 先切 is-editing 但保持 height:0；展开完成后再落点，避免 NodeView 重建跳过动画
     lockEnteringEdit();
     syncChrome();
-    if (opts?.focusSource !== false) {
-      requestAnimationFrame(() => {
-        if (!editing) return;
-        placeCaretInSource();
-      });
-    }
+    if (shouldAnimateExpand) expandSourceShell();
+    else if (opts?.focusSource !== false) placeCaretInSource();
   };
 
   const rememberArmedSession = () => {
@@ -430,7 +537,7 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
 
   /** 图表预览：显示 20px 下拉条，不进入源码编辑 */
   const armExpandBar = () => {
-    if (!editor.isEditable || !isDiagram() || editing) return;
+    if (!editor.isEditable || !isDiagram() || editing || sourceCollapsing) return;
     if (armed) {
       rememberArmedSession();
       syncExpandBar();
@@ -456,6 +563,7 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
     }
     if (isEnteringEdit()) return;
     const wasDiagram = isDiagram();
+    if (wasDiagram) sourceCollapsing = true;
     editing = false;
     armed = false;
     editLockUntil = 0;
@@ -463,9 +571,14 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
     if (langPickerBusy()) closeCodeLangPicker();
     clearEditSession();
     if (!opts?.keepSelection) focusAfterNode();
-    syncChrome();
-    if (wasDiagram) scheduleRender();
-    else syncHighlight();
+    const finishChrome = () => {
+      sourceCollapsing = false;
+      syncChrome();
+      if (wasDiagram) scheduleRender();
+      else syncHighlight();
+    };
+    if (wasDiagram) collapseSourceShell(finishChrome);
+    else finishChrome();
   };
 
   const stopPointer = (event: Event) => {
@@ -701,12 +814,21 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
   ) {
     editing = true;
     armed = false;
+    sourceOpen = pendingSession.sourceOpen !== false;
     selectionInside = selectionInThisBlock() ?? true;
-    syncChrome();
-    requestAnimationFrame(() => {
-      if (!editing) return;
-      placeCaretInSource();
-    });
+    if (isDiagram() && !sourceOpen) {
+      pendingFocusAfterExpand = true;
+      lockEnteringEdit();
+      syncChrome();
+      expandSourceShell();
+    } else {
+      sourceOpen = true;
+      syncChrome();
+      requestAnimationFrame(() => {
+        if (!editing) return;
+        placeCaretInSource();
+      });
+    }
   } else {
     selectionInside = selectionInThisBlock() ?? false;
     if (
@@ -810,6 +932,7 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
     },
     destroy: () => {
       // 不在此关闭共享语言选择器：聚焦输入会触发 NodeView 重建，菜单需靠 rebind 存活
+      stopSourceAnim();
       window.clearTimeout(debounceTimer);
       editor.off("selectionUpdate", onSelectionUpdate);
       editor.off("blur", onEditorBlur);
