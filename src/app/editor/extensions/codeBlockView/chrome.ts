@@ -123,15 +123,23 @@ export function createChrome(ctx: CodeBlockViewCtx) {
       ctx.langPickerHold = false;
       ctx.clearLangPickerSession();
       window.clearTimeout(ctx.blurCommitTimer);
-      // 关闭选择器后保持编辑态：禁止立刻因选区在块外而 commit 收起源码
-      ctx.lockEnteringEdit(480);
-      if (ctx.editing) ctx.rememberEditSession();
-      requestAnimationFrame(() => {
-        ctx.syncChrome();
-        if (ctx.editing && ctx.isDiagram() && !ctx.selectionInThisBlock()) {
-          ctx.lockEnteringEdit(320);
-        }
-      });
+      try {
+        (window as any).__docCodeLangPickerOpen = false;
+      } catch { /* ignore */ }
+      // 关闭选择器后短锁，避免焦点回到编辑器瞬间误判失焦收起
+      ctx.lockEnteringEdit(320);
+      if (ctx.editing) {
+        ctx.rememberEditSession();
+        // 选区可能已在块外：主动收回焦点到源码，保持展开
+        requestAnimationFrame(() => {
+          if (ctx.destroyed || !ctx.editing) return;
+          ctx.syncChrome();
+          if (ctx.isDiagram() && !ctx.selectionInThisBlock() && !ctx.langPickerBusy()) {
+            ctx.lockEnteringEdit(240);
+            ctx.placeCaretInSource();
+          }
+        });
+      }
     },
     // 输入过程不刷新预览；仅回车/点选 apply 后切换
     onBeforeApply: (nextId: string | null) => {

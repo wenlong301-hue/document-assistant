@@ -75,11 +75,10 @@ export function createEvents(ctx: CodeBlockViewCtx) {
       if (!ctx.isDiagram()) ctx.syncHighlight();
       return;
     }
-    // 选区离开代码块：普通代码块提交；图表改由 blur/Esc 退出，避免 placeCaret/语言选择器抢焦点误收起源码
+    // 选区离开代码块：提交退出（语言选择器 / 展开锁定期除外）
     if (!next) {
       if (ctx.editing) {
-        if (ctx.isEnteringEdit() || ctx.langPickerHold || ctx.langPickerBusy()) return;
-        if (ctx.isDiagram()) return;
+        if (ctx.isEnteringEdit() || ctx.langPickerHold || ctx.langPickerBusy() || isCodeLangPickerOpen()) return;
         ctx.commitEdit({ keepSelection: true });
         return;
       }
@@ -129,9 +128,6 @@ export function createEvents(ctx: CodeBlockViewCtx) {
     }
   };
   ctx.onEditorBlur = () => {
-    // 图表编辑态不走 blur 收起：Electron 首次点语言会抢焦点触发 blur，易误关源码壳
-    // 图表退出改由 Esc / 点编辑器外（onOutsidePointer）处理
-    if (ctx.isDiagram()) return;
     window.clearTimeout(ctx.blurCommitTimer);
     ctx.blurCommitTimer = window.setTimeout(() => {
       if (ctx.destroyed || !ctx.editing) return;
@@ -145,7 +141,7 @@ export function createEvents(ctx: CodeBlockViewCtx) {
     }, 220);
   };
   ctx.onOutsidePointer = (event: Event) => {
-    if (ctx.destroyed || !ctx.editing || !ctx.isDiagram()) return;
+    if (ctx.destroyed || !ctx.editing) return;
     if (ctx.langPickerHold || ctx.langPickerBusy() || isCodeLangPickerOpen() || ctx.isEnteringEdit()) return;
     const target = event.target as Element | null;
     if (!target) return;
