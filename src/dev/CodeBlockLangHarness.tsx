@@ -36,10 +36,15 @@ export default function CodeBlockLangHarness() {
         .doc-tiptap-content .doc-code-block>code{position:relative;z-index:1;display:block;background:transparent;outline:none}
         .doc-tiptap-content .doc-code-block-wrap.doc-diagram{border:1px solid #E8E9EE;border-radius:8px;overflow:hidden;background:#F6F7FA}
         .doc-tiptap-content .doc-diagram.is-preview{background:#fff;cursor:pointer}
+        .doc-tiptap-content .doc-diagram-source-shell{display:grid;grid-template-rows:1fr;width:100%;flex-shrink:0;box-sizing:border-box;transition:grid-template-rows .28s ease}
+        .doc-tiptap-content .doc-diagram-source-inner{min-height:0;overflow:hidden;display:flex;flex-direction:column}
+        .doc-tiptap-content .doc-diagram.is-preview .doc-diagram-source-shell{grid-template-rows:0fr}
+        .doc-tiptap-content .doc-diagram.is-editing .doc-diagram-source-shell{grid-template-rows:1fr}
         .doc-tiptap-content .doc-diagram.is-editing .doc-diagram-preview{border-top:0;background:#fff;padding:16px;min-height:120px;border-radius:0 0 8px 8px}
         .doc-tiptap-content .doc-diagram.is-preview .doc-diagram-preview{padding:16px;min-height:120px}
-        .doc-tiptap-content .doc-diagram-expand-bar{display:none;align-items:center;justify-content:center;gap:6px;height:20px;width:100%;padding:0 12px;margin:0;border:0;border-bottom:1px solid #E8E9EE;background:#F6F7FA;color:#8D8E99;font-size:12px;font-family:PingFang SC,sans-serif;cursor:pointer;flex-shrink:0;box-sizing:border-box}
-        .doc-tiptap-content .doc-diagram.is-armed .doc-diagram-expand-bar{display:flex!important}
+        .doc-tiptap-content .doc-diagram-expand-bar{display:flex;align-items:center;justify-content:center;gap:6px;height:0;max-height:0;opacity:0;width:100%;padding:0 12px;margin:0;border:0;border-bottom:0 solid #E8E9EE;background:#F6F7FA;color:#8D8E99;font-size:12px;font-family:PingFang SC,sans-serif;cursor:pointer;flex-shrink:0;box-sizing:border-box;overflow:hidden;pointer-events:none;transition:height .2s ease,max-height .2s ease,opacity .18s ease,border-bottom-width .2s ease}
+        .doc-tiptap-content .doc-diagram.is-armed .doc-diagram-expand-bar{height:20px;max-height:20px;opacity:1;border-bottom-width:1px;pointer-events:auto}
+        .doc-tiptap-content .doc-diagram.is-editing .doc-diagram-expand-bar{height:0;max-height:0;opacity:0;border-bottom-width:0;pointer-events:none}
         .doc-tiptap-content .doc-diagram-expand-bar:hover{background:#F5F6F8;color:#131212}
         .doc-tiptap-content .doc-diagram-expand-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%}
         .doc-tiptap-content .doc-diagram-expand-chevron{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor;flex-shrink:0}

@@ -1364,18 +1364,24 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         .doc-tiptap-content .doc-code-block-wrap.doc-diagram{border:1px solid #E8E9EE;border-radius:8px;overflow:hidden}
         .doc-tiptap-content .doc-code-block-wrap.doc-diagram.is-lang-open{overflow:visible}
         .doc-tiptap-content .doc-diagram.is-editing{display:flex;flex-direction:column;box-shadow:none}
+        .doc-tiptap-content .doc-diagram-source-shell{display:grid;grid-template-rows:1fr;width:100%;flex-shrink:0;box-sizing:border-box;transition:grid-template-rows .28s ease}
+        .doc-tiptap-content .doc-diagram-source-inner{min-height:0;overflow:hidden;display:flex;flex-direction:column}
+        .doc-tiptap-content .doc-diagram.is-preview .doc-diagram-source-shell{grid-template-rows:0fr}
+        .doc-tiptap-content .doc-diagram.is-editing .doc-diagram-source-shell{grid-template-rows:1fr}
         .doc-tiptap-content .doc-diagram .doc-diagram-source{margin:0;border:0;border-radius:0;background:#F6F7FA;padding:16px}
         .doc-tiptap-content .doc-diagram.is-editing .doc-diagram-source .doc-code-highlight{padding:16px}
         .doc-tiptap-content .doc-diagram.is-preview{cursor:pointer;background:#fff}
         .doc-tiptap-content .doc-diagram.is-preview:hover{border-color:#D8DAE0}
         .doc-tiptap-content .doc-diagram.is-editing .doc-diagram-preview{border-top:0;background:#fff;padding:16px;min-height:120px;border-radius:0 0 8px 8px}
         .doc-tiptap-content .doc-diagram.is-preview .doc-diagram-preview{padding:16px;min-height:120px}
-        .doc-tiptap-content .doc-diagram-expand-bar{display:none;align-items:center;justify-content:center;gap:6px;height:20px;width:100%;padding:0 12px;margin:0;border:0;border-bottom:1px solid #E8E9EE;border-radius:0;background:#F6F7FA;color:#8D8E99;font-size:12px;font-family:PingFang SC,sans-serif;font-weight:400;line-height:1;cursor:pointer;flex-shrink:0;box-sizing:border-box;appearance:none;-webkit-appearance:none}
-        .doc-tiptap-content .doc-diagram.is-armed .doc-diagram-expand-bar{display:flex!important}
+        .doc-tiptap-content .doc-diagram-expand-bar{display:flex;align-items:center;justify-content:center;gap:6px;height:0;max-height:0;opacity:0;width:100%;padding:0 12px;margin:0;border:0;border-bottom:0 solid #E8E9EE;border-radius:0;background:#F6F7FA;color:#8D8E99;font-size:12px;font-family:PingFang SC,sans-serif;font-weight:400;line-height:1;cursor:pointer;flex-shrink:0;box-sizing:border-box;appearance:none;-webkit-appearance:none;overflow:hidden;pointer-events:none;transition:height .2s ease,max-height .2s ease,opacity .18s ease,border-bottom-width .2s ease}
+        .doc-tiptap-content .doc-diagram.is-armed .doc-diagram-expand-bar{height:20px;max-height:20px;opacity:1;border-bottom-width:1px;pointer-events:auto}
+        .doc-tiptap-content .doc-diagram.is-editing .doc-diagram-expand-bar{height:0;max-height:0;opacity:0;border-bottom-width:0;pointer-events:none}
         .doc-tiptap-content .doc-diagram-expand-bar:hover{background:#F5F6F8;color:#131212}
         .doc-tiptap-content .doc-diagram-expand-bar:active{background:#EBECF0;color:#131212}
         .doc-tiptap-content .doc-diagram-expand-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%}
         .doc-tiptap-content .doc-diagram-expand-chevron{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor;flex-shrink:0}
+        @media (prefers-reduced-motion:reduce){.doc-tiptap-content .doc-diagram-expand-bar{transition:none!important}.doc-tiptap-content .doc-diagram-source-shell{transition:none!important}}
         .doc-tiptap-content .doc-diagram-preview{overflow-x:auto;text-align:center;box-sizing:border-box;color:#8D8E99;font-size:13px;font-family:PingFang SC,sans-serif;line-height:1.6;display:flex;align-items:center;justify-content:center}
         .doc-tiptap-content .doc-diagram-preview svg{max-width:100%;height:auto;display:block;margin:0 auto;pointer-events:none}
         .doc-tiptap-content .doc-diagram-error{color:#E53E3E;font-size:12px;line-height:1.5;text-align:left;white-space:pre-wrap;word-break:break-word;width:100%}

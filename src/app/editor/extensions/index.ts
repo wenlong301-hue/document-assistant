@@ -28,6 +28,9 @@ const codeBlockEditSessions = new WeakMap<object, {
 /** 图表预览武装态：NodeView 重建后恢复 20px 下拉条 */
 const codeBlockArmedSessions = new WeakMap<object, { pos: number }>();
 
+/** 图表预览缓存：NodeView 重建后立刻还原 SVG，避免展开时重新加载 */
+const codeBlockPreviewCache = new WeakMap<object, Map<number, { source: string; html: string }>>();
+
 /** 当前编辑中的代码块控制器：失焦/Esc 时提交并退出编辑 */
 const codeBlockEditControllers = new WeakMap<object, Set<{
   commit: () => void;
@@ -542,6 +545,8 @@ export const MermaidCodeBlock = CodeBlock.extend({
       const expandBar = document.createElement("button");
       const expandBarLabel = document.createElement("span");
       const expandBarChevron = document.createElement("span");
+      const sourceShell = document.createElement("div");
+      const sourceInner = document.createElement("div");
       const actionBar = document.createElement("div");
       const pre = document.createElement("pre");
       const code = document.createElement("code");
@@ -557,6 +562,13 @@ export const MermaidCodeBlock = CodeBlock.extend({
       let lastSource = "";
       let debounceTimer = 0;
       let selectionInside = false;
+      /** 点条进入编辑后短暂加锁，避免 deselect/selectionUpdate/blur 立刻 commit 收回 */
+      let editLockUntil = 0;
+      const SOURCE_EXPAND_MS = 280;
+      const lockEnteringEdit = () => {
+        editLockUntil = Date.now() + SOURCE_EXPAND_MS + 50;
+      };
+      const isEnteringEdit = () => Date.now() < editLockUntil;
       const isDiagram = () => isDiagramLanguage(currentNode.attrs.language);
       const isCommittedDiagram = () => isDiagramLanguage(currentNode.attrs.language);
       const diagramKind = () => toDiagramKind(currentNode.attrs.language);
@@ -721,29 +733,12 @@ export const MermaidCodeBlock = CodeBlock.extend({
         code.style.caretColor = "#3F4046";
       };
 
-      const hideSourceOffscreen = () => {
-        pre.style.position = "absolute";
-        pre.style.left = "0";
-        pre.style.top = "0";
-        pre.style.width = "1px";
-        pre.style.height = "1px";
-        pre.style.opacity = "0";
-        pre.style.overflow = "hidden";
-        pre.style.pointerEvents = "none";
-        pre.style.margin = "0";
-        pre.style.padding = "0";
-        pre.style.border = "0";
-      };
-
-      const showSourceVisible = () => {
-        pre.style.cssText = "position:relative";
-      };
-
       const syncExpandBar = () => {
         const diagram = isDiagram();
         const show = diagram && editor.isEditable && !editing && armed;
         expandBarLabel.textContent = codeLanguageLabel(currentNode.attrs.language);
-        expandBar.style.setProperty("display", show ? "flex" : "none", "important");
+        expandBar.setAttribute("aria-hidden", show ? "false" : "true");
+        expandBar.tabIndex = show ? 0 : -1;
         if (show) dom.classList.add("is-armed");
         else dom.classList.remove("is-armed");
       };
@@ -791,7 +786,6 @@ export const MermaidCodeBlock = CodeBlock.extend({
           preview.style.display = "none";
           preview.innerHTML = "";
           lastSource = "";
-          showSourceVisible();
           syncHighlight();
           return;
         }
@@ -801,26 +795,83 @@ export const MermaidCodeBlock = CodeBlock.extend({
         code.style.caretColor = "";
         preview.style.display = "block";
         preview.style.cursor = editor.isEditable && !showSource ? "pointer" : "default";
-        if (showSource) {
-          showSourceVisible();
-          scheduleRender();
-        } else {
-          hideSourceOffscreen();
-          scheduleRender();
+        // 仅在缺预览时渲染；武装/展开 chrome 切换不得触发重载
+        if (!previewIsFresh()) scheduleRender();
+      };
+
+      const normalizePreviewSource = (source: string) =>
+        String(source || "").replace(/\u00a0/g, " ").trimEnd();
+
+      const previewCacheKey = () => {
+        const range = nodeRange();
+        return range ? range.pos : null;
+      };
+
+      const writePreviewCache = (source: string, html: string) => {
+        const pos = previewCacheKey();
+        if (pos === null) return;
+        let map = codeBlockPreviewCache.get(editor);
+        if (!map) {
+          map = new Map();
+          codeBlockPreviewCache.set(editor, map);
         }
+        map.set(pos, { source, html });
+      };
+
+      const readPreviewCache = (source: string) => {
+        const pos = previewCacheKey();
+        if (pos === null) return null;
+        const hit = codeBlockPreviewCache.get(editor)?.get(pos);
+        if (!hit || hit.source !== source || !hit.html) return null;
+        return hit;
+      };
+
+      const applyPreviewHtml = (html: string) => {
+        preview.className = "doc-diagram-preview";
+        preview.innerHTML = html;
+        preview.querySelectorAll("svg").forEach((svgEl) => {
+          svgEl.removeAttribute("height");
+          (svgEl as SVGElement).style.maxWidth = "100%";
+          (svgEl as SVGElement).style.height = "auto";
+          (svgEl as SVGElement).style.display = "block";
+          (svgEl as SVGElement).style.margin = "0 auto";
+          (svgEl as SVGElement).style.pointerEvents = "none";
+        });
+      };
+
+      const previewIsFresh = (source?: string) => {
+        const trimmed = normalizePreviewSource(source ?? readSource());
+        return Boolean(trimmed) && trimmed === lastSource && Boolean(preview.querySelector("svg"));
+      };
+
+      const restorePreviewFromCache = () => {
+        const trimmed = normalizePreviewSource(readSource());
+        if (!trimmed.trim()) return false;
+        if (previewIsFresh(trimmed)) return true;
+        const hit = readPreviewCache(trimmed);
+        if (!hit) return false;
+        lastSource = trimmed;
+        applyPreviewHtml(hit.html);
+        return true;
       };
 
       const renderPreview = (source: string) => {
         const kind = diagramKind();
         if (!kind) return;
-        const trimmed = String(source || "").replace(/\u00a0/g, " ").trimEnd();
+        const trimmed = normalizePreviewSource(source);
         if (!trimmed.trim()) {
           preview.className = "doc-diagram-preview";
           preview.textContent = editing ? "输入图表源码以预览" : "点击编辑图表";
           lastSource = "";
           return;
         }
-        if (trimmed === lastSource && preview.querySelector("svg")) return;
+        if (previewIsFresh(trimmed)) return;
+        const cached = readPreviewCache(trimmed);
+        if (cached) {
+          lastSource = trimmed;
+          applyPreviewHtml(cached.html);
+          return;
+        }
         const token = ++renderToken;
         preview.className = "doc-diagram-preview";
         if (!preview.querySelector("svg")) preview.textContent = "图表渲染中…";
@@ -828,15 +879,8 @@ export const MermaidCodeBlock = CodeBlock.extend({
         void renderDiagramSourceToHtml(kind, trimmed).then((html) => {
           if (token !== renderToken || !isDiagram()) return;
           lastSource = trimmed;
-          preview.innerHTML = html;
-          preview.querySelectorAll("svg").forEach((svgEl) => {
-            svgEl.removeAttribute("height");
-            (svgEl as SVGElement).style.maxWidth = "100%";
-            (svgEl as SVGElement).style.height = "auto";
-            (svgEl as SVGElement).style.display = "block";
-            (svgEl as SVGElement).style.margin = "0 auto";
-            (svgEl as SVGElement).style.pointerEvents = "none";
-          });
+          applyPreviewHtml(html);
+          writePreviewCache(trimmed, html);
         }).catch((error) => {
           if (token !== renderToken || !isDiagram()) return;
           lastSource = "";
@@ -846,6 +890,8 @@ export const MermaidCodeBlock = CodeBlock.extend({
       };
 
       const scheduleRender = () => {
+        // 源码未变且已有 SVG：跳过，避免点展开条时底部图表闪烁重载
+        if (previewIsFresh() || restorePreviewFromCache()) return;
         window.clearTimeout(debounceTimer);
         debounceTimer = window.setTimeout(() => {
           renderPreview(readSource());
@@ -867,7 +913,6 @@ export const MermaidCodeBlock = CodeBlock.extend({
         if (!editor.isEditable) return;
         if (editing) {
           if (opts?.focusSource !== false) placeCaretInSource();
-          syncChrome();
           return;
         }
         const range = nodeRange();
@@ -881,9 +926,11 @@ export const MermaidCodeBlock = CodeBlock.extend({
           window.clearTimeout(debounceTimer);
         }
         rememberEditSession();
+        // 先切 class 开 CSS 高度过渡，再落点。落点会触发 selectionUpdate/deselect，
+        // 用 editLock 挡住误 commit（第一次点条收不回源码的根因）
+        lockEnteringEdit();
         syncChrome();
         if (opts?.focusSource !== false) {
-          placeCaretInSource();
           requestAnimationFrame(() => {
             if (!editing) return;
             placeCaretInSource();
@@ -927,14 +974,17 @@ export const MermaidCodeBlock = CodeBlock.extend({
           disarmExpandBar();
           return;
         }
+        if (isEnteringEdit()) return;
+        const wasDiagram = isDiagram();
         editing = false;
         armed = false;
+        editLockUntil = 0;
         clearArmedSession();
         if (langPickerBusy()) closeCodeLangPicker();
         clearEditSession();
         if (!opts?.keepSelection) focusAfterNode();
         syncChrome();
-        if (isDiagram()) scheduleRender();
+        if (wasDiagram) scheduleRender();
         else syncHighlight();
       };
 
@@ -963,6 +1013,7 @@ export const MermaidCodeBlock = CodeBlock.extend({
 
       const onExpandBarPointer = (event: Event) => {
         stopPointer(event);
+        if (event.type !== "mousedown") return;
         if (!editor.isEditable || editing) return;
         enterEdit();
       };
@@ -999,6 +1050,7 @@ export const MermaidCodeBlock = CodeBlock.extend({
         // 选区离开代码块：编辑中则提交；武装条改由外部点击收起，避免点预览瞬间误关
         if (!next) {
           if (editing) {
+            if (isEnteringEdit()) return;
             commitEdit({ keepSelection: true });
             return;
           }
@@ -1055,7 +1107,6 @@ export const MermaidCodeBlock = CodeBlock.extend({
       expandBarChevron.setAttribute("aria-hidden", "true");
       expandBar.appendChild(expandBarLabel);
       expandBar.appendChild(expandBarChevron);
-      expandBar.style.setProperty("display", "none", "important");
       expandBar.addEventListener("mousedown", onExpandBarPointer);
       expandBar.addEventListener("click", onExpandBarPointer);
 
@@ -1111,7 +1162,7 @@ export const MermaidCodeBlock = CodeBlock.extend({
         // 武装条不在此收起：点预览常带 preventDefault，易误触发 blur；改由 document pointerdown 收起
         window.clearTimeout(blurCommitTimer);
         blurCommitTimer = window.setTimeout(() => {
-          if (!editing) return;
+          if (!editing || isEnteringEdit()) return;
           if (langPickerBusy()) return;
           const active = document.activeElement as HTMLElement | null;
           if (active?.closest?.(".doc-code-lang-portal, .doc-code-lang-menu")) return;
@@ -1145,10 +1196,14 @@ export const MermaidCodeBlock = CodeBlock.extend({
       // 勿给 pre 设 contentEditable：会与 ProseMirror contentDOM 嵌套冲突，导致粘贴失效
       pre.appendChild(highlightLayer);
       pre.appendChild(code);
-      // 普通：源码 → 底栏；图表：展开条 → 预览；编辑：源码 → 底栏 → 预览
-      dom.appendChild(pre);
-      dom.appendChild(actionBar);
+      sourceInner.className = "doc-diagram-source-inner";
+      sourceInner.appendChild(pre);
+      sourceInner.appendChild(actionBar);
+      sourceShell.className = "doc-diagram-source-shell";
+      sourceShell.appendChild(sourceInner);
+      // 普通：源码壳；图表预览：展开条 → 源码壳(折叠) → 预览；编辑：源码壳展开
       dom.appendChild(expandBar);
+      dom.appendChild(sourceShell);
       dom.appendChild(preview);
       dom.appendChild(editHint);
       dom.appendChild(deleteHint);
@@ -1188,8 +1243,9 @@ export const MermaidCodeBlock = CodeBlock.extend({
           rememberEditSession();
         }
         syncChrome();
-        if (isDiagram()) renderPreview(currentNode.textContent);
-        else syncHighlight();
+        if (isDiagram()) {
+          if (!restorePreviewFromCache()) renderPreview(currentNode.textContent);
+        } else syncHighlight();
       }
       if (langPickerBusy()) rebindCodeLangPickerAnchor(buildLangPickerSession());
 
@@ -1235,7 +1291,10 @@ export const MermaidCodeBlock = CodeBlock.extend({
           } else if (!isDiagram()) syncHighlight();
         },
         deselectNode: () => {
-          if (editing) commitEdit({ keepSelection: true });
+          if (editing) {
+            if (isEnteringEdit()) return;
+            commitEdit({ keepSelection: true });
+          }
           // 武装条不在此收起：点预览后选区常立刻离开节点，会误关；改由外部 pointerdown 收起
           else if (!isDiagram()) syncHighlight();
         },
@@ -1257,14 +1316,16 @@ export const MermaidCodeBlock = CodeBlock.extend({
           return false;
         },
         ignoreMutation: (mutation) => {
-          if (preview.contains(mutation.target as Node)) return true;
-          if (actionBar.contains(mutation.target as Node)) return true;
-          if (expandBar.contains(mutation.target as Node)) return true;
-          if (editHint.contains(mutation.target as Node)) return true;
-          if (deleteHint.contains(mutation.target as Node)) return true;
-          if (langBar.contains(mutation.target as Node)) return true;
-          if (highlightLayer.contains(mutation.target as Node)) return true;
-          if (code.contains(mutation.target as Node)) return false;
+          const target = mutation.target as Node;
+          if (target === sourceShell || target === sourceInner) return true;
+          if (preview.contains(target)) return true;
+          if (actionBar.contains(target)) return true;
+          if (expandBar.contains(target)) return true;
+          if (editHint.contains(target)) return true;
+          if (deleteHint.contains(target)) return true;
+          if (langBar.contains(target)) return true;
+          if (highlightLayer.contains(target)) return true;
+          if (code.contains(target)) return false;
           return true;
         },
         destroy: () => {
