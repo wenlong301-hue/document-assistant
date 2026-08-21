@@ -26,10 +26,98 @@ let shared: SharedPicker | null = null;
 let suppressOutsideCloseUntil = 0;
 /** 当前键盘高亮项在「可见列表」中的下标；-1 表示无 */
 let highlightIndex = -1;
+/** 选择器打开后是否已改过输入（未聚焦时：首字符替换，后续追加） */
+let pickerInputDirty = false;
+let focusHoldToken = 0;
 
 const stop = (event: Event) => {
   event.preventDefault();
   event.stopPropagation();
+};
+
+const isPickerEventTarget = (target: EventTarget | null) => {
+  if (!shared || !target || !(target instanceof Node)) return false;
+  return shared.portal.contains(target) || shared.menu.contains(target);
+};
+
+const blurEditorView = (session?: CodeLangPickerSession | null) => {
+  try {
+    const view = session?.editor?.view ?? shared?.session?.editor?.view;
+    const active = document.activeElement;
+    if (view?.dom && active && (active === view.dom || view.dom.contains(active))) {
+      view.dom.blur();
+    }
+  } catch {
+    /* ignore */
+  }
+};
+
+const focusPickerInput = (session?: CodeLangPickerSession | null, opts?: { select?: boolean }) => {
+  if (!shared?.open) return false;
+  if (session && shared.session !== session) return false;
+  suppressOutsideCloseUntil = Date.now() + 400;
+  blurEditorView(session);
+  try {
+    shared.input.focus({ preventScroll: true });
+    if (opts?.select && !pickerInputDirty) shared.input.select();
+  } catch {
+    try { shared.input.focus(); } catch { /* ignore */ }
+  }
+  return document.activeElement === shared.input;
+};
+
+const holdPickerFocus = (session: CodeLangPickerSession, opts?: { select?: boolean }) => {
+  const token = ++focusHoldToken;
+  const tryOnce = () => {
+    if (token !== focusHoldToken || !shared?.open || shared.session !== session) return true;
+    return focusPickerInput(session, opts);
+  };
+  if (tryOnce()) return;
+  [0, 16, 32, 48, 80, 120, 200, 320].forEach((ms) => {
+    window.setTimeout(() => {
+      if (token !== focusHoldToken) return;
+      if (document.activeElement === shared?.input) return;
+      tryOnce();
+    }, ms);
+  });
+};
+
+const submitHighlightedOrInput = () => {
+  if (!shared) return;
+  const items = visibleItems(shared);
+  if (items.length > 0) {
+    const idx = highlightIndex >= 0 && highlightIndex < items.length ? highlightIndex : 0;
+    applyLanguage(items[idx].dataset.langId || "");
+    return;
+  }
+  applyLanguage(resolveLangInput(shared.input.value));
+};
+
+const handlePickerSpecialKey = (event: KeyboardEvent) => {
+  if (!shared) return false;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    const ed = shared.session?.editor;
+    closeCodeLangPicker();
+    try { ed?.commands?.focus?.(); } catch { /* ignore */ }
+    return true;
+  }
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    moveHighlight(shared, 1);
+    return true;
+  }
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    moveHighlight(shared, -1);
+    return true;
+  }
+  if (event.key === "Enter") {
+    event.preventDefault();
+    submitHighlightedOrInput();
+    return true;
+  }
+  return false;
 };
 
 /** 回车且列表无匹配时：精确命中用选项 id，否则原样应用输入（支持自定义类型） */
@@ -243,44 +331,19 @@ const ensureShared = (): SharedPicker => {
   document.body.appendChild(portal);
   document.body.appendChild(menu);
 
+  input.tabIndex = 0;
   input.addEventListener("mousedown", (event) => event.stopPropagation());
+  input.addEventListener("pointerdown", (event) => event.stopPropagation());
   // 输入仅模糊过滤下拉；语言仅在回车或点选后生效
   input.addEventListener("input", () => {
     if (!shared?.open) return;
+    pickerInputDirty = true;
     highlightIndex = 0;
     filterMenu(shared, input.value);
   });
   input.addEventListener("keydown", (event) => {
     event.stopPropagation();
-    if (!shared) return;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      const ed = shared.session?.editor;
-      closeCodeLangPicker();
-      try { ed?.commands?.focus?.(); } catch { /* ignore */ }
-      return;
-    }
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      moveHighlight(shared, 1);
-      return;
-    }
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      moveHighlight(shared, -1);
-      return;
-    }
-    if (event.key === "Enter") {
-      event.preventDefault();
-      const items = visibleItems(shared);
-      if (items.length > 0) {
-        const idx = highlightIndex >= 0 && highlightIndex < items.length ? highlightIndex : 0;
-        applyLanguage(items[idx].dataset.langId || "");
-      } else {
-        // 列表无匹配：仍应用输入内容（自定义类型）
-        applyLanguage(resolveLangInput(input.value));
-      }
-    }
+    handlePickerSpecialKey(event);
   });
   // 失焦不自动提交：避免输入到一半点开别处就改语言；仅回车 / 点选菜单生效
   input.addEventListener("blur", () => {
@@ -296,6 +359,11 @@ const ensureShared = (): SharedPicker => {
     }, 120);
   });
 
+  const onDocFocusIn = (event: FocusEvent) => {
+    if (!shared?.open) return;
+    if (isPickerEventTarget(event.target)) return;
+    holdPickerFocus(shared.session, { select: !pickerInputDirty });
+  };
   const onDocPointerDown = (event: Event) => {
     if (!shared?.open) return;
     if (Date.now() < suppressOutsideCloseUntil) return;
@@ -306,10 +374,84 @@ const ensureShared = (): SharedPicker => {
     if (anchor && (anchor === target || anchor.contains(target))) return;
     closeCodeLangPicker();
   };
+  const consumeKey = (event: KeyboardEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  };
+  const onDocKeyDown = (event: KeyboardEvent) => {
+    if (!shared?.open) return;
+    if (isPickerEventTarget(event.target)) return;
+    if (event.isComposing || event.key === "Process" || event.key === "Dead") return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    // 选择器开着时光标可能仍在代码块：截住按键，改写到语言输入框
+    if (event.key === "Escape" || event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter") {
+      consumeKey(event);
+      handlePickerSpecialKey(event);
+      return;
+    }
+    if (event.key.length === 1) {
+      consumeKey(event);
+      const focused = document.activeElement === shared.input;
+      if (focused) {
+        const start = shared.input.selectionStart ?? shared.input.value.length;
+        const end = shared.input.selectionEnd ?? start;
+        shared.input.value = shared.input.value.slice(0, start) + event.key + shared.input.value.slice(end);
+        const caret = start + event.key.length;
+        try { shared.input.setSelectionRange(caret, caret); } catch { /* ignore */ }
+      } else if (!pickerInputDirty) {
+        shared.input.value = event.key;
+        try { shared.input.setSelectionRange(1, 1); } catch { /* ignore */ }
+      } else {
+        shared.input.value += event.key;
+        const caret = shared.input.value.length;
+        try { shared.input.setSelectionRange(caret, caret); } catch { /* ignore */ }
+      }
+      pickerInputDirty = true;
+      highlightIndex = 0;
+      filterMenu(shared, shared.input.value);
+      focusPickerInput(shared.session);
+      return;
+    }
+    if (event.key === "Backspace" || event.key === "Delete") {
+      consumeKey(event);
+      const start = shared.input.selectionStart ?? shared.input.value.length;
+      const end = shared.input.selectionEnd ?? start;
+      if (start !== end) {
+        shared.input.value = shared.input.value.slice(0, start) + shared.input.value.slice(end);
+        try { shared.input.setSelectionRange(start, start); } catch { /* ignore */ }
+      } else if (event.key === "Backspace" && start > 0) {
+        shared.input.value = shared.input.value.slice(0, start - 1) + shared.input.value.slice(start);
+        try { shared.input.setSelectionRange(start - 1, start - 1); } catch { /* ignore */ }
+      } else if (event.key === "Delete") {
+        shared.input.value = shared.input.value.slice(0, start) + shared.input.value.slice(start + 1);
+        try { shared.input.setSelectionRange(start, start); } catch { /* ignore */ }
+      }
+      highlightIndex = 0;
+      filterMenu(shared, shared.input.value);
+      focusPickerInput(shared.session);
+      return;
+    }
+    if (event.key === "Tab") {
+      consumeKey(event);
+      focusPickerInput(shared.session, { select: true });
+    }
+  };
   const onReposition = () => {
     if (shared?.open) positionPicker(shared);
   };
+  const blockEditorInput = (event: Event) => {
+    if (!shared?.open) return;
+    if (isPickerEventTarget(event.target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if ("stopImmediatePropagation" in event) event.stopImmediatePropagation();
+  };
   document.addEventListener("mousedown", onDocPointerDown, true);
+  document.addEventListener("focusin", onDocFocusIn, true);
+  document.addEventListener("keydown", onDocKeyDown, true);
+  document.addEventListener("beforeinput", blockEditorInput, true);
+  document.addEventListener("compositionstart", blockEditorInput, true);
   window.addEventListener("resize", onReposition);
   window.addEventListener("scroll", onReposition, true);
 
@@ -349,24 +491,17 @@ export const openCodeLangPicker = (session: CodeLangPickerSession) => {
   picker.open = true;
   const lang = currentLangId(session);
   picker.input.value = lang ? codeLanguageLabel(lang) : "";
+  pickerInputDirty = false;
   picker.portal.style.display = "block";
   picker.menu.style.display = "flex";
   positionPicker(picker);
   filterMenu(picker, picker.input.value, { preferLang: lang });
-  // 延迟聚焦：等当前 pointer 序列结束，避免与编辑器焦点切换打架
-  window.setTimeout(() => {
-    if (!shared?.open || shared.session !== session) return;
-    try {
-      picker.input.focus({ preventScroll: true });
-      picker.input.select();
-    } catch {
-      try { picker.input.focus(); } catch { /* ignore */ }
-    }
-  }, 0);
+  holdPickerFocus(session, { select: true });
 };
 
 export const closeCodeLangPicker = () => {
   if (!shared) return;
+  focusHoldToken += 1;
   const session = shared.session;
   const editor = session?.editor;
   shared.open = false;
@@ -374,6 +509,7 @@ export const closeCodeLangPicker = () => {
   shared.portal.style.display = "none";
   shared.menu.style.display = "none";
   shared.input.value = "";
+  pickerInputDirty = false;
   highlightIndex = -1;
   filterMenu(shared, "");
   try {

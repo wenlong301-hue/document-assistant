@@ -3,6 +3,7 @@ import { Extension } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { moveCellForward, nextCell, selectionCell } from "@tiptap/pm/tables";
 import { commitActiveCodeBlockEdit } from "./codeBlockSessions";
+import { isCodeLangPickerOpen } from "../utils/codeLangPicker";
 import {
   backspaceEmptyBlockquote,
   exitCodeBlockCleanly,
@@ -18,6 +19,7 @@ export const TyporaKeymap = Extension.create({
     return {
       "Mod-Shift-b": () => this.editor.chain().focus().toggleBlockquote().run(),
       "Mod-Enter": () => {
+        if (isCodeLangPickerOpen()) return true;
         if (this.editor.isActive("codeBlock")) {
           return commitActiveCodeBlockEdit(this.editor);
         }
@@ -48,12 +50,14 @@ export const TyporaKeymap = Extension.create({
         return false;
       },
       Escape: () => {
+        if (isCodeLangPickerOpen()) return true;
         if (this.editor.isActive("codeBlock")) {
           return commitActiveCodeBlockEdit(this.editor);
         }
         return false;
       },
       Tab: () => {
+        if (isCodeLangPickerOpen()) return true;
         if (this.editor.isActive("listItem")) return this.editor.chain().focus().sinkListItem("listItem").run();
         if (this.editor.isActive("taskItem")) return this.editor.chain().focus().sinkListItem("taskItem").run();
         return this.editor.commands.indent();
@@ -64,6 +68,7 @@ export const TyporaKeymap = Extension.create({
         return this.editor.commands.outdent();
       },
       Space: () => {
+        if (isCodeLangPickerOpen()) return true;
         const { $from } = this.editor.state.selection;
         const start = $from.start();
         const from = this.editor.state.selection.from;
@@ -96,6 +101,7 @@ export const TyporaKeymap = Extension.create({
         return false;
       },
       Enter: () => {
+        if (isCodeLangPickerOpen()) return true;
         if (this.editor.isActive("codeBlock")) {
           return this.editor.commands.newlineInCode();
         }
@@ -115,6 +121,7 @@ export const TyporaKeymap = Extension.create({
         return false;
       },
       Backspace: () => {
+        if (isCodeLangPickerOpen()) return true;
         if (this.editor.isActive("blockquote") && isTiptapBlockEmpty(this.editor)) {
           return backspaceEmptyBlockquote(this.editor);
         }
@@ -157,6 +164,7 @@ export const TyporaKeymap = Extension.create({
         return false;
       },
       Delete: () => {
+        if (isCodeLangPickerOpen()) return true;
         const { state } = this.editor;
         const { $from, empty } = state.selection;
         if (!empty) return false;

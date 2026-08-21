@@ -40,6 +40,7 @@ import { ColorPicker } from "./ui/ColorPicker";
 import { Dropdown } from "./ui/Dropdown";
 import { LinkModal } from "./ui/LinkModal";
 import { Toast } from "./ui/Toast";
+import { isCodeLangPickerOpen } from "./utils/codeLangPicker";
 import { getElectronAPI } from "@/app/shared/electron";
 import type { RichEditorTiptapProps, SavedSelection, SlashMenuState, TableRowHandle, ToastState, TocHeading, ToolbarPanel } from "./rich-editor/types";
 
@@ -353,9 +354,12 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     content: normalizeEditorHtml(initialHtml),
     editorProps: {
       handleDOMEvents: {
+        beforeinput: () => isCodeLangPickerOpen(),
+        focus: () => isCodeLangPickerOpen(),
         keydown: (view, event) => {
           const activeEditor = editorInstanceRef.current;
           if (!activeEditor) return false;
+          if (isCodeLangPickerOpen()) return true;
           if (handleSlashMenuKeys(event, {
             slashMenuRef,
             slashItemsRef,
@@ -373,9 +377,11 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       handleKeyDown(view, event) {
         const activeEditor = editorInstanceRef.current;
         if (!activeEditor) return false;
+        if (isCodeLangPickerOpen()) return true;
         return handleEditorDomKeydown(activeEditor, event);
       },
       handleTextInput(view, from, to, text) {
+        if (isCodeLangPickerOpen()) return true;
         const activeEditor = editorInstanceRef.current;
         if (tryOpenSlashMenu(view, from, text, {
           editor: activeEditor,
@@ -390,6 +396,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         return applyMarkdownSpaceShortcut(activeEditor, start, from, textBefore);
       },
       handlePaste(view, event) {
+        if (isCodeLangPickerOpen()) return true;
         const items = event.clipboardData?.items;
         if (items) {
           for (let i = 0; i < items.length; i += 1) {
@@ -554,6 +561,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   useEffect(() => {
     if (!editor) return;
     const handler = (event: KeyboardEvent) => {
+      if (isCodeLangPickerOpen()) return;
       if (event.key === "Tab") {
         if (editor.isActive("listItem") || editor.isActive("taskItem")) {
           event.stopImmediatePropagation();

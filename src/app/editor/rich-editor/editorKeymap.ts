@@ -1,5 +1,6 @@
 // @ts-nocheck — TipTap 多版本类型冲突（starter-kit 嵌套 @tiptap/core），运行时无问题
 import { commitActiveCodeBlockEdit, insertParagraphAfterAncestor, isTiptapBlockEmpty } from "../extensions";
+import { isCodeLangPickerOpen } from "../utils/codeLangPicker";
 import { getSlashMenuPlacement } from "../constants";
 import type { SlashItem, SlashMenuState } from "./types";
 
@@ -14,6 +15,7 @@ export const handleListTab = (activeEditor: any, event: KeyboardEvent) => {
 };
 
 export const handleCodeBlockCommitKeys = (activeEditor: any, event: KeyboardEvent) => {
+  if (isCodeLangPickerOpen()) return false;
   if (!(event.key === "Escape" || ((event.metaKey || event.ctrlKey) && event.key === "Enter"))) return false;
   if (!activeEditor.isActive("codeBlock")) return false;
   event.preventDefault();

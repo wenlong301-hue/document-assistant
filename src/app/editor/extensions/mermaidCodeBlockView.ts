@@ -94,7 +94,7 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
     syncChrome();
     if (pendingFocusAfterExpand) {
       pendingFocusAfterExpand = false;
-      placeCaretInSource();
+      if (!langPickerBusy()) placeCaretInSource();
     }
   };
   const expandSourceShell = () => {
@@ -236,12 +236,16 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
       const wasDiagram = isCommittedDiagram();
       const nextIsDiagram = isDiagramLanguage(nextId);
       if (wasDiagram && !nextIsDiagram) {
-        // 图表 → 普通：保持编辑态，会话标记为普通
+        // 图表 → 普通/未知语言：不渲染预览，只显示源码
         if (!editing) {
           editing = true;
         }
         renderToken += 1;
         window.clearTimeout(debounceTimer);
+        stopSourceAnim();
+        sourceCollapsing = false;
+        sourceOpen = true;
+        resetSourceShellStyle();
         preview.style.display = "none";
         preview.innerHTML = "";
         lastSource = "";
@@ -371,6 +375,10 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
     syncLangPicker();
     syncExpandBar();
     if (!diagram) {
+      stopSourceAnim();
+      sourceCollapsing = false;
+      sourceOpen = true;
+      resetSourceShellStyle();
       preview.style.display = "none";
       preview.innerHTML = "";
       lastSource = "";
@@ -487,6 +495,7 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
   };
 
   const placeCaretInSource = () => {
+    if (langPickerBusy()) return;
     const range = nodeRange();
     if (!range) return;
     const end = Math.max(range.pos + 1, range.pos + range.size - 1);
@@ -640,6 +649,11 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
     if (next === null) return;
     const wasInside = selectionInside;
     selectionInside = next;
+    if (langPickerBusy()) {
+      syncChrome();
+      if (!isDiagram()) syncHighlight();
+      return;
+    }
     // 选区离开代码块：编辑中则提交；武装条改由外部点击收起，避免点预览瞬间误关
     if (!next) {
       if (editing) {
@@ -648,11 +662,6 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
         return;
       }
       if (armed) return;
-    }
-    if (langPickerBusy()) {
-      syncChrome();
-      if (!isDiagram()) syncHighlight();
-      return;
     }
     // 普通代码块：进入块内选区时自动进入编辑态；图表仍靠预览点击
     if (next && !editing && editor.isEditable && !isDiagram()) {
@@ -729,16 +738,18 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
   langTrigger.className = "doc-code-lang-trigger";
   langTrigger.contentEditable = "false";
   syncCodeLangTrigger(langTrigger, currentNode.attrs.language);
-  // preventDefault：避免按钮抢焦点导致语言输入框立刻 blur 关闭
-  langTrigger.addEventListener("mousedown", (event) => {
+  langTrigger.tabIndex = -1;
+  // preventDefault：避免按钮/编辑器抢焦点，把光标交给语言输入框
+  const onLangTriggerPointer = (event: Event) => {
     event.preventDefault();
     event.stopPropagation();
-    openLangPicker();
-  });
-  langTrigger.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-  });
+    if (event.type === "mousedown" || event.type === "pointerdown") openLangPicker();
+  };
+  langTrigger.addEventListener("pointerdown", onLangTriggerPointer);
+  langTrigger.addEventListener("mousedown", onLangTriggerPointer);
+  langTrigger.addEventListener("mouseup", onLangTriggerPointer);
+  langTrigger.addEventListener("pointerup", onLangTriggerPointer);
+  langTrigger.addEventListener("click", onLangTriggerPointer);
 
   langBar.appendChild(langTrigger);
   actionBar.appendChild(langBar);
@@ -825,7 +836,7 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
       sourceOpen = true;
       syncChrome();
       requestAnimationFrame(() => {
-        if (!editing) return;
+        if (!editing || langPickerBusy()) return;
         placeCaretInSource();
       });
     }
@@ -893,6 +904,7 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
       } else if (!isDiagram()) syncHighlight();
     },
     deselectNode: () => {
+      if (langPickerBusy()) return;
       if (editing) {
         if (isEnteringEdit()) return;
         commitEdit({ keepSelection: true });
@@ -901,6 +913,10 @@ export const createMermaidCodeBlockView = ({ node, editor, getPos }: any) => {
       else if (!isDiagram()) syncHighlight();
     },
     stopEvent: (event) => {
+      if (langPickerBusy()) {
+        const type = event.type;
+        if (type === "keydown" || type === "keyup" || type === "keypress" || type === "beforeinput" || type === "input" || type === "textInput") return true;
+      }
       const target = event.target as Node | null;
       if (target && (langBar.contains(target) || deleteHint.contains(target) || actionBar.contains(target) || expandBar.contains(target))) return true;
       if (isDiagram()) {

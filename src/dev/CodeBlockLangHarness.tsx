@@ -37,6 +37,7 @@ export default function CodeBlockLangHarness() {
         .doc-tiptap-content .doc-code-block-wrap.doc-diagram{border:1px solid #E8E9EE;border-radius:8px;overflow:hidden;background:#F6F7FA}
         .doc-tiptap-content .doc-diagram.is-preview{background:#fff;cursor:pointer}
         .doc-tiptap-content .doc-diagram-source-shell{display:block;width:100%;height:0;min-height:0;flex:0 0 auto;box-sizing:border-box;overflow:hidden}
+        .doc-tiptap-content .doc-code-block-wrap:not(.doc-diagram) .doc-diagram-source-shell{height:auto;overflow:visible}
         .doc-tiptap-content .doc-diagram-source-inner{display:flex;flex-direction:column}
         .doc-tiptap-content .doc-diagram.is-source-open .doc-diagram-source-shell{height:auto}
         .doc-tiptap-content .doc-diagram.is-editing .doc-diagram-preview{border-top:0;background:#fff;padding:16px;min-height:120px;border-radius:0 0 8px 8px}
