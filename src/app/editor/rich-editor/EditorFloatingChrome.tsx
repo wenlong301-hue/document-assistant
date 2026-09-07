@@ -23,6 +23,7 @@ export function EditorFloatingChrome(props: any) {
     selectedImgRect, editorVisibleRect, imageCustomPct, setImageCustomPct,
     imageRatioLocked, setImageRatioLocked, imgBarSlider, setImgBarSlider,
     selectedImagePosRef, setSelectedImgRect, updateImageToolbar, applySelectedImageWidth,
+    onImagePreview,
     slashMenu, slashMenuElRef, slashItems, slashActive, slashPressIdx,
     setSlashActive, setSlashPressIdx, runSlashAction, runSlashFileAction,
   } = props;
@@ -112,6 +113,7 @@ export function EditorFloatingChrome(props: any) {
         setImgBarSlider={setImgBarSlider}
         setSelectedImgRect={setSelectedImgRect}
         updateImageToolbar={updateImageToolbar}
+        onPreview={onImagePreview}
       />
     )}
     {slashMenu && (

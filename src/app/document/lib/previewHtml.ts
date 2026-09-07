@@ -97,6 +97,26 @@ body::-webkit-scrollbar{width:6px}body::-webkit-scrollbar-thumb{background:#d0d1
 .content{overflow:visible;padding:48px 0 96px;height:auto;max-width:820px;width:100%;margin:0 auto;min-width:0;word-wrap:break-word;overflow-wrap:anywhere;font-size:15px;line-height:1.8;color:#131212}
 ${docContentCss(".content")}
 .copy-btn{position:absolute;top:8px;right:8px;z-index:2;height:26px;padding:0 10px;border:none;border-radius:6px;background:rgba(255,255,255,.85);backdrop-filter:blur(4px);color:#707277;font-size:12px;cursor:pointer;display:none;align-items:center;font-family:inherit;transition:color .15s}.content pre:hover .copy-btn{display:flex}.copy-btn:hover{color:#131212;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.content img,.content .doc-image{cursor:zoom-in}
+.img-lightbox{position:fixed;inset:0;z-index:450;display:none;flex-direction:column;background:rgba(0,0,0,.6)}
+.img-lightbox.open{display:flex}
+.img-lightbox-bar{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:56px;flex-shrink:0}
+.img-lightbox-title{margin:0;font-size:16px;font-weight:500;color:#fff;font-family:'PingFang SC',sans-serif;line-height:24px}
+.img-lightbox-actions{display:flex;align-items:center;gap:8px}
+.img-lightbox-btn{height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.1);color:#fff;font-size:14px;font-family:'PingFang SC',sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;line-height:1}
+.img-lightbox-btn:hover{background:rgba(255,255,255,.2)}
+.img-lightbox-pct{min-width:56px;padding:0 8px;font-size:13px}
+.img-lightbox-copy{border:none;background:#fff;color:#131212;padding:0 16px}
+.img-lightbox-copy:hover{opacity:.9;background:#fff}
+.img-lightbox-copy:disabled{opacity:.5;cursor:not-allowed}
+.img-lightbox-close{width:28px;height:28px;padding:0;border:none;border-radius:6px;background:transparent;color:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.img-lightbox-close:hover{background:rgba(255,255,255,.15)}
+.img-lightbox-sep{width:1px;height:20px;background:rgba(255,255,255,.2);margin:0 4px}
+.img-lightbox-stage{position:relative;z-index:1;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.img-lightbox-stage img{max-width:min(92vw,1200px);max-height:calc(100vh - 120px);object-fit:contain;border-radius:8px;box-shadow:0 16px 32px -8px rgba(0,0,0,.35);user-select:none;-webkit-user-drag:none;transform-origin:center center;transition:transform .12s ease-out}
+.img-lightbox-toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:460;background:#15803D;color:#fff;font-size:14px;padding:8px 16px;border-radius:8px;font-family:'PingFang SC',sans-serif;pointer-events:none;opacity:0;transition:opacity .15s}
+.img-lightbox-toast.show{opacity:1}
+.img-lightbox-toast.error{background:#E53E3E}
 .sidebar-right{overflow-y:auto;padding:48px 0 0;position:sticky;top:28px;align-self:start;max-height:calc(100vh - 56px);scrollbar-width:none}
 .sidebar-right::-webkit-scrollbar{display:none}
 .toc-header{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#131212;padding:0 12px 12px}.toc-hamburger{font-size:14px;color:#8d8e99}
@@ -122,6 +142,21 @@ body.nav-open,body.toc-open{overflow:hidden}
 ${hasTree ? `<div class="drawer-mask" id="nav-mask"></div><aside class="drawer" id="nav-drawer" aria-hidden="true"><div class="drawer-head"><div class="drawer-title">${escapeHtml(title)}</div><button type="button" class="drawer-close" id="nav-close" aria-label="关闭">×</button></div><div class="drawer-body" id="nav-drawer-body"></div></aside>` : ''}
 <div class="drawer-mask" id="toc-mask"></div>
 <aside class="drawer right" id="toc-drawer" aria-hidden="true"><div class="drawer-head"><div class="drawer-title">在本页</div><button type="button" class="drawer-close" id="toc-close" aria-label="关闭">×</button></div><div class="drawer-body" id="toc-drawer-body"><div id="toc-list-mobile"></div></div></aside>
+<div class="img-lightbox" id="img-lightbox" aria-hidden="true">
+  <div class="img-lightbox-bar">
+    <p class="img-lightbox-title">图片预览</p>
+    <div class="img-lightbox-actions">
+      <button type="button" class="img-lightbox-btn" id="img-lb-zoom-out" title="缩小">−</button>
+      <button type="button" class="img-lightbox-btn img-lightbox-pct" id="img-lb-pct" title="重置缩放">100%</button>
+      <button type="button" class="img-lightbox-btn" id="img-lb-zoom-in" title="放大">+</button>
+      <div class="img-lightbox-sep"></div>
+      <button type="button" class="img-lightbox-btn img-lightbox-copy" id="img-lb-copy">复制图片</button>
+      <button type="button" class="img-lightbox-close" id="img-lb-close" aria-label="关闭"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4L12 12M12 4L4 12" stroke="currentColor" stroke-linecap="round" stroke-width="1.2"/></svg></button>
+    </div>
+  </div>
+  <div class="img-lightbox-stage" id="img-lb-stage"><img id="img-lb-img" alt="预览" draggable="false"/></div>
+</div>
+<div class="img-lightbox-toast" id="img-lb-toast"></div>
 <div class="shell">${hasTree ? `<aside class="sidebar-left" id="sidebar-left">${docTreeHtml}</aside>` : ''}<main class="content" id="doc-content">${fallbackHtml}</main><aside class="sidebar-right"><div class="toc-header"><span class="toc-hamburger">≡</span>在本页</div><div id="toc-list"></div></aside></div>
 <script>
 window.__DOC_SECTIONS__=${escapeScriptJson(sectionMap)};
@@ -153,11 +188,38 @@ function buildToc(){if(!content)return;var ids={};var items=[];content.querySele
 function copyText(text){var value=String(text==null?'':text);if(navigator.clipboard&&navigator.clipboard.writeText&&window.isSecureContext){return navigator.clipboard.writeText(value).then(function(){return true}).catch(function(){return copyTextFallback(value)})}return Promise.resolve(copyTextFallback(value))}
 function copyTextFallback(text){try{var ta=document.createElement('textarea');ta.value=String(text==null?'':text);ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:none;outline:none;box-shadow:none;background:transparent;opacity:0';document.body.appendChild(ta);ta.focus();ta.select();ta.setSelectionRange(0,ta.value.length);var ok=document.execCommand('copy');document.body.removeChild(ta);return !!ok}catch(e){return false}}
 function bindCopy(){if(!content)return;content.querySelectorAll('pre').forEach(function(p){if(p.querySelector('.copy-btn'))return;var b=document.createElement('button');b.className='copy-btn';b.type='button';b.textContent='复制';b.addEventListener('click',function(){var codeEl=p.querySelector('code');var c=codeEl?codeEl.textContent:(function(){var clone=p.cloneNode(true);var btn=clone.querySelector('.copy-btn');if(btn)btn.remove();return clone.textContent||''})();copyText(c).then(function(ok){b.textContent=ok?'已复制':'复制失败';setTimeout(function(){b.textContent='复制'},2000)})});p.appendChild(b)})}
+var lb=document.getElementById('img-lightbox');
+var lbImg=document.getElementById('img-lb-img');
+var lbStage=document.getElementById('img-lb-stage');
+var lbPct=document.getElementById('img-lb-pct');
+var lbToast=document.getElementById('img-lb-toast');
+var lbCopyBtn=document.getElementById('img-lb-copy');
+var lbScale=1,lbOx=0,lbOy=0,lbSrc='',lbCopying=false,lbDrag=null,lbToastTimer=null;
+var LB_MIN=0.25,LB_MAX=5,LB_STEP=0.25;
+function lbClamp(v){return Math.min(LB_MAX,Math.max(LB_MIN,Math.round(v/LB_STEP)*LB_STEP))}
+function lbApplyTransform(){if(!lbImg)return;lbImg.style.transform='translate('+lbOx+'px,'+lbOy+'px) scale('+lbScale+')';lbImg.style.cursor=lbScale>1?'grab':'default';lbImg.style.transition=lbDrag?'none':'transform .12s ease-out';if(lbPct)lbPct.textContent=Math.round(lbScale*100)+'%'}
+function lbReset(){lbScale=1;lbOx=0;lbOy=0;lbApplyTransform()}
+function lbZoom(delta){lbScale=lbClamp(lbScale+delta);if(lbScale<=1){lbOx=0;lbOy=0}lbApplyTransform()}
+function lbShowToast(msg,isError){if(!lbToast)return;lbToast.textContent=msg;lbToast.className='img-lightbox-toast show'+(isError?' error':'');if(lbToastTimer)clearTimeout(lbToastTimer);lbToastTimer=setTimeout(function(){lbToast.classList.remove('show')},2200)}
+function lbClose(){if(!lb)return;lb.classList.remove('open');lb.setAttribute('aria-hidden','true');lbSrc='';lbReset();lbDrag=null;document.body.style.overflow=''}
+function lbOpen(src){if(!lb||!lbImg||!src)return;lbSrc=src;lbImg.src=src;lbReset();lb.classList.add('open');lb.setAttribute('aria-hidden','false');document.body.style.overflow='hidden'}
+function srcToBlob(src){if(String(src).indexOf('data:')===0)return fetch(src).then(function(r){return r.blob()});return fetch(src).then(function(r){if(!r.ok)throw new Error('fetch failed');return r.blob()})}
+function blobToPng(src,blob){var type=blob.type&&blob.type.indexOf('image/')===0?blob.type:'image/png';if(type==='image/png')return Promise.resolve(blob);return new Promise(function(resolve,reject){var url=(String(src).indexOf('data:')===0||String(src).indexOf('blob:')===0)?src:URL.createObjectURL(blob);var revoke=url!==src;var img=new Image();img.onload=function(){var canvas=document.createElement('canvas');canvas.width=img.naturalWidth||img.width;canvas.height=img.naturalHeight||img.height;var ctx=canvas.getContext('2d');if(revoke)URL.revokeObjectURL(url);if(!ctx){reject(new Error('canvas'));return}ctx.drawImage(img,0,0);canvas.toBlob(function(b){b?resolve(b):reject(new Error('toBlob'))},'image/png')};img.onerror=function(){if(revoke)URL.revokeObjectURL(url);reject(new Error('load'))};img.src=url})}
+function lbCopy(){if(lbCopying||!lbSrc)return;lbCopying=true;if(lbCopyBtn)lbCopyBtn.disabled=true;srcToBlob(lbSrc).then(function(blob){return blobToPng(lbSrc,blob)}).then(function(png){if(!navigator.clipboard||!navigator.clipboard.write||typeof ClipboardItem==='undefined')throw new Error('unsupported');return navigator.clipboard.write([new ClipboardItem({'image/png':png})])}).then(function(){lbShowToast('图片已复制到剪贴板',false)}).catch(function(err){console.error(err);lbShowToast('复制失败，请检查剪贴板权限',true)}).then(function(){lbCopying=false;if(lbCopyBtn)lbCopyBtn.disabled=false})}
+function bindImagePreview(){if(!content)return;content.querySelectorAll('img').forEach(function(img){if(img.getAttribute('data-lb-bound')==='1')return;img.setAttribute('data-lb-bound','1');img.addEventListener('click',function(e){var src=img.getAttribute('src');if(!src)return;e.preventDefault();e.stopPropagation();lbOpen(src)})})}
+if(document.getElementById('img-lb-zoom-in'))document.getElementById('img-lb-zoom-in').addEventListener('click',function(e){e.stopPropagation();lbZoom(LB_STEP)});
+if(document.getElementById('img-lb-zoom-out'))document.getElementById('img-lb-zoom-out').addEventListener('click',function(e){e.stopPropagation();lbZoom(-LB_STEP)});
+if(lbPct)lbPct.addEventListener('click',function(e){e.stopPropagation();lbReset()});
+if(lbCopyBtn)lbCopyBtn.addEventListener('click',function(e){e.stopPropagation();lbCopy()});
+if(document.getElementById('img-lb-close'))document.getElementById('img-lb-close').addEventListener('click',function(e){e.stopPropagation();lbClose()});
+if(lb)lb.addEventListener('click',function(e){if(e.target===lb)lbClose()});
+if(lbStage){lbStage.addEventListener('click',function(e){e.stopPropagation()});lbStage.addEventListener('wheel',function(e){e.preventDefault();lbZoom(e.deltaY<0?LB_STEP:-LB_STEP)},{passive:false});lbStage.addEventListener('mousedown',function(e){if(lbScale<=1||e.button!==0)return;e.preventDefault();lbDrag={x:e.clientX,y:e.clientY,ox:lbOx,oy:lbOy};function onMove(ev){if(!lbDrag)return;lbOx=lbDrag.ox+(ev.clientX-lbDrag.x);lbOy=lbDrag.oy+(ev.clientY-lbDrag.y);lbApplyTransform()}function onUp(){lbDrag=null;lbApplyTransform();document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp)}document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp)});if(lbImg)lbImg.addEventListener('dblclick',function(e){e.stopPropagation();if(lbScale===1)lbZoom(1);else lbReset()})}
+document.addEventListener('keydown',function(e){if(!lb||!lb.classList.contains('open'))return;if(e.key==='Escape'){e.preventDefault();lbClose()}else if(e.key==='+'||e.key==='='){e.preventDefault();lbZoom(LB_STEP)}else if(e.key==='-'){e.preventDefault();lbZoom(-LB_STEP)}else if(e.key==='0'){e.preventDefault();lbReset()}else if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='c'){e.preventDefault();lbCopy()}});
 function updateTreeIcon(node){var btn=node&&node.querySelector('.tree-toggle:not(:disabled)');var path=btn&&btn.querySelector('.tree-toggle-path');if(path)path.setAttribute('d',node.classList.contains('expanded')?btn.getAttribute('data-expanded-path'):btn.getAttribute('data-collapsed-path'))}
 function directChildNodes(node){if(!node)return[];var wrap=null;for(var i=0;i<node.children.length;i++){if(node.children[i].classList&&node.children[i].classList.contains('tree-children')){wrap=node.children[i];break}}if(!wrap)return[];var out=[];for(var j=0;j<wrap.children.length;j++){if(wrap.children[j].classList&&wrap.children[j].classList.contains('tree-node'))out.push(wrap.children[j])}return out}
 function resolveId(id){if(id&&sections[id])return id;function firstIn(node){if(!node)return null;var nid=node.getAttribute('data-node-id');if(node.getAttribute('data-previewable')==='1'&&nid&&sections[nid])return nid;var kids=directChildNodes(node);for(var i=0;i<kids.length;i++){var f=firstIn(kids[i]);if(f)return f}return null}if(id){var start=document.querySelector('.tree-node[data-node-id="'+cssEscape(id)+'"]');var from=firstIn(start);if(from)return from}for(var k in sections){if(Object.prototype.hasOwnProperty.call(sections,k))return k}return id}
 function scrollToAnchor(anchor){if(!anchor)return false;var target=document.getElementById(anchor);if(!target)return false;var top=target.getBoundingClientRect().top+window.scrollY-20;window.scrollTo({top:Math.max(0,top),behavior:'smooth'});return true}
-function selectNode(id,options){options=options||{};var real=resolveId(id);var s=sections[real];if(!s){if(content&&!content.innerHTML.trim())content.innerHTML='<h1>'+escapeText('文档')+'</h1><p>暂无内容</p>';return}if(content)content.innerHTML=s.html||('<h1>'+escapeText(s.name)+'</h1><p>暂无内容</p>');document.querySelectorAll('.tree-item').forEach(function(el){el.classList.toggle('active',el.getAttribute('data-node-id')===real)});document.querySelectorAll('.tree-node[data-node-id="'+cssEscape(real)+'"]').forEach(function(node){var cur=node;while(cur){cur.classList.add('expanded');updateTreeIcon(cur);cur=cur.parentElement?cur.parentElement.closest('.tree-node'):null}});if(mobileTitle)mobileTitle.textContent=s.name||'';buildToc();bindCopy();if(!options.keepNav)closeNav();closeToc();if(options.anchor){setTimeout(function(){if(!scrollToAnchor(options.anchor)&&!options.skipScroll)window.scrollTo(0,0)},0)}else if(!options.skipScroll)window.scrollTo(0,0)}
+function selectNode(id,options){options=options||{};var real=resolveId(id);var s=sections[real];if(!s){if(content&&!content.innerHTML.trim())content.innerHTML='<h1>'+escapeText('文档')+'</h1><p>暂无内容</p>';return}if(content)content.innerHTML=s.html||('<h1>'+escapeText(s.name)+'</h1><p>暂无内容</p>');document.querySelectorAll('.tree-item').forEach(function(el){el.classList.toggle('active',el.getAttribute('data-node-id')===real)});document.querySelectorAll('.tree-node[data-node-id="'+cssEscape(real)+'"]').forEach(function(node){var cur=node;while(cur){cur.classList.add('expanded');updateTreeIcon(cur);cur=cur.parentElement?cur.parentElement.closest('.tree-node'):null}});if(mobileTitle)mobileTitle.textContent=s.name||'';buildToc();bindCopy();bindImagePreview();if(!options.keepNav)closeNav();closeToc();if(options.anchor){setTimeout(function(){if(!scrollToAnchor(options.anchor)&&!options.skipScroll)window.scrollTo(0,0)},0)}else if(!options.skipScroll)window.scrollTo(0,0)}
 function onTreeClick(e){var target=e.target;if(!target)return;var toggle=target.closest?target.closest('.tree-toggle'):null;if(toggle){var node=toggle.closest('.tree-node');if(node&&!toggle.disabled){node.classList.toggle('expanded');updateTreeIcon(node);var sid=node.getAttribute('data-node-id');document.querySelectorAll('.tree-node[data-node-id="'+cssEscape(sid)+'"]').forEach(function(n){if(n===node)return;if(node.classList.contains('expanded'))n.classList.add('expanded');else n.classList.remove('expanded');updateTreeIcon(n)})}e.preventDefault();e.stopPropagation();return}var item=target.closest?target.closest('.tree-item'):null;if(item)selectNode(item.getAttribute('data-node-id'))}
 document.addEventListener('click',function(e){var t=e.target;if(!t||!t.closest)return;if(t.closest('.tree-item')||t.closest('.tree-toggle'))onTreeClick(e)});
 document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a[href]'):null;if(!a||!content||!content.contains(a))return;var href=a.getAttribute('href')||'';var url=null;try{url=new URL(href,window.location.href)}catch(err){return}var node=url.searchParams.get('node');var anchor=url.hash?decodeURIComponent(url.hash.slice(1)):'';if(node&&sections[resolveId(node)]){e.preventDefault();selectNode(node,{anchor:anchor});return}if(!node&&href.charAt(0)==='#'&&anchor){e.preventDefault();scrollToAnchor(anchor)}});

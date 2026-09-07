@@ -11,3 +11,4 @@ export { IconSvg } from "./ui/IconSvg";
 export { InlineIconSvg } from "./ui/InlineIconSvg";
 export { LinkModal } from "./ui/LinkModal";
 export { Toast } from "./ui/Toast";
+export { ImagePreviewModal } from "./ui/ImagePreviewModal";

@@ -17,6 +17,7 @@ export function EditorImageToolbar({
   setImgBarSlider,
   setSelectedImgRect,
   updateImageToolbar,
+  onPreview,
 }: {
   selectedImgRect: DOMRect;
   editorVisibleRect: DOMRect;
@@ -32,6 +33,7 @@ export function EditorImageToolbar({
   setImgBarSlider: (value: boolean) => void;
   setSelectedImgRect: (rect: DOMRect) => void;
   updateImageToolbar: (activeEditor?: any) => void;
+  onPreview?: () => void;
 }) {
   const r = selectedImgRect;
   const editorR = editorVisibleRect;
@@ -98,6 +100,14 @@ export function EditorImageToolbar({
         />
         <span className="text-[13px] text-[#8d8e99] select-none" style={{ fontFamily: "PingFang SC, sans-serif" }}>%</span>
       </div>
+      <div className="w-[1px] h-[20px] bg-[#ebecf0] mx-[2px]" />
+      <button
+        type="button"
+        className="h-[32px] min-w-[40px] px-[8px] rounded-[6px] border border-[#ebecf0] text-[13px] text-[#131212] cursor-pointer hover:bg-[#f5f6f8] transition-colors whitespace-nowrap bg-white"
+        style={{ fontFamily: "PingFang SC, sans-serif" }}
+        title="预览图片"
+        onClick={(e) => { e.stopPropagation(); onPreview?.(); }}
+      >预览</button>
       <div className="w-[1px] h-[20px] bg-[#ebecf0] mx-[2px]" />
       <div
         className={`size-[32px] rounded-[6px] border border-[#ebecf0] flex items-center justify-center cursor-ew-resize bg-white hover:bg-[#f5f6f8] ${imgBarSlider ? "bg-[#f5f6f8]" : ""}`}

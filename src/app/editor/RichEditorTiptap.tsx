@@ -20,6 +20,7 @@ import { EditorStatusBar } from "./rich-editor/EditorStatusBar";
 import { getEditorTextCount, HEADING_OPTIONS } from "./constants";
 import { escapeHtml, normalizeEditorHtml } from "./utils/html";
 import { Toast } from "./ui/Toast";
+import { ImagePreviewModal } from "./ui/ImagePreviewModal";
 import { isCodeLangPickerOpen } from "./utils/codeLangPicker";
 import { getElectronAPI } from "@/app/shared/electron";
 import type { RichEditorTiptapProps, SavedSelection, ToastState, ToolbarPanel } from "./rich-editor/types";
@@ -37,6 +38,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   const [charCount, setCharCount] = useState(0);
   const [toolbarTick, setToolbarTick] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [imagePreviewSrc, setImagePreviewSrc] = useState<string | null>(null);
   const [toolbarPanel, setToolbarPanel] = useState<ToolbarPanel>(null);
   const [colorPickerPos, setColorPickerPos] = useState({ x: 0, y: 0 });
   const [headingDropPos, setHeadingDropPos] = useState({ x: 0, y: 0 });
@@ -108,6 +110,15 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     clearImageToolbar, updateImageToolbar, applySelectedImageWidth,
   } = image;
 
+  const openSelectedImagePreview = useCallback(() => {
+    const activeEditor = editorInstanceRef.current;
+    const pos = selectedImagePosRef.current;
+    if (!activeEditor || pos == null) return;
+    const node = activeEditor.state.doc.nodeAt(pos);
+    const src = node?.attrs?.src;
+    if (typeof src === "string" && src) setImagePreviewSrc(src);
+  }, [selectedImagePosRef]);
+
   const media = useMediaInsert({
     editorInstanceRef,
     mountedRef,
@@ -163,6 +174,16 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       handleDOMEvents: {
         beforeinput: () => isCodeLangPickerOpen(),
         focus: () => isCodeLangPickerOpen(),
+        dblclick: (view, event) => {
+          const target = event.target as HTMLElement | null;
+          const img = target?.closest?.("img.doc-image, [data-resize-container][data-node=\"image\"] img, img") as HTMLImageElement | null;
+          if (!img || !view.dom.contains(img)) return false;
+          const src = img.getAttribute("src");
+          if (!src) return false;
+          event.preventDefault();
+          setImagePreviewSrc(src);
+          return true;
+        },
         keydown: (view, event) => {
           const activeEditor = editorInstanceRef.current;
           if (!activeEditor) return false;
@@ -558,6 +579,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         setSelectedImgRect={setSelectedImgRect}
         updateImageToolbar={updateImageToolbar}
         applySelectedImageWidth={applySelectedImageWidth}
+        onImagePreview={openSelectedImagePreview}
         slashMenu={slashMenu}
         slashMenuElRef={slashMenuElRef}
         slashItems={slashItems}
@@ -616,6 +638,9 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
         </div>
       </div>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      {imagePreviewSrc && (
+        <ImagePreviewModal src={imagePreviewSrc} onClose={() => setImagePreviewSrc(null)} />
+      )}
       <EditorStatusBar
         autoSaveEnabled={autoSaveEnabled}
         lastSavedAt={lastSavedAt}
