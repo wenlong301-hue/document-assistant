@@ -36,7 +36,8 @@ export function useMediaInsert({
     cleanupPendingSlash();
     restoreEditorSelection(activeEditor);
     if (!activeEditor.chain().focus().setImage({ src, alt: file.name }).run()) throw new Error("图片插入失败");
-    setToast({ message: "图片已插入", type: "success" });
+    const isSvg = file.type === "image/svg+xml" || /\.svg$/i.test(file.name);
+    setToast({ message: isSvg ? "已将 SVG 转为 PNG 插入" : "图片已插入", type: "success" });
   } catch (error) {
     console.error("Failed to insert image:", error);
     if (mountedRef.current) setToast({ message: error instanceof Error ? error.message : "图片插入失败", type: "error" });

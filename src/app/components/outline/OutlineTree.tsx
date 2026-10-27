@@ -32,8 +32,14 @@ export function OutlineTree({ nodes, selectedId, docName, contentMap, onSelect, 
   const filteredNodes = useMemo(() => (filtering ? filterOutlineNodes(nodes, filter.trim(), contentMap, getPlainTextFromHtml) : nodes), [nodes, filter, filtering, contentMap]);
 
   useEffect(() => {
-    if (filtering && enterTick > 0 && filteredNodes.length > 0) onSelect(filteredNodes[0].id);
-  }, [enterTick, filtering, filteredNodes, onSelect]);
+    if (!filtering || enterTick <= 0) return;
+    if (filteredNodes.length === 0) {
+      onToast?.("无匹配结果", "info");
+      return;
+    }
+    onSelect(filteredNodes[0].id);
+    if (filteredNodes.length > 1) onToast?.(`共 ${filteredNodes.length} 条，已定位第一条`, "info");
+  }, [enterTick, filtering, filteredNodes, onSelect, onToast]);
 
   const toggle = (id: string) => setExpandedIds((prev) => {
     const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next;

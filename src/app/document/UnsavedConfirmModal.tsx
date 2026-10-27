@@ -1,9 +1,23 @@
-export function UnsavedConfirmModal({ title, message, onSave, onDiscard, onClose }: {
+export function UnsavedConfirmModal({
+  title,
+  message,
+  onSave,
+  onDiscard,
+  onClose,
+  saveLabel = "保存",
+  discardLabel = "不保存",
+  closeLabel = "取消",
+  discardDanger = true,
+}: {
   title: string;
   message: string;
   onSave: () => void;
   onDiscard: () => void;
   onClose: () => void;
+  saveLabel?: string;
+  discardLabel?: string;
+  closeLabel?: string;
+  discardDanger?: boolean;
 }) {
   return (
     <div className="fixed inset-0 z-[500] flex items-center justify-center" onClick={onClose}>
@@ -38,19 +52,21 @@ export function UnsavedConfirmModal({ title, message, onSave, onDiscard, onClose
             className="h-[32px] px-[16px] rounded-[6px] border border-solid border-[#EBECF0] bg-white text-[#131212] text-[14px] font-normal leading-none cursor-pointer hover:bg-[#F7F8FA] active:bg-[#EBECF0] transition-colors outline-none appearance-none inline-flex items-center justify-center box-border"
             style={{ fontFamily: "PingFang SC, sans-serif" }}
             onClick={onClose}
-          >取消</button>
+          >{closeLabel}</button>
           <button
             type="button"
-            className="h-[32px] px-[16px] rounded-[6px] border border-solid border-[#EBECF0] bg-white text-[#E53E3E] text-[14px] font-normal leading-none cursor-pointer hover:bg-[#FFF1F0] active:bg-[#FFE4E1] transition-colors outline-none appearance-none inline-flex items-center justify-center box-border"
+            className={discardDanger
+              ? "h-[32px] px-[16px] rounded-[6px] border border-solid border-[#EBECF0] bg-white text-[#E53E3E] text-[14px] font-normal leading-none cursor-pointer hover:bg-[#FFF1F0] active:bg-[#FFE4E1] transition-colors outline-none appearance-none inline-flex items-center justify-center box-border"
+              : "h-[32px] px-[16px] rounded-[6px] border border-solid border-[#EBECF0] bg-white text-[#131212] text-[14px] font-normal leading-none cursor-pointer hover:bg-[#F7F8FA] active:bg-[#EBECF0] transition-colors outline-none appearance-none inline-flex items-center justify-center box-border"}
             style={{ fontFamily: "PingFang SC, sans-serif" }}
             onClick={onDiscard}
-          >不保存</button>
+          >{discardLabel}</button>
           <button
             type="button"
             className="h-[32px] px-[16px] rounded-[6px] border-0 bg-[#131212] text-white text-[14px] font-normal leading-none cursor-pointer hover:opacity-90 active:opacity-80 transition-opacity outline-none appearance-none inline-flex items-center justify-center box-border"
             style={{ fontFamily: "PingFang SC, sans-serif" }}
             onClick={onSave}
-          >保存</button>
+          >{saveLabel}</button>
         </div>
       </div>
     </div>

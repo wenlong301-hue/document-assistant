@@ -49,7 +49,8 @@ export function useFolderDocuments(params: {
   selectedDocRef: React.MutableRefObject<string>;
   selectedNodeIdRef: React.MutableRefObject<string>;
   editorContentRef: React.MutableRefObject<{ html: string; text: string; nodeId: string }>;
-  openFileInfoRef: React.MutableRefObject<{ docName: string; filePath: string; ext: string; originalText?: string; lineEnding?: string } | null>;
+  openFileInfoRef: React.MutableRefObject<import("@/app/document/lib/folderWritePayload").OpenFileInfo | null>;
+  isOpenDocDirty: (docName: string) => boolean;
   dirtyOpenDocsRef: React.MutableRefObject<Set<string>>;
   saveTimersRef: React.MutableRefObject<Record<string, ReturnType<typeof setTimeout>>>;
   persistDoc: (docName: string, doc: StoredDoc, delay?: number) => void;
@@ -66,6 +67,17 @@ export function useFolderDocuments(params: {
   setFolderTreeRef: React.MutableRefObject<React.Dispatch<React.SetStateAction<FolderTreeNode[]>>>;
   setSelectedFileNodeRef: React.MutableRefObject<React.Dispatch<React.SetStateAction<FolderTreeNode | null>>>;
   setDocDeleteConfirm: React.Dispatch<React.SetStateAction<{ message: string; onConfirm: () => void } | null>>;
+  setFileEventConfirm: React.Dispatch<React.SetStateAction<{
+    kind: "gone" | "missing" | "conflict";
+    title: string;
+    message: string;
+    saveLabel: string;
+    discardLabel: string;
+    closeLabel?: string;
+    discardDanger?: boolean;
+    onSave: () => void;
+    onDiscard: () => void;
+  } | null>>;
 }) {
   const {
     isElectron,
@@ -88,6 +100,7 @@ export function useFolderDocuments(params: {
     editorContentRef,
     openFileInfoRef,
     dirtyOpenDocsRef,
+    isOpenDocDirty,
     saveTimersRef,
     persistDoc,
     writeFolderDocBack,
@@ -103,12 +116,95 @@ export function useFolderDocuments(params: {
     setFolderTreeRef,
     setSelectedFileNodeRef,
     setDocDeleteConfirm,
+    setFileEventConfirm,
   } = params;
 
   const [activeFolder, setActiveFolder] = useState<string | null>(null);
   const [folderFiles, setFolderFiles] = useState<FolderFileItem[]>([]);
   const [folderGone, setFolderGone] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const handleSaveAsMdocRef = useRef<() => Promise<void>>(async () => {});
+  const openFolderFileRefInner = useRef<(file: FolderFileItem) => Promise<void>>(async () => {});
+
+  const promptFolderGone = useCallback(() => {
+    setFolderGone(true);
+    setFileEventConfirm({
+      kind: "gone",
+      title: "项目文件夹不可访问",
+      message: "项目文件夹已不存在或无法访问。可返回项目列表，或重新选择文件夹位置。",
+      saveLabel: "重新选择位置",
+      discardLabel: "返回项目列表",
+      closeLabel: "稍后",
+      discardDanger: false,
+      onSave: () => {
+        setFileEventConfirm(null);
+        void (async () => {
+          try {
+            const result = await getElectronAPI()?.selectFolder?.();
+            if (result?.canceled || !result?.path) return;
+            const project = selectedProjectRef.current;
+            if (project) {
+              const next = { ...project, folderPath: result.path, updatedAt: new Date().toISOString() };
+              selectedProjectRef.current = next;
+              const list = await getElectronAPI()?.getProjects?.();
+              if (Array.isArray(list)) {
+                const updated = list.map((p) => p.id === next.id ? next : p);
+                await getElectronAPI()?.saveProjects?.(updated);
+              }
+            }
+            setActiveFolder(result.path);
+            setFolderGone(false);
+            await getElectronAPI()?.watchFolder?.(result.path);
+            const nextFiles = await getElectronAPI()?.scanFolder?.(result.path);
+            setFolderFiles(Array.isArray(nextFiles) ? nextFiles : []);
+            if (getElectronAPI()?.scanFolderTree) {
+              const tree = await getElectronAPI()?.scanFolderTree?.(result.path);
+              setFolderTreeRef.current(tree || []);
+            }
+            setToast({ message: "已重新绑定项目文件夹", type: "success" });
+          } catch {
+            setToast({ message: "重新选择文件夹失败", type: "error" });
+          }
+        })();
+      },
+      onDiscard: () => {
+        setFileEventConfirm(null);
+        document.dispatchEvent(new CustomEvent("doc-assistant-leave-project"));
+      },
+    });
+  }, [selectedProjectRef, setFolderTreeRef, setFileEventConfirm, setToast]);
+
+  useEffect(() => {
+    const onLeave = () => {
+      setFolderGone(false);
+      setFileEventConfirm(null);
+    };
+    document.addEventListener("doc-assistant-leave-project", onLeave);
+    return () => document.removeEventListener("doc-assistant-leave-project", onLeave);
+  }, [setFileEventConfirm]);
+
+  const closeCurrentFile = useCallback((opts?: { toast?: string }) => {
+    const info = openFileInfoRef.current;
+    const name = info?.docName;
+    openFileInfoRef.current = null;
+    if (name) {
+      dirtyOpenDocsRef.current.delete(name);
+      setDocStore((prev) => {
+        const { [name]: _removed, ...rest } = prev;
+        return rest;
+      });
+      setOutlineTrees((prev) => {
+        const { [name]: _removed, ...rest } = prev;
+        return rest;
+      });
+    }
+    setSelectedDoc("");
+    setOutlineNodes([]);
+    setSelectedNodeId("");
+    setMode("document");
+    setSelectedFileNodeRef.current(null);
+    if (opts?.toast) setToast({ message: opts.toast, type: "info" });
+  }, [openFileInfoRef, dirtyOpenDocsRef, setDocStore, setOutlineTrees, setSelectedDoc, setOutlineNodes, setSelectedNodeId, setMode, setSelectedFileNodeRef, setToast]);
 
   useEffect(() => {
     if (!isElectron) return;
@@ -117,38 +213,76 @@ export function useFolderDocuments(params: {
     const unsub = api.onFolderChanged?.((payload: { path?: string; files?: FolderFileItem[]; gone?: boolean }) => {
       const files = Array.isArray(payload?.files) ? payload.files : [];
       setFolderFiles(files);
-      if (payload?.gone) setFolderGone(true);
+      if (payload?.gone) {
+        promptFolderGone();
+        return;
+      }
       const info = openFileInfoRef.current;
-      if (info && files.length > 0 && !files.some((f) => f.path === info.filePath)) {
-        const name = info.docName;
-        openFileInfoRef.current = null;
-        setDocStore((prev) => {
-          const { [name]: _removed, ...rest } = prev;
-          return rest;
-        });
-        setOutlineTrees((prev) => {
-          const { [name]: _removed, ...rest } = prev;
-          return rest;
-        });
-        setSelectedDoc("");
-        setOutlineNodes([]);
-        setSelectedNodeId("");
-        setMode("document");
-        setToast({ message: "当前文件已被移出文件夹，已关闭", type: "info" });
+      if (!info) return;
+      if (info.ignoreWatchUntil && Date.now() < info.ignoreWatchUntil) return;
+      const disk = files.find((f) => f.path === info.filePath);
+      if (!disk) {
+        if (isOpenDocDirty(info.docName)) {
+          setFileEventConfirm({
+            kind: "missing",
+            title: "文件已从文件夹中消失",
+            message: "当前文件已不在项目文件夹中，编辑内容还在内存里。可另存为 .mdoc，或丢弃更改。",
+            saveLabel: "另存为 .mdoc",
+            discardLabel: "丢弃",
+            onSave: () => {
+              setFileEventConfirm(null);
+              void handleSaveAsMdocRef.current();
+            },
+            onDiscard: () => {
+              setFileEventConfirm(null);
+              closeCurrentFile({ toast: "已丢弃未保存内容" });
+            },
+          });
+        } else {
+          closeCurrentFile({ toast: "当前文件已被移出文件夹，已关闭" });
+        }
+        return;
+      }
+      if (typeof info.mtimeMs === "number" && disk.mtimeMs > info.mtimeMs + 1) {
+        if (isOpenDocDirty(info.docName)) {
+          setFileEventConfirm({
+            kind: "conflict",
+            title: "文件在磁盘上已更改",
+            message: "磁盘上的文件已被其它程序修改，且本地有未保存的编辑。保留本地内容会在下次保存时覆盖磁盘；加载磁盘会丢弃未保存编辑。",
+            saveLabel: "保留我的编辑",
+            discardLabel: "加载磁盘版本",
+            discardDanger: false,
+            onSave: () => {
+              setFileEventConfirm(null);
+              const cur = openFileInfoRef.current;
+              if (cur) openFileInfoRef.current = { ...cur, mtimeMs: disk.mtimeMs };
+            },
+            onDiscard: () => {
+              setFileEventConfirm(null);
+              dirtyOpenDocsRef.current.delete(info.docName);
+              const cur = openFileInfoRef.current;
+              if (cur) openFileInfoRef.current = { ...cur, docName: "", mtimeMs: disk.mtimeMs };
+              void openFolderFileRefInner.current(disk);
+            },
+          });
+        } else {
+          void openFolderFileRefInner.current(disk).then(() => {
+            setToast({ message: "已从磁盘更新", type: "info" });
+          });
+        }
       }
     });
     return () => unsub?.();
-  }, [isElectron, openFileInfoRef, setDocStore, setOutlineTrees, setSelectedDoc, setOutlineNodes, setSelectedNodeId, setMode, setToast]);
+  }, [isElectron, openFileInfoRef, dirtyOpenDocsRef, isOpenDocDirty, closeCurrentFile, promptFolderGone, setToast, setFileEventConfirm]);
 
   useEffect(() => {
     if (!isElectron) return;
     const api = getElectronAPI();
     if (!api?.getFolderState) return;
     api.getFolderState().then((state: { path?: string | null; files?: FolderFileItem[]; gone?: boolean }) => {
-      if (!state?.path) return;
+      if (!state?.path || state.gone) return;
       setActiveFolder(state.path);
       setFolderFiles(Array.isArray(state.files) ? state.files : []);
-      if (state.gone) setFolderGone(true);
     }).catch((error: unknown) => console.error("get folder state failed:", error));
   }, [isElectron]);
 
@@ -259,7 +393,7 @@ export function useFolderDocuments(params: {
   const openFolderFile = useCallback(async (file: FolderFileItem) => {
     if (!isElectron) return;
     const info = openFileInfoRef.current;
-    const alreadyOpen = info?.docName === file.relPath && !!docStore[file.relPath];
+    const alreadyOpen = info?.docName === file.relPath && !!docStore[file.relPath] && (typeof file.mtimeMs !== "number" || info.mtimeMs === file.mtimeMs);
     if (alreadyOpen) {
       setSelectedDoc(file.relPath);
       setOutlineNodes(getOutlineTree(file.relPath));
@@ -281,7 +415,15 @@ export function useFolderDocuments(params: {
     const docName = file.relPath;
     const fileExt = file.ext.replace(/^\./, "").toLowerCase();
     const apply = (doc: StoredDoc, tree: OutlineNode[], nodeId: string, enterOutline = true, writeInfo?: { filePath: string; ext: string; originalText?: string; lineEnding?: string }) => {
-      openFileInfoRef.current = { docName, filePath: writeInfo?.filePath || file.path, ext: writeInfo?.ext || fileExt, originalText: writeInfo?.originalText, lineEnding: writeInfo?.lineEnding };
+      openFileInfoRef.current = {
+        docName,
+        filePath: writeInfo?.filePath || file.path,
+        ext: writeInfo?.ext || fileExt,
+        originalText: writeInfo?.originalText,
+        lineEnding: writeInfo?.lineEnding,
+        mtimeMs: file.mtimeMs || Date.now(),
+        ignoreWatchUntil: Date.now() + 400,
+      };
       dirtyOpenDocsRef.current.delete(docName);
       setSelectedDoc(docName);
       setDocStore((prev) => ({ ...prev, [docName]: doc }));
@@ -347,6 +489,8 @@ export function useFolderDocuments(params: {
       setToast({ message: fileExt === "mdoc" ? "mdoc 文件格式错误" : `打开文件失败：${detail}`, type: "error" });
     }
   }, [isElectron, docStore, openFileInfoRef, dirtyOpenDocsRef, getOutlineTree, setSelectedDoc, setOutlineNodes, setSelectedNodeId, setMode, setDocStore, setOutlineTrees, setToast]);
+
+  openFolderFileRefInner.current = openFolderFile;
 
   const handleOpenFolder = async () => {
     if (!isElectron) {
@@ -440,7 +584,7 @@ export function useFolderDocuments(params: {
       };
       const firstNode = findDisplayNodeForFile(mdocDoc) ?? flattenOutlineNodes(tree)[0];
 
-      openFileInfoRef.current = { docName: relPath, filePath: absPath, ext: "mdoc" };
+      openFileInfoRef.current = { docName: relPath, filePath: absPath, ext: "mdoc", mtimeMs: fileItem.mtimeMs, ignoreWatchUntil: Date.now() + 800 };
       setDocStore((prev) => {
         const next: DocStore = { ...prev, [relPath]: mdocDoc };
         if (prevDocName && prevDocName !== relPath) {
@@ -494,6 +638,8 @@ export function useFolderDocuments(params: {
     setMode("outline");
     setToast({ message: "已下载并切换为 .mdoc 精编", type: "success" });
   };
+
+  handleSaveAsMdocRef.current = handleSaveAsMdoc;
 
   const handleSaveToFolder = async () => {
     await handleSaveAsMdoc();

@@ -527,6 +527,14 @@ ipcMain.handle('open-folder', async () => {
 
 ipcMain.handle('scan-folder', async (_e, dir) => scanFolder(dir));
 
+ipcMain.handle('watch-folder', async (_e, dir) => {
+  if (dir && fs.existsSync(dir)) {
+    watchFolder(dir);
+    return { ok: true };
+  }
+  return { ok: false, error: '文件夹不存在' };
+});
+
 ipcMain.handle('get-folder-state', async () => {
   const settings = readAppSettings();
   const dir = settings.lastFolder || null;

@@ -15,6 +15,8 @@ export type OpenFileInfo = {
   ext: string;
   originalText?: string;
   lineEnding?: string;
+  mtimeMs?: number;
+  ignoreWatchUntil?: number;
 };
 
 export type FolderWriteMode = "preserved" | "patched" | "converted" | "mdoc";

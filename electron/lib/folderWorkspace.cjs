@@ -107,6 +107,14 @@ function createFolderWorkspace(deps) {
    * - 已编辑：按扩展名走最优策略（docx patch → rebuild；md turndown；txt/html 文本）
    * L1 .mdoc 始终 JSON 序列化，无损往返
    */
+  function fileMtimeMs(filePath) {
+    try { return fs.statSync(filePath).mtimeMs; } catch { return Date.now(); }
+  }
+
+  function writeOk(filePath, extra = {}) {
+    return { ok: true, mtimeMs: fileMtimeMs(filePath), ...extra };
+  }
+
   async function writeFolderFile(filePath, payload) {
     try {
       const rawExt = String(payload?.ext || path.extname(filePath || '') || '').toLowerCase();
@@ -117,11 +125,11 @@ function createFolderWorkspace(deps) {
       if (payload?.sourceDirty === false) {
         if (ext === '.docx' && payload?.sourceBase64) {
           fs.writeFileSync(filePath, Buffer.from(String(payload.sourceBase64), 'base64'));
-          return { ok: true, preserved: true };
+          return writeOk(filePath, { preserved: true });
         }
         if (ext !== '.docx' && ext !== '.mdoc' && typeof payload?.content === 'string') {
           fs.writeFileSync(filePath, payload.content, 'utf-8');
-          return { ok: true, preserved: true };
+          return writeOk(filePath, { preserved: true });
         }
       }
 
@@ -130,7 +138,7 @@ function createFolderWorkspace(deps) {
           try {
             const patched = await patchDocxText(payload.sourceBase64, payload?.html || '');
             fs.writeFileSync(filePath, patched);
-            return { ok: true, patched: true };
+            return writeOk(filePath, { patched: true });
           } catch (error) {
             console.warn('docx patch failed, fallback to rebuild:', error instanceof Error ? error.message : error);
           }
@@ -143,7 +151,7 @@ function createFolderWorkspace(deps) {
           margins: { top: 720, right: 720, bottom: 720, left: 720 },
         });
         fs.writeFileSync(filePath, buffer);
-        return { ok: true, converted: true };
+        return writeOk(filePath, { converted: true });
       } else if (ext === '.mdoc') {
         const data = typeof payload?.content === 'string' ? JSON.parse(payload.content) : payload?.content;
         if (!data || typeof data !== 'object') throw new Error('mdoc 内容无效');
@@ -159,7 +167,7 @@ function createFolderWorkspace(deps) {
       } else {
         fs.writeFileSync(filePath, String(payload?.content ?? ''), 'utf-8');
       }
-      return { ok: true };
+      return writeOk(filePath);
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : '写入失败' };
     }

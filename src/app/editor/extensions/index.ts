@@ -14,3 +14,11 @@ export { TableCellWithRowHeight, TableHeaderWithRowHeight } from "./table";
 export { IndentExtension } from "./indent";
 export { MermaidCodeBlock } from "./mermaidCodeBlock";
 export { TyporaKeymap } from "./typoraKeymap";
+export {
+  SearchHighlight,
+  getSearchState,
+  setSearchQuery,
+  setSearchIndex,
+  replaceCurrentMatch,
+  replaceAllMatches,
+} from "./searchHighlight";

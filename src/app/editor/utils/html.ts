@@ -48,8 +48,8 @@ export const canvasToBlob = (canvas: HTMLCanvasElement, type: string, quality: n
 });
 
 export const compressImageForEmbed = async (file: File) => {
-  if (file.type === "image/svg+xml") throw new Error("暂不支持 SVG 图片，请转换为 PNG、JPEG 或 WebP");
-  if (!file.type.startsWith("image/")) throw new Error("请选择图片文件");
+  const isSvg = file.type === "image/svg+xml" || /\.svg$/i.test(file.name);
+  if (!isSvg && !file.type.startsWith("image/")) throw new Error("请选择图片文件");
   if (file.size > MAX_IMAGE_SOURCE_BYTES) throw new Error("图片不能超过 20MB");
   if (file.type === "image/gif") {
     if (file.size > MAX_IMAGE_EMBED_BYTES) throw new Error("GIF 图片不能超过 4MB");
@@ -62,10 +62,12 @@ export const compressImageForEmbed = async (file: File) => {
     image.decoding = "async";
     image.src = objectUrl;
     await image.decode();
-    const scale = Math.min(1, 2560 / Math.max(image.naturalWidth, image.naturalHeight));
+    const srcW = image.naturalWidth || 256;
+    const srcH = image.naturalHeight || 256;
+    const scale = Math.min(1, 2560 / Math.max(srcW, srcH));
     const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    canvas.width = Math.max(1, Math.round(srcW * scale));
+    canvas.height = Math.max(1, Math.round(srcH * scale));
     const context = canvas.getContext("2d");
     if (!context) throw new Error("当前浏览器无法处理图片");
     context.drawImage(image, 0, 0, canvas.width, canvas.height);

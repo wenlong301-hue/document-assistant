@@ -20,6 +20,7 @@ import {
   TableHeaderWithRowHeight,
   TyporaKeymap,
   VideoNode,
+  SearchHighlight,
 } from "../extensions";
 
 export const createEditorExtensions = () => [
@@ -40,6 +41,7 @@ export const createEditorExtensions = () => [
   }),
   MermaidCodeBlock,
   TyporaKeymap,
+  SearchHighlight,
   TextStyle,
   Color,
   BackgroundColor,

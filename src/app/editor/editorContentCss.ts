@@ -87,4 +87,6 @@ export const EDITOR_CONTENT_CSS = `
         .doc-editor-toolbar::-webkit-scrollbar-track{background:transparent}
         .doc-editor-toolbar::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.18);border-radius:4px}
         .doc-editor-toolbar::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,0.32)}
+        .doc-tiptap-content .doc-search-hit{background:#FFF3C4}
+        .doc-tiptap-content .doc-search-current{background:#FFD666}
       `;

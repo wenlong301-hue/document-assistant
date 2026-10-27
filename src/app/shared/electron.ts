@@ -46,6 +46,7 @@ export type ElectronAPI = {
   respondCloseWindow: (payload: { action?: "tray" | "quit" | "cancel"; remember?: boolean }) => Promise<unknown>;
   openFolder: () => Promise<any>;
   scanFolder: (dir: string) => Promise<FolderFileItem[]>;
+  watchFolder: (dir: string) => Promise<{ ok?: boolean; error?: string }>;
   getFolderState: () => Promise<{ path?: string | null; files?: FolderFileItem[]; gone?: boolean }>;
   closeFolder: () => Promise<unknown>;
   readFolderFile: (filePath: string) => Promise<any>;

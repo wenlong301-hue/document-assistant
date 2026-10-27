@@ -80,7 +80,8 @@ const SECTIONS: HelpSection[] = [
         <li>工具栏：标题、字体字号、加粗斜体、颜色、列表、对齐、引用/代码块、链接、图片/视频/附件、表格等。</li>
         <li>空行输入 <code>/</code> 打开斜杠命令（标题/列表/引用/代码/链接/媒体/表格等）；<code>↑</code><code>↓</code><code>Enter</code><code>Esc</code> 导航；删除 <code>/</code> 或光标离开触发行后菜单自动关闭。</li>
         <li>支持 Markdown 行首快捷（如 <code>#</code>、<code>-</code>、<code>&gt;</code>）。链接：<code>Ctrl/Cmd + K</code>。表格行 1–20、列 1–10。</li>
-        <li>图片：PNG/JPEG/WebP/GIF（不支持 SVG）；源文件建议 ≤20MB。选中后可调宽度百分比；打开分享/导出等弹窗时不会被操作条挡住。</li>
+        <li>图片：PNG/JPEG/WebP/GIF；SVG 插入时自动转为 PNG。源文件建议 ≤20MB。选中后可调宽度百分比；打开分享/导出等弹窗时不会被操作条挡住。</li>
+        <li>查找当前节点：<code>Ctrl/Cmd + F</code>；查找条内 <code>Ctrl/Cmd + H</code> 展开替换；<code>F3</code> / <code>Shift + F3</code> 跳转命中。</li>
         <li>视频 ≤20MB；附件 ≤10MB。PDF 导出不含视频。</li>
       </ul>
     ),

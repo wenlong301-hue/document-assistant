@@ -69,6 +69,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   respondCloseWindow: (payload) => ipcRenderer.invoke('respond-close-window', payload || {}),
   openFolder: () => ipcRenderer.invoke('open-folder'),
   scanFolder: (dir) => ipcRenderer.invoke('scan-folder', dir),
+  watchFolder: (dir) => ipcRenderer.invoke('watch-folder', dir),
   getFolderState: () => ipcRenderer.invoke('get-folder-state'),
   closeFolder: () => ipcRenderer.invoke('close-folder'),
   readFolderFile: (filePath) => ipcRenderer.invoke('read-folder-file', filePath),

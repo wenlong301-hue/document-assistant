@@ -17,6 +17,7 @@ import { EditorToolbar } from "./rich-editor/EditorToolbar";
 import { EditorFloatingChrome } from "./rich-editor/EditorFloatingChrome";
 import { EditorToc } from "./rich-editor/EditorToc";
 import { EditorStatusBar } from "./rich-editor/EditorStatusBar";
+import { EditorFindBar } from "./rich-editor/EditorFindBar";
 import { getEditorTextCount, HEADING_OPTIONS } from "./constants";
 import { escapeHtml, normalizeEditorHtml } from "./utils/html";
 import { Toast } from "./ui/Toast";
@@ -30,6 +31,7 @@ import { useImageToolbarState } from "./rich-editor/hooks/useImageToolbarState";
 import { useEditorToc } from "./rich-editor/hooks/useEditorToc";
 import { useMediaInsert } from "./rich-editor/hooks/useMediaInsert";
 import { useSlashMenuActions } from "./rich-editor/hooks/useSlashMenuActions";
+import { getSearchState, setSearchQuery, setSearchIndex, replaceCurrentMatch, replaceAllMatches } from "./extensions";
 
 export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange, autoSaveEnabled = false, lastSavedAt = null, onAutoSaveChange, fontSize: propFontSize, lineHeight: propLineHeight, theme: propTheme }: RichEditorTiptapProps) {
   const linkBtnRef = useRef<HTMLButtonElement>(null);
@@ -39,6 +41,12 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   const [toolbarTick, setToolbarTick] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [imagePreviewSrc, setImagePreviewSrc] = useState<string | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const findOpenRef = useRef(false);
+  const [findReplaceOpen, setFindReplaceOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findReplacement, setFindReplacement] = useState("");
+  const [findTick, setFindTick] = useState(0);
   const [toolbarPanel, setToolbarPanel] = useState<ToolbarPanel>(null);
   const [colorPickerPos, setColorPickerPos] = useState({ x: 0, y: 0 });
   const [headingDropPos, setHeadingDropPos] = useState({ x: 0, y: 0 });
@@ -82,6 +90,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   useEffect(() => {
     onContentChangeRef.current = onContentChange;
   }, [onContentChange]);
+  useEffect(() => { findOpenRef.current = findOpen; }, [findOpen]);
 
   const { saveEditorSelection, applySavedSelection } = useEditorSelection(editorInstanceRef, savedSelectionRef);
 
@@ -340,6 +349,35 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   }, [editor, nodeId, initialHtml, refreshToc, ensureHeadingAnchors]);
 
   useEffect(() => {
+    const onFindShortcut = (event: KeyboardEvent) => {
+      const mod = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+      if (mod && key === "f") {
+        event.preventDefault();
+        setFindOpen(true);
+        setFindReplaceOpen(false);
+        const active = editorInstanceRef.current;
+        if (active) {
+          const sel = active.state.doc.textBetween(active.state.selection.from, active.state.selection.to, " ");
+          if (sel && !sel.includes("\n")) {
+            setFindQuery(sel);
+            setSearchQuery(active, sel, 0);
+            setFindTick((n) => n + 1);
+          }
+        }
+        return;
+      }
+      if (mod && key === "h") {
+        if (!findOpenRef.current) return;
+        event.preventDefault();
+        setFindReplaceOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onFindShortcut, true);
+    return () => window.removeEventListener("keydown", onFindShortcut, true);
+  }, []);
+
+  useEffect(() => {
     if (!editor) return;
     const handler = (event: KeyboardEvent) => {
       if (isCodeLangPickerOpen()) return;
@@ -425,6 +463,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   if (editor?.isActive("blockquote")) activeFormats.add("blockquote");
   if (editor?.isActive("link") || showLinkModal) activeFormats.add("link");
   void toolbarTick;
+  void findTick;
   void propTheme;
 
   const toggleToolbarPanel = (panel: Exclude<ToolbarPanel, null>, pos?: { x: number; y: number }) => {
@@ -497,12 +536,73 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   return (
     <div className="absolute inset-0 flex flex-col">
       <style>{EDITOR_CONTENT_CSS}</style>
-      <input ref={imgInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={handleImageUpload} />
+      <input ref={imgInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" className="hidden" onChange={handleImageUpload} />
       <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={handleVideoUpload} />
       <input ref={attachInputRef} type="file" className="hidden" onChange={(e) => {
         void insertAttachmentFromFile(e.target.files?.[0]);
         e.target.value = "";
       }} />
+      {findOpen && (
+        <EditorFindBar
+          query={findQuery}
+          replacement={findReplacement}
+          current={(() => {
+            const s = editor ? getSearchState(editor) : { index: 0, matches: [] };
+            return s.matches.length ? s.index + 1 : 0;
+          })()}
+          total={editor ? getSearchState(editor).matches.length : 0}
+          replaceOpen={findReplaceOpen}
+          onQueryChange={(v) => {
+            setFindQuery(v);
+            const active = editorInstanceRef.current;
+            if (active) setSearchQuery(active, v, 0);
+            setFindTick((n) => n + 1);
+          }}
+          onReplacementChange={setFindReplacement}
+          onNext={() => {
+            const active = editorInstanceRef.current;
+            if (!active) return;
+            const s = getSearchState(active);
+            if (!s.matches.length) return;
+            const next = (s.index + 1) % s.matches.length;
+            setSearchIndex(active, next);
+            const m = s.matches[next];
+            if (m) active.chain().focus().setTextSelection({ from: m.from, to: m.to }).scrollIntoView().run();
+            setFindTick((n) => n + 1);
+          }}
+          onPrev={() => {
+            const active = editorInstanceRef.current;
+            if (!active) return;
+            const s = getSearchState(active);
+            if (!s.matches.length) return;
+            const next = (s.index - 1 + s.matches.length) % s.matches.length;
+            setSearchIndex(active, next);
+            const m = s.matches[next];
+            if (m) active.chain().focus().setTextSelection({ from: m.from, to: m.to }).scrollIntoView().run();
+            setFindTick((n) => n + 1);
+          }}
+          onReplace={() => {
+            const active = editorInstanceRef.current;
+            if (!active) return;
+            replaceCurrentMatch(active, findReplacement);
+            setFindTick((n) => n + 1);
+          }}
+          onReplaceAll={() => {
+            const active = editorInstanceRef.current;
+            if (!active) return;
+            const n = replaceAllMatches(active, findReplacement);
+            if (n > 0) setToast({ message: `已替换 ${n} 处`, type: "success" });
+            setFindTick((t) => t + 1);
+          }}
+          onToggleReplace={() => setFindReplaceOpen((v) => !v)}
+          onClose={() => {
+            setFindOpen(false);
+            setFindReplaceOpen(false);
+            const active = editorInstanceRef.current;
+            if (active) setSearchQuery(active, "", 0);
+          }}
+        />
+      )}
       <EditorToolbar
         toolbarRef={toolbarRef}
         currentHeading={getCurrentHeading()}
@@ -593,6 +693,37 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       <div className="flex-1 min-h-0 bg-white flex justify-center items-stretch overflow-hidden" onKeyDown={(e) => {
         if (!editor) return;
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); }
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+          e.preventDefault();
+          setFindOpen(true);
+          setFindReplaceOpen(false);
+          const sel = editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to, " ");
+          if (sel && !sel.includes("\n")) {
+            setFindQuery(sel);
+            setSearchQuery(editor, sel, 0);
+          }
+          return;
+        }
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "h") {
+          if (!findOpenRef.current) return;
+          e.preventDefault();
+          setFindReplaceOpen(true);
+          return;
+        }
+        if (e.key === "F3") {
+          e.preventDefault();
+          setFindOpen(true);
+          const s = getSearchState(editor);
+          if (!s.matches.length) return;
+          const next = e.shiftKey
+            ? (s.index - 1 + s.matches.length) % s.matches.length
+            : (s.index + 1) % s.matches.length;
+          setSearchIndex(editor, next);
+          const m = s.matches[next];
+          if (m) editor.chain().focus().setTextSelection({ from: m.from, to: m.to }).scrollIntoView().run();
+          setFindTick((n) => n + 1);
+          return;
+        }
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); const pos = getCaretMenuPosition(); setLinkModalPos({ x: pos.left - 150, y: pos.top + 8 }); setLinkModalMode("insert"); setLinkModalText(""); setLinkModalUrl(""); setShowLinkModal(true); }
         if (slashMenu && e.key === "Escape") { e.preventDefault(); setSlashMenu(null); }
         if (slashMenu && e.key === "ArrowDown") {

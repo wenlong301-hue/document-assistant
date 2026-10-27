@@ -37,6 +37,17 @@ const UnsavedConfirmModal = lazy(() => import("@/app/document/UnsavedConfirmModa
 export default function DocumentAssistant() {
   const [modal, setModal] = useState<{ type: "new" } | { type: "new-file" } | { type: "new-level" } | { type: "rename"; target: string } | null>(null);
   const [docDeleteConfirm, setDocDeleteConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [fileEventConfirm, setFileEventConfirm] = useState<{
+    kind: "gone" | "missing" | "conflict";
+    title: string;
+    message: string;
+    saveLabel: string;
+    discardLabel: string;
+    closeLabel?: string;
+    discardDanger?: boolean;
+    onSave: () => void;
+    onDiscard: () => void;
+  } | null>(null);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [showBackUnsavedConfirm, setShowBackUnsavedConfirm] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -203,6 +214,7 @@ export default function DocumentAssistant() {
     editorContentRef,
     openFileInfoRef,
     dirtyOpenDocsRef,
+    isOpenDocDirty,
     saveTimersRef,
     persistDoc,
     writeFolderDocBack,
@@ -218,6 +230,7 @@ export default function DocumentAssistant() {
     setFolderTreeRef,
     setSelectedFileNodeRef,
     setDocDeleteConfirm,
+    setFileEventConfirm,
   });
 
   openFolderFileRef.current = openFolderFile;
@@ -296,11 +309,21 @@ export default function DocumentAssistant() {
     if (!q) return;
     if (mode === "document") {
       if (activeFolder) {
-        const matches = folderFiles.filter(f => f.relPath.toLowerCase().includes(q));
-        if (matches.length === 1) void openFolderFile(matches[0]);
+        const matches = folderFiles.filter(f => f.relPath.toLowerCase().includes(q) || f.name.toLowerCase().includes(q));
+        if (matches.length === 0) {
+          setToast({ message: "无匹配文件", type: "info" });
+          return;
+        }
+        void openFolderFile(matches[0]);
+        if (matches.length > 1) setToast({ message: `共 ${matches.length} 条，已打开第一条`, type: "info" });
       } else {
         const matches = docs.filter(d => d.toLowerCase().includes(q));
-        if (matches.length === 1) handleSelectDoc(matches[0]);
+        if (matches.length === 0) {
+          setToast({ message: "无匹配文档", type: "info" });
+          return;
+        }
+        handleSelectDoc(matches[0]);
+        if (matches.length > 1) setToast({ message: `共 ${matches.length} 条，已打开第一条`, type: "info" });
       }
     } else {
       setOutlineSearchEnter(t => t + 1);
@@ -500,6 +523,21 @@ export default function DocumentAssistant() {
             onClose={() => setShowBackUnsavedConfirm(false)}
             onDiscard={handleBackDiscardAndLeave}
             onSave={() => { void handleBackSaveAndLeave(); }}
+          />
+        </Suspense>
+      )}
+      {fileEventConfirm && (
+        <Suspense fallback={null}>
+          <UnsavedConfirmModal
+            title={fileEventConfirm.title}
+            message={fileEventConfirm.message}
+            saveLabel={fileEventConfirm.saveLabel}
+            discardLabel={fileEventConfirm.discardLabel}
+            closeLabel={fileEventConfirm.closeLabel}
+            discardDanger={fileEventConfirm.discardDanger}
+            onClose={() => setFileEventConfirm(null)}
+            onDiscard={fileEventConfirm.onDiscard}
+            onSave={fileEventConfirm.onSave}
           />
         </Suspense>
       )}

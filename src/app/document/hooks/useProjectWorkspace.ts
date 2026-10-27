@@ -12,7 +12,7 @@ export function useProjectWorkspace(params: {
   setSelectedDoc: React.Dispatch<React.SetStateAction<string>>;
   setOutlineNodes: React.Dispatch<React.SetStateAction<import("@/app/document/types").OutlineNode[]>>;
   setSelectedNodeId: React.Dispatch<React.SetStateAction<string>>;
-  openFileInfoRef: React.MutableRefObject<{ docName: string; filePath: string; ext: string; originalText?: string; lineEnding?: string } | null>;
+  openFileInfoRef: React.MutableRefObject<import("@/app/document/lib/folderWritePayload").OpenFileInfo | null>;
   dirtyOpenDocsRef: React.MutableRefObject<Set<string>>;
   selectedDocRef: React.MutableRefObject<string>;
   saveTimersRef: React.MutableRefObject<Record<string, ReturnType<typeof setTimeout>>>;
@@ -102,18 +102,23 @@ export function useProjectWorkspace(params: {
           const files = await api.scanFolder(project.folderPath);
           setFolderFiles(Array.isArray(files) ? files : []);
         }
+        const watch = await api.watchFolder?.(project.folderPath);
+        if (watch && watch.ok === false) {
+          setToast({ message: "项目文件夹不可访问，请重新选择位置或返回列表", type: "error" });
+        }
       } catch (error) {
         console.error("scan folder tree failed:", error);
         setFolderTree([]);
         setActiveFolder(null);
         setFolderFiles([]);
+        setToast({ message: "无法打开项目文件夹", type: "error" });
       }
     } else {
       setFolderTree([]);
       setActiveFolder(null);
       setFolderFiles([]);
     }
-  }, [openFolderFileRef, setActiveFolder, setFolderFiles]);
+  }, [openFolderFileRef, setActiveFolder, setFolderFiles, setToast]);
 
   const handleCreateProject = useCallback(async (name: string, folderPath?: string) => {
     const api = getElectronAPI();
@@ -272,6 +277,12 @@ export function useProjectWorkspace(params: {
     setSelectedNodeId("");
     setMode("document");
   }, [dirtyOpenDocsRef, openFileInfoRef, setShowBackUnsavedConfirm, setActiveFolder, setFolderFiles, setSelectedDoc, setOutlineNodes, setSelectedNodeId, setMode]);
+
+  useEffect(() => {
+    const handler = () => leaveProjectToList();
+    document.addEventListener("doc-assistant-leave-project", handler);
+    return () => document.removeEventListener("doc-assistant-leave-project", handler);
+  }, [leaveProjectToList]);
 
   const handleBackToProjects = useCallback(() => {
     const docName = selectedDocRef.current;

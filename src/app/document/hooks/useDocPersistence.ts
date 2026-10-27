@@ -39,7 +39,7 @@ export function useDocPersistence(params: {
   const webPersistErrorShownRef = useRef(false);
   const anchorNavigationHandledRef = useRef(false);
   const editorContentRef = useRef({ html: "", text: "", nodeId: "" });
-  const openFileInfoRef = useRef<{ docName: string; filePath: string; ext: string; originalText?: string; lineEnding?: string } | null>(null);
+  const openFileInfoRef = useRef<import("../lib/folderWritePayload").OpenFileInfo | null>(null);
   const dirtyOpenDocsRef = useRef<Set<string>>(new Set());
   const docStoreRef = useRef<DocStore>({});
   const selectedDocRef = useRef("");
@@ -75,6 +75,11 @@ export function useDocPersistence(params: {
           : result?.converted
             ? "converted"
             : expectedMode;
+      const infoNow = openFileInfoRef.current;
+      if (infoNow && infoNow.docName === docName) {
+        const mtimeMs = typeof result?.mtimeMs === "number" ? result.mtimeMs : Date.now();
+        openFileInfoRef.current = { ...infoNow, mtimeMs, ignoreWatchUntil: Date.now() + 800 };
+      }
       // docx 写回成功后刷新内存中的原包，避免下次 patch 仍基于打开时的旧 base64
       if (info.ext === "docx" && mode !== "preserved") {
         try {
