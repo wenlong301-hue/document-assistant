@@ -6,6 +6,7 @@ export type AppSettings = {
   fontSize?: string;
   lineHeight?: string;
   theme?: string;
+  displayName?: string;
 };
 
 /** 与 preload 对齐的 Electron 桥接 API；复杂返回值用宽松类型，避免拖垮历史调用点 */
@@ -18,6 +19,8 @@ export type ElectronAPI = {
   startShare: (port: number, docId: string, html: string) => Promise<any>;
   updateShareHtml: (docId: string, html: string) => Promise<unknown>;
   stopShare: () => Promise<unknown>;
+  startCollab: (port?: number) => Promise<{ url?: string; wsUrl?: string; port?: number; token?: string; room?: string; error?: string }>;
+  stopCollab: () => Promise<unknown>;
   getPlatform: () => Promise<string>;
   getVersion: () => Promise<string>;
   checkForUpdates: (options?: { manual?: boolean }) => Promise<unknown>;

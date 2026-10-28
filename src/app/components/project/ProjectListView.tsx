@@ -23,6 +23,8 @@ export function ProjectListView({
   onImportFolder,
   onImportFolderDrop,
   onNewFileInFolder,
+  onOpenCollab,
+  collabActive,
   onOpenHelp,
   onOpenUpdate,
   updateVersion,
@@ -40,6 +42,8 @@ export function ProjectListView({
   onImportFolder: (kind?: "file" | "folder") => void;
   onImportFolderDrop: (folderPath: string) => void;
   onNewFileInFolder: (folderPath: string) => void;
+  onOpenCollab?: () => void;
+  collabActive?: boolean;
   onOpenHelp: () => void;
   onOpenUpdate?: () => void;
   updateVersion?: string;
@@ -102,6 +106,13 @@ export function ProjectListView({
           )}
         </div>
         <div className="flex items-center justify-end gap-[12px]">
+          <button
+            type="button"
+            className={`h-[32px] px-0 border-0 bg-transparent flex items-center justify-center gap-[8px] text-[14px] leading-none hover:opacity-70 transition-opacity cursor-pointer outline-none appearance-none ${collabActive ? "text-[#15803D]" : "text-[#131212]"}`}
+            onClick={onOpenCollab}
+          >
+            <span>协同</span>
+          </button>
           <button
             type="button"
             className="h-[32px] px-0 border-0 bg-transparent text-[#131212] flex items-center justify-center gap-[8px] text-[14px] leading-none hover:opacity-70 transition-opacity cursor-pointer outline-none appearance-none"

@@ -19,4 +19,9 @@ export type RichEditorTiptapProps = {
   fontSize?: string;
   lineHeight?: string;
   theme?: string;
+  collab?: {
+    ydoc: import("yjs").Doc;
+    provider: unknown;
+    user: { name: string; color: string };
+  } | null;
 };

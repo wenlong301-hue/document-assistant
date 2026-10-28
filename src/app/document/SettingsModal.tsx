@@ -6,6 +6,7 @@ export type AppSettings = {
   lineHeight?: string;
   theme?: string;
   autoSaveEnabled?: boolean;
+  displayName?: string;
 };
 
 const FONT_OPTIONS = [
@@ -35,12 +36,15 @@ export function SettingsModal({
   const [closeBehavior, setCloseBehavior] = useState(settings.closeBehavior || "ask");
   const [fontSize, setFontSize] = useState(settings.fontSize || "15px");
   const [lineHeight, setLineHeight] = useState(settings.lineHeight || "1.8");
+  const [displayName, setDisplayName] = useState(settings.displayName || "");
+  const [nameFocused, setNameFocused] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setCloseBehavior(settings.closeBehavior || "ask");
     setFontSize(settings.fontSize || "15px");
     setLineHeight(settings.lineHeight || "1.8");
+    setDisplayName(settings.displayName || "");
   }, [open, settings]);
 
   if (!open) return null;
@@ -51,6 +55,7 @@ export function SettingsModal({
       closeBehavior,
       fontSize,
       lineHeight,
+      displayName: displayName.trim(),
     });
     onClose();
   };
@@ -118,6 +123,26 @@ export function SettingsModal({
                   ))}
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div className="mb-[24px]">
+            <h3 className="m-0 text-[14px] font-medium text-[#131212] mb-[12px]">协同</h3>
+            <p className="m-0 text-[13px] text-[#606266] mb-[8px]">显示名称</p>
+            <div
+              className="w-full h-[40px] rounded-[6px] flex items-center px-[16px] box-border bg-white"
+              style={{ border: nameFocused ? "1px solid #131212" : "1px solid #EBECF0" }}
+            >
+              <input
+                type="text"
+                value={displayName}
+                placeholder="同事会看到这个名字"
+                onChange={(e) => setDisplayName(e.target.value)}
+                onFocus={() => setNameFocused(true)}
+                onBlur={() => setNameFocused(false)}
+                className="w-full bg-transparent text-[14px] text-[#131212] leading-[20px] outline-none border-0 p-0 placeholder:text-[#C0C4CC]"
+                style={{ fontFamily: "PingFang SC, sans-serif" }}
+              />
             </div>
           </div>
 

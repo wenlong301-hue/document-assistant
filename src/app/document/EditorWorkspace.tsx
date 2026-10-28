@@ -10,11 +10,12 @@ const RichEditorTiptap = lazy(() =>
   import("../editor/RichEditorTiptap").then((m) => ({ default: m.RichEditorTiptap }))
 );
 
-export function EditorWorkspace({ docName, mode, selectedNode, nodeDepth, nodeContent, previewHtml, onTitleChange, onContentChange, autoSaveEnabled, lastSavedAt, onAutoSaveChange, fontSize, lineHeight, theme, sidebarWidth }: {
+export function EditorWorkspace({ docName, mode, selectedNode, nodeDepth, nodeContent, previewHtml, onTitleChange, onContentChange, autoSaveEnabled, lastSavedAt, onAutoSaveChange, fontSize, lineHeight, theme, sidebarWidth, collab }: {
   docName: string; mode: "document" | "outline"; selectedNode: OutlineNode | null; nodeDepth: number;
   nodeContent?: string; previewHtml?: string; onTitleChange?: (name: string) => void; onContentChange?: (html: string, text: string) => void;
   autoSaveEnabled?: boolean; lastSavedAt?: string | null; onAutoSaveChange?: (enabled: boolean) => void;
   fontSize?: string; lineHeight?: string; theme?: string; sidebarWidth?: number;
+  collab?: { ydoc: import("yjs").Doc; provider: unknown; user: { name: string; color: string } } | null;
 }) {
   const isOutlineEmpty = mode === "outline" && !selectedNode;
   const titleName = mode === "outline" && selectedNode ? selectedNode.name : (docName || "文档助手");
@@ -91,7 +92,7 @@ export function EditorWorkspace({ docName, mode, selectedNode, nodeDepth, nodeCo
         <div className="absolute left-0 right-0 bottom-0" style={{ top: titleAreaHeight }}>
           <ErrorBoundary key={selectedNode?.id}>
             <Suspense fallback={<div className="flex items-center justify-center h-full text-[#8D8E99] text-[14px]">加载编辑器…</div>}>
-              <RichEditorTiptap docName={docName} nodeId={selectedNode?.id ?? ""} initialHtml={nodeContent} onContentChange={onContentChange} autoSaveEnabled={autoSaveEnabled} lastSavedAt={lastSavedAt} onAutoSaveChange={onAutoSaveChange} fontSize={fontSize} lineHeight={lineHeight} theme={theme} />
+              <RichEditorTiptap docName={docName} nodeId={selectedNode?.id ?? ""} initialHtml={nodeContent} onContentChange={onContentChange} autoSaveEnabled={autoSaveEnabled} lastSavedAt={lastSavedAt} onAutoSaveChange={onAutoSaveChange} fontSize={fontSize} lineHeight={lineHeight} theme={theme} collab={collab} />
             </Suspense>
           </ErrorBoundary>
         </div>

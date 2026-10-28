@@ -10,6 +10,10 @@ import { Table } from "@tiptap/extension-table";
 import { TableRow } from "@tiptap/extension-table-row";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
+import Collaboration from "@tiptap/extension-collaboration";
+import CollaborationCaret from "@tiptap/extension-collaboration-caret";
+import type { Doc } from "yjs";
+import { fragmentFieldFor } from "@/app/collab/ydocBind";
 import {
   AttachmentNode,
   BlockAnchorExtension,
@@ -23,10 +27,18 @@ import {
   SearchHighlight,
 } from "../extensions";
 
-export const createEditorExtensions = () => [
+export type CollabEditorOptions = {
+  ydoc: Doc;
+  provider: unknown;
+  nodeId: string;
+  user: { name: string; color: string };
+};
+
+export const createEditorExtensions = (collab?: CollabEditorOptions | null) => [
   StarterKit.configure({
     link: false,
     codeBlock: false,
+    undoRedo: collab ? false : {},
     blockquote: {
       HTMLAttributes: { class: "doc-blockquote" },
     },
@@ -87,6 +99,10 @@ export const createEditorExtensions = () => [
   TableCellWithRowHeight,
   TaskList.configure({ HTMLAttributes: { class: "doc-task-list" } }),
   TaskItem.configure({ nested: true, HTMLAttributes: { class: "doc-task-item" } }),
+  ...(collab ? [
+    Collaboration.configure({ document: collab.ydoc, field: fragmentFieldFor(collab.nodeId) }),
+    CollaborationCaret.configure({ provider: collab.provider, user: collab.user }),
+  ] : []),
 ];
 
 export const createEditorContentAttributes = (fontSize?: string, lineHeight?: string) => ({

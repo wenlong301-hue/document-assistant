@@ -13,7 +13,7 @@ const SECTIONS: HelpSection[] = [
     title: "产品简介",
     body: (
       <>
-        <p>文档助手是一款多级文档写作工具：左侧管理文档与大纲树，右侧富文本编辑，支持局域网分享预览，以及 HTML / Markdown / Word / PDF 导出。</p>
+        <p>文档助手是一款多级文档写作工具：左侧管理文档与大纲树，右侧富文本编辑，支持局域网分享预览、局域网协同编辑，以及 HTML / Markdown / Word / PDF 导出。</p>
         <p><strong>精编格式</strong>为 <code>.mdoc</code>（JSON：大纲树 + 节点 HTML）。适合产品说明、会议纪要、技术方案、分层知识库等需长期往返编辑的场景。</p>
         <p>格式分层：<strong>L1</strong> <code>.mdoc</code> 权威存储（无损）→ <strong>L2</strong> 项目原文件打开什么存什么（未编辑原样写回）→ <strong>L3</strong> 导出 HTML/MD/Word/PDF（尽力而为，可能有损）。</p>
       </>
@@ -28,7 +28,7 @@ const SECTIONS: HelpSection[] = [
         <li>进入 <strong>大纲树</strong> 模式，默认带有同名根节点。</li>
         <li>用 <strong>新建层级 / 添加子文档</strong> 搭好章节结构。</li>
         <li>选中节点后在右侧编辑器写作（工具栏、斜杠命令 <code>/</code>、Markdown 快捷输入）。</li>
-        <li>可在底栏开启自动保存（每 30 秒）；未开启时需手动保存。顶栏提供 <strong>保存 / 分享 / 导出</strong>。</li>
+        <li>可在底栏开启自动保存（每 30 秒）；未开启时需手动保存。顶栏提供 <strong>保存 / 分享 / 协同 / 导出</strong>。</li>
       </ol>
     ),
   },
@@ -37,8 +37,8 @@ const SECTIONS: HelpSection[] = [
     title: "界面说明",
     body: (
       <ul>
-        <li><strong>顶栏</strong>：保存、另存为、分享、更多（导入 / 导出 / 删除 / 帮助）</li>
-        <li><strong>左侧</strong>：搜索、文件树/大纲树切换、文件树或大纲树、分享状态</li>
+        <li><strong>顶栏</strong>：保存、另存为、分享、协同、更多（导入 / 导出 / 删除 / 帮助）</li>
+        <li><strong>左侧</strong>：搜索、文件树/大纲树切换、文件树或大纲树、分享与协同状态</li>
         <li><strong>右侧</strong>：标题 + 富文本编辑器（大纲树模式）</li>
         <li><strong>底栏</strong>：自动保存开关、字数统计、页内大纲</li>
       </ul>
@@ -112,6 +112,18 @@ const SECTIONS: HelpSection[] = [
     ),
   },
   {
+    id: "collab",
+    title: "局域网协同",
+    body: (
+      <ul>
+        <li>桌面端顶栏点 <strong>协同</strong>，同一 Wi-Fi 的同事可一起改当前文档（端口 <strong>6536</strong>）。</li>
+        <li>发起方复制链接发给同事；对方在项目页或协同弹窗粘贴即可加入。</li>
+        <li>正文与大纲会实时同步，编辑器内显示对方光标。设置里可改协同显示名称。</li>
+        <li>电脑与文档助手需保持开启；关闭协同或退出后链接失效。只读预览仍用「分享」。</li>
+      </ul>
+    ),
+  },
+  {
     id: "export",
     title: "导出",
     body: (
@@ -145,6 +157,7 @@ const SECTIONS: HelpSection[] = [
         <li><strong>macOS/Windows 提示未知开发者？</strong> 当前安装包未签名，请右键打开或允许仍要运行。</li>
         <li><strong>macOS 提示「已损坏，无法打开」？</strong> 多为下载隔离误报，不要移到废纸篓。终端执行：<code>xattr -cr "/Applications/文档助手.app"</code> 后再打开。</li>
         <li><strong>手机打不开分享链接？</strong> 确认桌面端已开启分享、同一 Wi-Fi、防火墙放行 6535、链接为局域网 IP。</li>
+        <li><strong>加不进协同？</strong> 确认双方都是桌面端、同一 Wi-Fi、防火墙放行 6536，并粘贴完整链接（含 token）。</li>
         <li><strong>预览缺章节？</strong> 节点可能为空或设置了「预览时隐藏本层」；请重新分享/导出。</li>
         <li><strong>分享页还是旧内容？</strong> 开启分享后继续编辑，分享页约 1–2 秒会自动刷新；若仍旧，请手动刷新浏览器。</li>
         <li><strong>浏览器存储失败？</strong> 媒体过大，请减少图片视频或改用桌面端并导出备份。</li>

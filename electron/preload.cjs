@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startShare: (port, docId, html) => ipcRenderer.invoke('start-share', port, docId, html),
   updateShareHtml: (docId, html) => ipcRenderer.invoke('update-share-html', docId, html),
   stopShare: () => ipcRenderer.invoke('stop-share'),
+  startCollab: (port) => ipcRenderer.invoke('start-collab', port),
+  stopCollab: () => ipcRenderer.invoke('stop-collab'),
   getPlatform: () => ipcRenderer.invoke('get-platform'),
   getVersion: () => ipcRenderer.invoke('get-version'),
   checkForUpdates: (options) => ipcRenderer.invoke('check-for-updates', options || {}),

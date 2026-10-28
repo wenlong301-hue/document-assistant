@@ -24,6 +24,7 @@ import { getDisplayFileName } from "@/app/shared/utils/text";
 import { useDocPersistence } from "@/app/document/hooks/useDocPersistence";
 import { useAppSettings } from "@/app/document/hooks/useAppSettings";
 import { useShareSession } from "@/app/document/hooks/useShareSession";
+import { useCollabSession } from "@/app/collab/useCollabSession";
 import { useFolderDocuments } from "@/app/document/hooks/useFolderDocuments";
 import { useProjectWorkspace } from "@/app/document/hooks/useProjectWorkspace";
 
@@ -31,6 +32,7 @@ const HelpModal = lazy(() => import("@/app/document/HelpModal").then((m) => ({ d
 const SettingsModal = lazy(() => import("@/app/document/SettingsModal").then((m) => ({ default: m.SettingsModal })));
 const UpdateModal = lazy(() => import("@/app/document/UpdateModal").then((m) => ({ default: m.UpdateModal })));
 const ShareModal = lazy(() => import("@/app/document/ShareModal").then((m) => ({ default: m.ShareModal })));
+const CollabModal = lazy(() => import("@/app/document/CollabModal").then((m) => ({ default: m.CollabModal })));
 const ExportModal = lazy(() => import("@/app/document/ExportModal").then((m) => ({ default: m.ExportModal })));
 const UnsavedConfirmModal = lazy(() => import("@/app/document/UnsavedConfirmModal").then((m) => ({ default: m.UnsavedConfirmModal })));
 
@@ -51,6 +53,7 @@ export default function DocumentAssistant() {
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [showBackUnsavedConfirm, setShowBackUnsavedConfirm] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showCollabModal, setShowCollabModal] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -73,6 +76,7 @@ export default function DocumentAssistant() {
     lineHeight,
     theme,
     autoSaveEnabled,
+    displayName,
     handleSaveSettings,
     handleAutoSaveChange,
   } = useAppSettings({
@@ -237,7 +241,7 @@ export default function DocumentAssistant() {
   folderFilesRef.current = folderFiles;
 
   const {
-    level,
+    level, setLevel,
     projects,
     selectedProject,
     projectViewMode, setProjectViewMode,
@@ -281,6 +285,53 @@ export default function DocumentAssistant() {
   setSelectedFileNodeRef.current = setSelectedFileNode;
 
   const shareDisabled = level === "project" && (!selectedFileNode || selectedFileNode.isDirectory);
+  const collabCanHost = !!selectedDoc && !(level === "project" && (!selectedFileNode || selectedFileNode.isDirectory));
+
+  const {
+    collab,
+    collabBusy,
+    collabYdoc,
+    collabProvider,
+    handleStartCollab,
+    handleJoinCollab,
+    handleStopCollab,
+    writeCollabNodeHtml,
+    syncOutlineToCollab,
+  } = useCollabSession({
+    isElectron,
+    setToast,
+    selectedDoc,
+    selectedNodeId,
+    selectedDocRef,
+    selectedNodeIdRef,
+    docStoreRef,
+    getOutlineTree,
+    setSelectedDoc,
+    setOutlineNodes,
+    setSelectedNodeId,
+    setMode,
+    setLevel,
+    setDocs,
+    setAndPersistDoc,
+    markSourceDirty,
+    dirtyOpenDocsRef,
+    displayName,
+  });
+
+  const handleCollabContentChange = useCallback((html: string, text: string) => {
+    handleNodeContentChange(html, text);
+    if (collab.active && selectedNodeIdRef.current) writeCollabNodeHtml(selectedNodeIdRef.current, html);
+  }, [collab.active, handleNodeContentChange, selectedNodeIdRef, writeCollabNodeHtml]);
+
+  const handleCollabOutlineUpdate = useCallback((nodes: OutlineNode[]) => {
+    updateOutlineTree(selectedDoc, nodes);
+    if (collab.active) syncOutlineToCollab(nodes);
+  }, [collab.active, selectedDoc, syncOutlineToCollab, updateOutlineTree]);
+
+  useEffect(() => {
+    if (!collab.active) return;
+    syncOutlineToCollab(outlineNodes);
+  }, [collab.active, outlineNodes, syncOutlineToCollab]);
 
   const {
     shared,
@@ -341,7 +392,7 @@ export default function DocumentAssistant() {
     if (mode === "outline" && selectedNode) {
       const renameInTree = (arr: OutlineNode[]): OutlineNode[] =>
         arr.map((node) => node.id === selectedNode.id ? { ...node, name } : { ...node, children: renameInTree(node.children) });
-      updateOutlineTree(selectedDoc, renameInTree(outlineNodes));
+      handleCollabOutlineUpdate(renameInTree(outlineNodes));
       return;
     }
     if (selectedDoc && name !== selectedDoc) void handleRename(selectedDoc, name);
@@ -361,6 +412,8 @@ export default function DocumentAssistant() {
             onImportFolder={handleImportFolder}
             onImportFolderDrop={handleImportFolderDrop}
             onNewFileInFolder={handleNewFileInFolder}
+            onOpenCollab={() => setShowCollabModal(true)}
+            collabActive={collab.active}
             onOpenHelp={() => setShowHelpModal(true)}
             onOpenUpdate={updateInfo ? () => setShowUpdateModal(true) : undefined}
             updateVersion={updateInfo?.version}
@@ -375,6 +428,17 @@ export default function DocumentAssistant() {
                 onClose={() => setShowHelpModal(false)}
                 onCheckUpdate={isElectron ? handleCheckForUpdates : undefined}
                 updateCheckBusy={updateCheckBusy}
+              />
+            )}
+            {showCollabModal && (
+              <CollabModal
+                collab={collab}
+                loading={collabBusy}
+                canHost={false}
+                onStart={handleStartCollab}
+                onJoin={(link) => { void handleJoinCollab(link); }}
+                onStop={() => { void handleStopCollab(); }}
+                onClose={() => setShowCollabModal(false)}
               />
             )}
             {showSettingsModal && (
@@ -410,7 +474,8 @@ export default function DocumentAssistant() {
       ) : (
         <>
           <EditorWorkspace docName={workspaceDocName} mode={mode} selectedNode={selectedNode} nodeDepth={selectedNodeDepth} nodeContent={selectedNode ? getNodeContent(selectedDoc, selectedNode.id) : emptyParagraph} previewHtml={filePreviewHtml} onTitleChange={handleTitleChange} theme={theme} fontSize={fontSize} lineHeight={lineHeight} sidebarWidth={276}
-            onContentChange={handleNodeContentChange} autoSaveEnabled={autoSaveEnabled} lastSavedAt={lastSavedAt} onAutoSaveChange={(enabled) => handleAutoSaveChange(enabled, setLastSavedAt)} />
+            onContentChange={handleCollabContentChange} autoSaveEnabled={autoSaveEnabled} lastSavedAt={lastSavedAt} onAutoSaveChange={(enabled) => handleAutoSaveChange(enabled, setLastSavedAt)}
+            collab={collab.active && collabYdoc && collabProvider ? { ydoc: collabYdoc, provider: collabProvider, user: { name: collab.localName, color: collab.localColor } } : null} />
           <TopBar
             onOpenShare={() => {
               if (shareDisabled) {
@@ -419,6 +484,7 @@ export default function DocumentAssistant() {
               }
               setShowShareModal(true);
             }}
+            onOpenCollab={() => setShowCollabModal(true)}
             onOpenExport={() => setShowExportModal(true)}
             onDelete={handleTopBarDelete}
             onImport={() => importInputRef.current?.click()}
@@ -430,6 +496,7 @@ export default function DocumentAssistant() {
             projectName={selectedProject?.name || ""}
             onBack={handleBackToProjects}
             shareDisabled={shareDisabled}
+            collabActive={collab.active}
             saveDisabled={!selectedDoc}
             saveAsDisabled={!selectedDoc}
           />
@@ -453,10 +520,10 @@ export default function DocumentAssistant() {
               onOpenLocation={(path) => getElectronAPI()?.openFolderLocation(path)}
             />
           ) : (
-            <OutlineTree nodes={outlineNodes} selectedId={selectedNodeId} docName={selectedDoc} contentMap={docStore[selectedDoc]?.content ?? {}} onSelect={setSelectedNodeId} onUpdateNodes={(nodes) => updateOutlineTree(selectedDoc, nodes)} onToast={(message, type) => setToast({ message, type })} filter={searchQuery} enterTick={outlineSearchEnter} />
+            <OutlineTree nodes={outlineNodes} selectedId={selectedNodeId} docName={selectedDoc} contentMap={docStore[selectedDoc]?.content ?? {}} onSelect={setSelectedNodeId} onUpdateNodes={handleCollabOutlineUpdate} onToast={(message, type) => setToast({ message, type })} filter={searchQuery} enterTick={outlineSearchEnter} />
           )}
           <SidebarModeHeader onNewDoc={() => setModal({ type: "new-file" })} onNewFile={() => setModal({ type: "new-level" })} mode={mode} onSwitchMode={handleSwitchMode} />
-          <SidebarShareStatus shared={shared} onClick={() => setShowShareModal(true)} />
+          <SidebarShareStatus shared={shared} collabActive={collab.active} onClick={() => setShowShareModal(true)} onCollabClick={() => setShowCollabModal(true)} />
       {docDeleteConfirm && (
         <DeleteConfirmModal
           message={docDeleteConfirm.message}
@@ -478,6 +545,17 @@ export default function DocumentAssistant() {
             onToggle={handleToggleShare}
             onDownload={isElectron ? undefined : handleDownloadShareHtml}
             onClose={() => setShowShareModal(false)}
+          />
+        )}
+        {showCollabModal && (
+          <CollabModal
+            collab={collab}
+            loading={collabBusy}
+            canHost={collabCanHost}
+            onStart={handleStartCollab}
+            onJoin={(link) => { void handleJoinCollab(link); }}
+            onStop={() => { void handleStopCollab(); }}
+            onClose={() => setShowCollabModal(false)}
           />
         )}
         {showHelpModal && (

@@ -75,7 +75,7 @@
 
 | Token | Hex | 用途 |
 |-------|-----|------|
-| `accent` | `#134CFF` | 品牌蓝、链接、拖拽 ring、进度条、插画填充 |
+| `accent` | `#134CFF` | 品牌蓝、链接、拖拽 ring、进度条、插画填充、协同光标默认色 |
 | `accent-stroke` | `#0012DD` | 插画描边（更深蓝） |
 | `success` | `#15803D` | 成功 Toast、分享开启文案、更新徽章 |
 | `success-toggle` | `#2AB673` | 分享开关开启轨 |
@@ -84,6 +84,11 @@
 | `danger-menu` | `#FF4D4F` | 菜单危险项文字 |
 | `danger-hover-bg` | `#FFF1F0` | 危险菜单 hover 底 |
 | `danger-active-bg` | `#FFE4E1` | 危险菜单 active 底 |
+| `collab-2` | `#D97706` | 协同光标/头像色板 |
+| `collab-3` | `#7C3AED` | 协同光标/头像色板 |
+| `collab-4` | `#0F766E` | 协同光标/头像色板 |
+| `collab-5` | `#DB2777` | 协同光标/头像色板 |
+| `collab-6` | `#1D4ED8` | 协同光标/头像色板 |
 
 ### 2.3 遮罩与阴影
 
@@ -195,7 +200,7 @@ style={{ fontFamily: "PingFang SC, sans-serif" }}
 
 | 类型 | 宽度 | z-index | 备注 |
 |------|------|---------|------|
-| 表单/导出/分享 | 520 | 400 | Enter 确认，Esc 关闭 |
+| 表单/导出/分享/协同 | 520 | 400 | Enter 确认，Esc 关闭 |
 | 设置 / 添加项目 | 400 | 400（新代码） | 历史为 100，改造时抬升 |
 | 删除确认 | 520 | 400 | 与新建/分享同壳；主文案 + 次要说明排版 |
 | 关闭确认 | 520 | **500** | 与分享弹窗同壳；z 最高，盖住其他弹窗 |
@@ -390,6 +395,7 @@ className="h-[32px] rounded-[8px] border border-solid border-[#EBECF0] bg-white
 ## 9. 编辑器相关（摘要）
 
 - 引擎：TipTap 3；工具栏、斜杠命令、Markdown 快捷输入保持现有扩展。
+- **局域网协同**：Yjs + Hocuspocus（端口 6536）。弹窗对齐分享弹窗；顶栏「协同」按钮；光标色板用 accent / danger / success + 第 2.2 节 collab-*。协同中编辑器使用 Collaboration / CollaborationCaret，勿再叠一套光标 UI。
 - 正文：15px / 1.8；预览 class `prose-preview` / `doc-tiptap-content`。
 - 空段落保留高度（全局 Less 已处理），勿删相关规则。
 - 调色板色表见 `src/app/editor/constants.ts`（内容色，**不是** chrome UI 色）。

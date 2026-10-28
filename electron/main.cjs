@@ -18,6 +18,7 @@ const { createAppSettings } = require('./lib/appSettings.cjs');
 const { createProjects } = require('./lib/projects.cjs');
 const { FOLDER_SUPPORTED_EXTS, createFolderWorkspace } = require('./lib/folderWorkspace.cjs');
 const { createShareServer } = require('./lib/shareServer.cjs');
+const { createCollabServer } = require('./lib/collabServer.cjs');
 const { createAutoUpdaterService } = require('./lib/autoUpdaterService.cjs');
 
 let mainWindow;
@@ -88,6 +89,11 @@ const {
   setActiveShareDocId,
   getActiveShareVersion,
 } = createShareServer({ getAllDocs, getDocContent });
+
+const {
+  startCollabServer,
+  stopCollabServer,
+} = createCollabServer();
 
 const {
   setupAutoUpdater,
@@ -286,7 +292,7 @@ app.whenReady().then(() => {
     }
   });
 });
-app.on('window-all-closed', () => { stopShareServer(); stopFolderWatcher(); if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => { stopShareServer(); void stopCollabServer(); stopFolderWatcher(); if (process.platform !== 'darwin') app.quit(); });
 
 ipcMain.handle('get-docs', () => getAllDocs());
 ipcMain.handle('get-doc', (_e, id) => getDocContent(id));
@@ -304,6 +310,19 @@ ipcMain.handle('update-share-html', (_e, docId, html) => {
   return { version: getActiveShareVersion() };
 });
 ipcMain.handle('stop-share', () => { stopShareServer(); });
+ipcMain.handle('start-collab', async (_e, port) => {
+  const preferred = port || 6536;
+  const { port: boundPort, token, room } = await startCollabServer(preferred);
+  const ip = getLocalIP();
+  return {
+    url: `http://${ip}:${boundPort}?token=${encodeURIComponent(token)}&room=${encodeURIComponent(room)}`,
+    wsUrl: `ws://${ip}:${boundPort}`,
+    port: boundPort,
+    token,
+    room,
+  };
+});
+ipcMain.handle('stop-collab', async () => { await stopCollabServer(); });
 ipcMain.handle('get-platform', () => process.platform);
 ipcMain.handle('get-version', () => app.getVersion());
 ipcMain.handle('check-for-updates', async (_e, options = {}) => checkForAppUpdates({ silent: !options?.manual }));

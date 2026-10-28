@@ -3,6 +3,7 @@ import { assetUrl } from "@/app/shared/utils/assetUrl";
 import { BrandTitle } from "./BrandTitle";
 import { SaveButton } from "./SaveButton";
 import { ShareButton } from "./ShareButton";
+import { CollabButton } from "./CollabButton";
 import { MoreButton } from "./MoreButton";
 import { ContextMenuItem, ContextMenuPanel } from "@/app/components/shared/ContextMenu";
 import svgPaths from "@/imports/首页文档模式/svg-8pwaal4bp9";
@@ -34,8 +35,9 @@ function HelpMenuIcon() {
   );
 }
 
-export function TopBar({ onOpenShare, onOpenExport, onDelete, onImport, onSave, onSaveAsMdoc, onOpenHelp, onOpenSettings, level, projectName, onBack, shareDisabled = false, saveDisabled = false, saveAsDisabled = false }: {
+export function TopBar({ onOpenShare, onOpenCollab, onOpenExport, onDelete, onImport, onSave, onSaveAsMdoc, onOpenHelp, onOpenSettings, level, projectName, onBack, shareDisabled = false, collabActive = false, saveDisabled = false, saveAsDisabled = false }: {
   onOpenShare: () => void;
+  onOpenCollab?: () => void;
   onOpenExport: () => void;
   onDelete: () => void;
   onImport: () => void;
@@ -47,6 +49,7 @@ export function TopBar({ onOpenShare, onOpenExport, onDelete, onImport, onSave, 
   projectName?: string;
   onBack?: () => void;
   shareDisabled?: boolean;
+  collabActive?: boolean;
   saveDisabled?: boolean;
   saveAsDisabled?: boolean;
 }) {
@@ -152,6 +155,13 @@ export function TopBar({ onOpenShare, onOpenExport, onDelete, onImport, onSave, 
           title={shareDisabled ? "请选择文件后再分享" : undefined}
         >
           <ShareButton />
+        </div>
+        <div
+          className="transition-all duration-150 rounded-[8px] cursor-pointer hover:bg-[#F7F8FA] active:bg-[#EBECF0] active:scale-95"
+          onClick={onOpenCollab}
+          title={collabActive ? "协同进行中" : "局域网协同编辑"}
+        >
+          <CollabButton active={collabActive} />
         </div>
         <div className="relative shrink-0" ref={moreRef}>
           <div

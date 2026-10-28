@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { EDITOR_CONTENT_CSS } from "./editorContentCss";
 import { createEditorContentAttributes, createEditorExtensions } from "./rich-editor/extensions";
+import { fragmentFieldFor } from "@/app/collab/ydocBind";
 import { applyIndentCommand, applyTextAlignCommand } from "./rich-editor/commands";
 import {
   applyMarkdownSpaceShortcut,
@@ -19,7 +20,7 @@ import { EditorToc } from "./rich-editor/EditorToc";
 import { EditorStatusBar } from "./rich-editor/EditorStatusBar";
 import { EditorFindBar } from "./rich-editor/EditorFindBar";
 import { getEditorTextCount, HEADING_OPTIONS } from "./constants";
-import { escapeHtml, normalizeEditorHtml } from "./utils/html";
+import { emptyParagraph, escapeHtml, normalizeEditorHtml } from "./utils/html";
 import { Toast } from "./ui/Toast";
 import { ImagePreviewModal } from "./ui/ImagePreviewModal";
 import { isCodeLangPickerOpen } from "./utils/codeLangPicker";
@@ -33,7 +34,7 @@ import { useMediaInsert } from "./rich-editor/hooks/useMediaInsert";
 import { useSlashMenuActions } from "./rich-editor/hooks/useSlashMenuActions";
 import { getSearchState, setSearchQuery, setSearchIndex, replaceCurrentMatch, replaceAllMatches } from "./extensions";
 
-export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange, autoSaveEnabled = false, lastSavedAt = null, onAutoSaveChange, fontSize: propFontSize, lineHeight: propLineHeight, theme: propTheme }: RichEditorTiptapProps) {
+export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange, autoSaveEnabled = false, lastSavedAt = null, onAutoSaveChange, fontSize: propFontSize, lineHeight: propLineHeight, theme: propTheme, collab = null }: RichEditorTiptapProps) {
   const linkBtnRef = useRef<HTMLButtonElement>(null);
   const lastExternalHtmlRef = useRef("");
   const lastSyncedNodeIdRef = useRef<string | null>(null);
@@ -175,10 +176,11 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     setToolbarPanel("link");
   };
 
+  const collabEnabled = !!(collab?.ydoc && collab?.provider && nodeId);
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: createEditorExtensions(),
-    content: normalizeEditorHtml(initialHtml),
+    extensions: createEditorExtensions(collabEnabled ? { ydoc: collab.ydoc, provider: collab.provider, nodeId, user: collab.user } : null),
+    content: collabEnabled ? undefined : normalizeEditorHtml(initialHtml),
     editorProps: {
       handleDOMEvents: {
         beforeinput: () => isCodeLangPickerOpen(),
@@ -271,10 +273,17 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       },
     },
     onCreate({ editor: ed }) {
+      if (collabEnabled) {
+        const fragment = collab.ydoc.getXmlFragment(fragmentFieldFor(nodeId));
+        if (fragment.length === 0) {
+          const html = normalizeEditorHtml(initialHtml);
+          if (html && html !== emptyParagraph) ed.commands.setContent(html, { emitUpdate: true });
+        }
+      }
       if (ensureHeadingAnchorsRef.current(ed)) return;
       const text = ed.getText();
       setCharCount(getEditorTextCount(text));
-      lastExternalHtmlRef.current = normalizeEditorHtml(initialHtml);
+      lastExternalHtmlRef.current = normalizeEditorHtml(ed.getHTML() || initialHtml);
       refreshTocRef.current(ed);
     },
     onUpdate({ editor: ed }) {
@@ -295,7 +304,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
       updateImageToolbar(ed);
       syncSlashMenuRef.current(ed);
     },
-  }, [nodeId, updateTableToolbar, updateImageToolbar]);
+  }, [nodeId, collabEnabled, collab?.ydoc, collab?.provider, updateTableToolbar, updateImageToolbar]);
   editorInstanceRef.current = editor;
 
   const toc = useEditorToc({ editor, nodeId, initialHtml, editorInstanceRef });
@@ -332,6 +341,14 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
+    if (collabEnabled) {
+      lastSyncedNodeIdRef.current = nodeId;
+      lastExternalHtmlRef.current = normalizeEditorHtml(editor.getHTML());
+      const text = editor.getText();
+      setCharCount(getEditorTextCount(text));
+      if (!ensureHeadingAnchors(editor)) refreshToc(editor);
+      return;
+    }
     const next = normalizeEditorHtml(initialHtml);
     const nodeChanged = lastSyncedNodeIdRef.current !== nodeId;
     const externalChanged = next !== lastExternalHtmlRef.current;
@@ -346,7 +363,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     const text = editor.getText();
     setCharCount(getEditorTextCount(text));
     if (!ensureHeadingAnchors(editor)) refreshToc(editor);
-  }, [editor, nodeId, initialHtml, refreshToc, ensureHeadingAnchors]);
+  }, [editor, nodeId, initialHtml, collabEnabled, refreshToc, ensureHeadingAnchors]);
 
   useEffect(() => {
     const onFindShortcut = (event: KeyboardEvent) => {

@@ -4,7 +4,7 @@ import { getElectronAPI } from "@/app/shared/electron";
 import { formatSavedAt } from "@/app/editor/constants";
 
 type ToastSetter = (toast: { message: string; type: "success" | "error" | "info" } | null) => void;
-type AppSettings = { closeBehavior?: string; fontSize?: string; lineHeight?: string; theme?: string; autoSaveEnabled?: boolean };
+type AppSettings = { closeBehavior?: string; fontSize?: string; lineHeight?: string; theme?: string; autoSaveEnabled?: boolean; displayName?: string };
 
 export function useAppSettings(params: {
   isElectron: boolean;
@@ -21,6 +21,7 @@ export function useAppSettings(params: {
   const lineHeight = appSettings.lineHeight || "1.8";
   const theme = appSettings.theme || "light";
   const autoSaveEnabled = !!appSettings.autoSaveEnabled;
+  const displayName = appSettings.displayName || "";
 
   useEffect(() => {
     const api = getElectronAPI();
@@ -84,6 +85,7 @@ export function useAppSettings(params: {
     lineHeight,
     theme,
     autoSaveEnabled,
+    displayName,
     handleSaveSettings,
     handleAutoSaveChange,
   };

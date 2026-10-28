@@ -44,7 +44,7 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return;
-          if (id.includes('@tiptap') || id.includes('prosemirror')) return 'editor';
+          if (id.includes('@tiptap') || id.includes('prosemirror') || id.includes('/yjs') || id.includes('\\yjs') || id.includes('@hocuspocus/provider') || id.includes('y-protocols') || id.includes('@tiptap/y-tiptap')) return 'editor';
           // 仅拆「动态 import」重库。勿把启动静态依赖（dompurify/marked/turndown）
           // 与 html-to-docx 打进同一 chunk，否则启动加载时会执行 html-to-docx
           // 并触发 Class extends value undefined（EventEmitter）导致白屏。

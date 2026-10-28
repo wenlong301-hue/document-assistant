@@ -89,4 +89,7 @@ export const EDITOR_CONTENT_CSS = `
         .doc-editor-toolbar::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,0.32)}
         .doc-tiptap-content .doc-search-hit{background:#FFF3C4}
         .doc-tiptap-content .doc-search-current{background:#FFD666}
+        .doc-tiptap-content .collaboration-carets__caret{border-left:1.5px solid;border-right:none;margin-left:-1px;margin-right:0;pointer-events:none;position:relative;word-break:normal}
+        .doc-tiptap-content .collaboration-carets__label{border-radius:4px 4px 4px 0;color:#fff;font-family:PingFang SC,sans-serif;font-size:11px;font-weight:500;left:-1px;line-height:1;padding:2px 6px;position:absolute;top:-18px;user-select:none;white-space:nowrap}
+        .doc-tiptap-content .ProseMirror-yjs-selection{opacity:.22}
       `;
