@@ -328,11 +328,6 @@ export default function DocumentAssistant() {
     if (collab.active) syncOutlineToCollab(nodes);
   }, [collab.active, selectedDoc, syncOutlineToCollab, updateOutlineTree]);
 
-  useEffect(() => {
-    if (!collab.active) return;
-    syncOutlineToCollab(outlineNodes);
-  }, [collab.active, outlineNodes, syncOutlineToCollab]);
-
   const {
     shared,
     shareBusy,
@@ -475,7 +470,7 @@ export default function DocumentAssistant() {
         <>
           <EditorWorkspace docName={workspaceDocName} mode={mode} selectedNode={selectedNode} nodeDepth={selectedNodeDepth} nodeContent={selectedNode ? getNodeContent(selectedDoc, selectedNode.id) : emptyParagraph} previewHtml={filePreviewHtml} onTitleChange={handleTitleChange} theme={theme} fontSize={fontSize} lineHeight={lineHeight} sidebarWidth={276}
             onContentChange={handleCollabContentChange} autoSaveEnabled={autoSaveEnabled} lastSavedAt={lastSavedAt} onAutoSaveChange={(enabled) => handleAutoSaveChange(enabled, setLastSavedAt)}
-            collab={collab.active && collabYdoc && collabProvider ? { ydoc: collabYdoc, provider: collabProvider, user: { name: collab.localName, color: collab.localColor } } : null} />
+            collab={collab.active && collabYdoc && collabProvider && (collab.role === "host" || collab.synced) ? { ydoc: collabYdoc, provider: collabProvider, user: { name: collab.localName, color: collab.localColor } } : null} />
           <TopBar
             onOpenShare={() => {
               if (shareDisabled) {

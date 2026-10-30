@@ -7,6 +7,7 @@ import { getElectronAPI } from "@/app/shared/electron";
 import { collabColorFor } from "./colors";
 import { parseCollabLink } from "./parseLink";
 import type { CollabPeer, CollabRole, CollabSessionState } from "./types";
+import { seedCollabXmlFragments } from "./seedFragments";
 import {
   readCollabContent,
   readCollabMeta,
@@ -166,6 +167,7 @@ export function useCollabSession(params: {
     const doc = new Y.Doc();
     if (opts.role === "host" && opts.seed) {
       seedCollabDoc(doc, opts.seed, selectedNodeIdRef.current, "outline");
+      seedCollabXmlFragments(doc, opts.seed.content || {});
     }
     const nextProvider = new HocuspocusProvider({
       url: opts.wsUrl,
@@ -208,13 +210,19 @@ export function useCollabSession(params: {
     });
     nextProvider.on("awarenessUpdate", syncAwareness);
     nextProvider.on("awarenessChange", syncAwareness);
-    nextProvider.on("synced", () => {
+    nextProvider.on("synced", (data?: { state?: boolean }) => {
+      if (data?.state === false) {
+        setSession((prev) => (prev.active ? { ...prev, synced: false, status: "connecting" } : prev));
+        return;
+      }
       nextProvider.setAwarenessField("user", {
         name: localName,
         color: localColor,
         nodeId: selectedNodeIdRef.current,
         role: opts.role,
       });
+      const seedContent = opts.role === "host" ? opts.seed?.content : readCollabContent(doc);
+      if (seedContent) seedCollabXmlFragments(doc, seedContent);
       applyRemoteToStore(doc);
       if (opts.role === "guest") {
         setLevel("project");

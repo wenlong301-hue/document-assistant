@@ -130,14 +130,38 @@ function exportResultFromError(error) {
   return { canceled: false, error: error instanceof Error ? error.message : '导出失败' };
 }
 
+function isLanIPv4(address) {
+  const parts = String(address || '').split('.').map(Number);
+  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false;
+  const [a, b] = parts;
+  if (a === 10) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  return false;
+}
+
+function scoreLocalAddress(name, address) {
+  const n = String(name || '').toLowerCase();
+  let score = 0;
+  if (isLanIPv4(address)) score += 50;
+  if (/^en\d|^eth\d|^wlan|^wi-?fi|^wl/.test(n)) score += 20;
+  if (/utun|tun|tap|bridge|br\d|docker|veth|vmnet|vbox|lo\d|awdl|llw|ap\d|ciscodump|iphone|android/.test(n)) score -= 40;
+  if (String(address).startsWith('169.254.')) score -= 50;
+  return score;
+}
+
 function getLocalIP() {
   const interfaces = os.networkInterfaces();
+  const candidates = [];
   for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
-      if (iface.family === 'IPv4' && !iface.internal) return iface.address;
+    for (const iface of interfaces[name] || []) {
+      const ipv4 = iface.family === 'IPv4' || iface.family === 4;
+      if (!ipv4 || iface.internal) continue;
+      candidates.push({ address: iface.address, score: scoreLocalAddress(name, iface.address) });
     }
   }
-  return 'localhost';
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0]?.address || 'localhost';
 }
 
 function createWindow() {

@@ -13,6 +13,15 @@ function randomToken() {
 function listenOnPort(server, port) {
   return new Promise((resolve, reject) => {
     const httpServer = server.httpServer;
+    const originalListen = httpServer.listen.bind(httpServer);
+    httpServer.listen = (options, callback) => {
+      if (options && typeof options === 'object') {
+        const next = { ...options, host: options.host || options.address || '0.0.0.0' };
+        delete next.address;
+        return originalListen(next, callback);
+      }
+      return originalListen(options, callback);
+    };
     const onError = (error) => {
       httpServer.off('error', onError);
       reject(error);

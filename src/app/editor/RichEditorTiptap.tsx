@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { EDITOR_CONTENT_CSS } from "./editorContentCss";
 import { createEditorContentAttributes, createEditorExtensions } from "./rich-editor/extensions";
+import { isCollabFragmentVisuallyEmpty } from "@/app/collab/seedFragments";
 import { fragmentFieldFor } from "@/app/collab/ydocBind";
 import { applyIndentCommand, applyTextAlignCommand } from "./rich-editor/commands";
 import {
@@ -275,7 +276,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
     onCreate({ editor: ed }) {
       if (collabEnabled) {
         const fragment = collab.ydoc.getXmlFragment(fragmentFieldFor(nodeId));
-        if (fragment.length === 0) {
+        if (isCollabFragmentVisuallyEmpty(fragment)) {
           const html = normalizeEditorHtml(initialHtml);
           if (html && html !== emptyParagraph) ed.commands.setContent(html, { emitUpdate: true });
         }
