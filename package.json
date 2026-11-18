@@ -12,7 +12,12 @@
     "electron:preview": "vite build && electron .",
     "electron:build": "vite build && electron-builder",
     "electron:mac": "vite build && electron-builder --mac",
-    "electron:win": "vite build && electron-builder --win"
+    "electron:win": "vite build && electron-builder --win",
+    "server": "npm --prefix server start",
+    "server:dev": "npm --prefix server run dev",
+    "test:cloud": "node test/cloud.e2e.mjs",
+    "test:acl": "node test/acl.e2e.mjs",
+    "test:lan": "node test/lan.e2e.mjs"
   },
   "dependencies": {
     "@hocuspocus/provider": "^3.2.3",
@@ -114,5 +119,8 @@
         "repo": "document-assistant"
       }
     ]
+  },
+  "overrides": {
+    "@hocuspocus/common": "3.2.3"
   }
 }

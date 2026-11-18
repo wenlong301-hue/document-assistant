@@ -36,6 +36,7 @@ import { useSlashMenuActions } from "./rich-editor/hooks/useSlashMenuActions";
 import { getSearchState, setSearchQuery, setSearchIndex, replaceCurrentMatch, replaceAllMatches } from "./extensions";
 
 export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange, autoSaveEnabled = false, lastSavedAt = null, onAutoSaveChange, fontSize: propFontSize, lineHeight: propLineHeight, theme: propTheme, collab = null }: RichEditorTiptapProps) {
+  const readOnly = !!collab?.readOnly;
   const linkBtnRef = useRef<HTMLButtonElement>(null);
   const lastExternalHtmlRef = useRef("");
   const lastSyncedNodeIdRef = useRef<string | null>(null);
@@ -180,6 +181,7 @@ export function RichEditorTiptap({ docName, nodeId, initialHtml, onContentChange
   const collabEnabled = !!(collab?.ydoc && collab?.provider && nodeId);
   const editor = useEditor({
     immediatelyRender: false,
+    editable: !readOnly,
     extensions: createEditorExtensions(collabEnabled ? { ydoc: collab.ydoc, provider: collab.provider, nodeId, user: collab.user } : null),
     content: collabEnabled ? undefined : normalizeEditorHtml(initialHtml),
     editorProps: {

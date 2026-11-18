@@ -23,5 +23,7 @@ export type RichEditorTiptapProps = {
     ydoc: import("yjs").Doc;
     provider: unknown;
     user: { name: string; color: string };
+    readOnly?: boolean;
   } | null;
+  readOnly?: boolean;
 };

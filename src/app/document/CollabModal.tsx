@@ -22,6 +22,7 @@ export function CollabModal({
   const [joinLink, setJoinLink] = useState("");
   const [joinFocused, setJoinFocused] = useState(false);
   const active = collab.active;
+  const isCloud = !!collab.cloud;
   const statusLabel = loading
     ? "处理中..."
     : active
@@ -77,12 +78,16 @@ export function CollabModal({
         </div>
 
         <div className="px-[24px] pt-[24px] pb-[32px] flex flex-col">
-          <p className="m-0 font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[14px] font-medium leading-[20px]">同一 Wi-Fi 下一起改这份文档</p>
+          <p className="m-0 font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[14px] font-medium leading-[20px]">
+            {isCloud ? "云端实时协同" : "同一 Wi-Fi 下一起改这份文档"}
+          </p>
           <p className="m-0 mt-[8px] font-['PingFang_SC:Regular',sans-serif] text-[#8D8E99] text-[13px] leading-[18px]">
-            发起后复制链接发给同事；对方在文档助手中粘贴即可进入。只读分享仍用顶栏「分享」。
+            {isCloud
+              ? "内容实时保存到云端服务器，成员用各自账号登录文档助手即可一起编辑，不需要同一 Wi-Fi。"
+              : "发起后复制链接发给同事；对方在文档助手中粘贴即可进入。只读分享仍用顶栏「分享」。"}
           </p>
           <p className="m-0 mt-[4px] font-['PingFang_SC:Regular',sans-serif] text-[#8D8E99] text-[13px] leading-[18px]">
-            注意：发起方电脑和文档助手需要保持开启，别人才能连上。
+            {isCloud ? "在首页「云端协同」区域可管理成员与权限。" : "注意：发起方电脑和文档助手需要保持开启，别人才能连上。"}
           </p>
           {collab.error && (
             <p className="m-0 mt-[4px] font-['PingFang_SC:Regular',sans-serif] text-[#E53E3E] text-[13px] leading-[18px]">{collab.error}</p>
@@ -101,8 +106,12 @@ export function CollabModal({
               </p>
               <p className="m-0 font-['PingFang_SC:Regular',sans-serif] text-[#8D8E99] text-[13px] leading-[18px]">
                 {active
-                  ? (collab.role === "guest" ? "已加入同事发起的协同" : "链接已生成，复制后发给同一 Wi-Fi 内的人")
-                  : (canHost ? "点击右侧开关发起协同，或在下方粘贴链接加入" : "请先选择文件后再发起协同")}
+                  ? (isCloud
+                    ? "已连接云端项目，编辑内容会自动同步"
+                    : (collab.role === "guest" ? "已加入同事发起的协同" : "链接已生成，复制后发给同一 Wi-Fi 内的人"))
+                  : (isCloud
+                    ? "从首页云端项目卡片进入即可自动协同"
+                    : (canHost ? "点击右侧开关发起协同，或在下方粘贴链接加入" : "请先选择文件后再发起协同"))}
               </p>
             </div>
             <button
@@ -122,7 +131,7 @@ export function CollabModal({
             </button>
           </div>
 
-          {active && collab.role === "host" && (
+          {active && collab.role === "host" && !isCloud && (
             <div className="rounded-[12px] px-[16px] pt-[12px] pb-[16px] flex flex-col gap-[8px] mt-[12px]" style={{ background: "rgba(245,245,244,0.5)" }}>
               <p className="m-0 font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[14px] leading-[20px]">协同链接</p>
               <div className="flex items-center gap-[12px]">
@@ -163,7 +172,7 @@ export function CollabModal({
             </div>
           )}
 
-          {!active && (
+          {!active && !isCloud && (
             <div className="rounded-[12px] px-[16px] pt-[12px] pb-[16px] flex flex-col gap-[8px] mt-[12px]" style={{ background: "rgba(245,245,244,0.5)" }}>
               <p className="m-0 font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[14px] leading-[20px]">加入协同</p>
               <div className="flex items-center gap-[12px]">

@@ -27,6 +27,11 @@ import { useShareSession } from "@/app/document/hooks/useShareSession";
 import { useCollabSession } from "@/app/collab/useCollabSession";
 import { useFolderDocuments } from "@/app/document/hooks/useFolderDocuments";
 import { useProjectWorkspace } from "@/app/document/hooks/useProjectWorkspace";
+import { createStoredDoc } from "@/app/document/helpers";
+import { useCloudSession } from "@/app/cloud/useCloudSession";
+import type { CloudProject } from "@/app/cloud/api";
+import { CloudAuthModal } from "@/app/document/CloudAuthModal";
+import { CloudMembersModal } from "@/app/document/CloudMembersModal";
 
 const HelpModal = lazy(() => import("@/app/document/HelpModal").then((m) => ({ default: m.HelpModal })));
 const SettingsModal = lazy(() => import("@/app/document/SettingsModal").then((m) => ({ default: m.SettingsModal })));
@@ -37,7 +42,7 @@ const ExportModal = lazy(() => import("@/app/document/ExportModal").then((m) => 
 const UnsavedConfirmModal = lazy(() => import("@/app/document/UnsavedConfirmModal").then((m) => ({ default: m.UnsavedConfirmModal })));
 
 export default function DocumentAssistant() {
-  const [modal, setModal] = useState<{ type: "new" } | { type: "new-file" } | { type: "new-level" } | { type: "rename"; target: string } | null>(null);
+  const [modal, setModal] = useState<{ type: "new" } | { type: "new-file" } | { type: "new-level" } | { type: "new-cloud" } | { type: "rename"; target: string } | null>(null);
   const [docDeleteConfirm, setDocDeleteConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [fileEventConfirm, setFileEventConfirm] = useState<{
     kind: "gone" | "missing" | "conflict";
@@ -243,7 +248,7 @@ export default function DocumentAssistant() {
   const {
     level, setLevel,
     projects,
-    selectedProject,
+    selectedProject, setSelectedProject,
     projectViewMode, setProjectViewMode,
     folderTree, setFolderTree,
     selectedFileNode, setSelectedFileNode,
@@ -293,6 +298,7 @@ export default function DocumentAssistant() {
     collabYdoc,
     collabProvider,
     handleStartCollab,
+    handleStartCloud,
     handleJoinCollab,
     handleStopCollab,
     writeCollabNodeHtml,
@@ -327,6 +333,65 @@ export default function DocumentAssistant() {
     updateOutlineTree(selectedDoc, nodes);
     if (collab.active) syncOutlineToCollab(nodes);
   }, [collab.active, selectedDoc, syncOutlineToCollab, updateOutlineTree]);
+
+  const cloud = useCloudSession({ isElectron, setToast });
+
+  const handleOpenCloudProject = useCallback(async (project: CloudProject) => {
+    if (!cloud.user) {
+      cloud.openAuth("login");
+      return;
+    }
+    const seed = docStoreRef.current[project.name] ?? createStoredDoc(project.name);
+    setSelectedProject({
+      id: `cloud:${project.id}`,
+      name: project.name,
+      createdAt: new Date(project.createdAt || Date.now()).toISOString(),
+      updatedAt: new Date(project.updatedAt || Date.now()).toISOString(),
+    });
+    if (collab.cloud) await handleStopCollab();
+    const result = await handleStartCloud(project, seed);
+    if (result?.ok) {
+      cloud.setActiveProject(project);
+      setToast({ message: result.role === "viewer" ? "已进入云端项目（只读）" : "已进入云端项目", type: "success" });
+    }
+  }, [cloud, collab.cloud, docStoreRef, handleStartCloud, handleStopCollab, setSelectedProject, setToast]);
+
+  const handleCreateCloudProject = useCallback(async (name: string) => {
+    const project = await cloud.createProject(name);
+    if (project) await handleOpenCloudProject(project);
+  }, [cloud, handleOpenCloudProject]);
+
+  const handleUploadCurrentProject = useCallback(async () => {
+    const name = selectedDocRef.current;
+    if (!name) {
+      setToast({ message: "请先打开一个本地项目", type: "info" });
+      return;
+    }
+    const doc = docStoreRef.current[name];
+    if (!doc) {
+      setToast({ message: "当前项目还没有内容", type: "info" });
+      return;
+    }
+    const project = await cloud.uploadCurrent(doc);
+    if (project) await handleOpenCloudProject(project);
+  }, [cloud, docStoreRef, handleOpenCloudProject, selectedDocRef, setToast]);
+
+  const handleSelectLocalProject = useCallback(async (project: Project) => {
+    if (collab.cloud) await handleStopCollab();
+    cloud.setActiveProject(null);
+    await handleSelectProject(project);
+  }, [cloud, collab.cloud, handleSelectProject, handleStopCollab]);
+
+  // 离开项目视图时自动退出云端协同（避免继续占用房间）
+  const cloudActiveRef = useRef(false);
+  cloudActiveRef.current = collab.cloud;
+  useEffect(() => {
+    if (level !== "project" && cloudActiveRef.current) {
+      cloudActiveRef.current = false;
+      void handleStopCollab();
+      cloud.setActiveProject(null);
+    }
+  }, [level, handleStopCollab, cloud]);
 
   const {
     shared,
@@ -402,7 +467,7 @@ export default function DocumentAssistant() {
             viewMode={projectViewMode}
             searchQuery={searchQuery}
             isElectron={!!isElectron}
-            onSelectProject={handleSelectProject}
+            onSelectProject={handleSelectLocalProject}
             onCreateProject={handleCreateProject}
             onImportFolder={handleImportFolder}
             onImportFolderDrop={handleImportFolderDrop}
@@ -416,6 +481,22 @@ export default function DocumentAssistant() {
             onRenameProject={handleRenameProject}
             onViewModeChange={setProjectViewMode}
             onSearchChange={setSearchQuery}
+            cloud={{
+              available: cloud.available,
+              ready: cloud.ready,
+              user: cloud.user,
+              projects: cloud.projects,
+              busy: cloud.busy,
+              activeProjectId: cloud.activeProject?.id ?? null,
+              hasOpenDoc: !!selectedDoc,
+              onOpenAuth: () => cloud.openAuth("login"),
+              onLogout: () => { void cloud.logout(); },
+              onCreate: () => setModal({ type: "new-cloud" }),
+              onUploadCurrent: () => { void handleUploadCurrentProject(); },
+              onOpen: (project) => { void handleOpenCloudProject(project); },
+              onMembers: () => { void cloud.openMembers(null); },
+              onDelete: (project) => { void cloud.deleteProject(project); },
+            }}
           />
           <Suspense fallback={null}>
             {showHelpModal && (
@@ -425,6 +506,27 @@ export default function DocumentAssistant() {
                 updateCheckBusy={updateCheckBusy}
               />
             )}
+            <CloudAuthModal
+              open={cloud.authOpen}
+              mode={cloud.authMode}
+              loading={cloud.busy}
+              defaultServer={cloud.serverUrl}
+              onLogin={cloud.login}
+              onRegister={cloud.register}
+              onClose={cloud.closeAuth}
+              onSwitchMode={cloud.openAuth}
+            />
+            <CloudMembersModal
+              open={cloud.membersOpen}
+              members={cloud.members}
+              loading={cloud.membersBusy}
+              canManage={cloud.activeProject?.role === "owner"}
+              user={cloud.user}
+              projectName={cloud.activeProject?.name || selectedProject?.name}
+              onInvite={cloud.inviteMember}
+              onRemove={(userId) => { void cloud.removeMember(userId); }}
+              onClose={cloud.closeMembers}
+            />
             {showCollabModal && (
               <CollabModal
                 collab={collab}
@@ -470,7 +572,7 @@ export default function DocumentAssistant() {
         <>
           <EditorWorkspace docName={workspaceDocName} mode={mode} selectedNode={selectedNode} nodeDepth={selectedNodeDepth} nodeContent={selectedNode ? getNodeContent(selectedDoc, selectedNode.id) : emptyParagraph} previewHtml={filePreviewHtml} onTitleChange={handleTitleChange} theme={theme} fontSize={fontSize} lineHeight={lineHeight} sidebarWidth={276}
             onContentChange={handleCollabContentChange} autoSaveEnabled={autoSaveEnabled} lastSavedAt={lastSavedAt} onAutoSaveChange={(enabled) => handleAutoSaveChange(enabled, setLastSavedAt)}
-            collab={collab.active && collabYdoc && collabProvider && (collab.role === "host" || collab.synced) ? { ydoc: collabYdoc, provider: collabProvider, user: { name: collab.localName, color: collab.localColor } } : null} />
+            collab={collab.active && collabYdoc && collabProvider && (collab.role === "host" || collab.synced) ? { ydoc: collabYdoc, provider: collabProvider, user: { name: collab.localName, color: collab.localColor }, readOnly: collab.readOnly } : null} />
           <TopBar
             onOpenShare={() => {
               if (shareDisabled) {
@@ -542,6 +644,27 @@ export default function DocumentAssistant() {
             onClose={() => setShowShareModal(false)}
           />
         )}
+        <CloudAuthModal
+          open={cloud.authOpen}
+          mode={cloud.authMode}
+          loading={cloud.busy}
+          defaultServer={cloud.serverUrl}
+          onLogin={cloud.login}
+          onRegister={cloud.register}
+          onClose={cloud.closeAuth}
+          onSwitchMode={cloud.openAuth}
+        />
+        <CloudMembersModal
+          open={cloud.membersOpen}
+          members={cloud.members}
+          loading={cloud.membersBusy}
+          canManage={cloud.activeProject?.role === "owner"}
+          user={cloud.user}
+          projectName={cloud.activeProject?.name || selectedProject?.name}
+          onInvite={cloud.inviteMember}
+          onRemove={(userId) => { void cloud.removeMember(userId); }}
+          onClose={cloud.closeMembers}
+        />
         {showCollabModal && (
           <CollabModal
             collab={collab}
@@ -637,6 +760,16 @@ export default function DocumentAssistant() {
           title="新建层级"
           onClose={() => setModal(null)}
           onConfirm={(name) => { handleNewRootFile(name); setModal(null); }}
+        />
+      )}
+      {modal?.type === "new-cloud" && (
+        <NewDocModal
+          title="新建云端项目"
+          onClose={() => setModal(null)}
+          onConfirm={(name) => {
+            setModal(null);
+            if (name?.trim()) void handleCreateCloudProject(name.trim());
+          }}
         />
       )}
       {modal?.type === "rename" && (

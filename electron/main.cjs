@@ -20,6 +20,7 @@ const { FOLDER_SUPPORTED_EXTS, createFolderWorkspace } = require('./lib/folderWo
 const { createShareServer } = require('./lib/shareServer.cjs');
 const { createCollabServer } = require('./lib/collabServer.cjs');
 const { createAutoUpdaterService } = require('./lib/autoUpdaterService.cjs');
+const { createCloudClient } = require('./lib/cloudClient.cjs');
 
 let mainWindow;
 let tray = null;
@@ -39,7 +40,10 @@ function clearCloseAsk() {
 }
 
 const RELEASE_PAGE_URL = 'https://github.com/wenlong301-hue/document-assistant/releases/latest';
-const DOCS_DIR = path.join(app.getPath('documents'), 'DocAssistant');
+// 支持通过环境变量指定数据目录（便于多账号隔离与自动化测试）
+const DOCS_DIR = process.env.DOC_ASSISTANT_DATA_DIR
+  ? path.resolve(process.env.DOC_ASSISTANT_DATA_DIR)
+  : path.join(app.getPath('documents'), 'DocAssistant');
 const RECENT_FILE = path.join(DOCS_DIR, 'recent.json');
 const SETTINGS_FILE = path.join(DOCS_DIR, 'settings.json');
 const PROJECTS_FILE = path.join(DOCS_DIR, 'projects.json');
@@ -94,6 +98,8 @@ const {
   startCollabServer,
   stopCollabServer,
 } = createCollabServer();
+
+const cloudClient = createCloudClient({ dataDir: DOCS_DIR });
 
 const {
   setupAutoUpdater,
@@ -305,6 +311,7 @@ function createTray() {
 }
 
 app.whenReady().then(() => {
+  cloudClient.loadConfig();
   setupAutoUpdater();
   createWindow();
   createTray();
@@ -738,6 +745,27 @@ ipcMain.handle('create-file-in-folder', async (_e, folderPath, fileName) => {
     return { ok: false, error: error instanceof Error ? error.message : '创建失败' };
   }
 });
+
+// ---------------- 云端账号 / 项目 / 协同 ----------------
+ipcMain.handle('cloud-config', (_e, payload) => (payload ? cloudClient.setServerUrl(payload.serverUrl) : cloudClient.getConfig()));
+ipcMain.handle('cloud-login', (_e, payload) => cloudClient.login(payload || {}));
+ipcMain.handle('cloud-register', (_e, payload) => cloudClient.register(payload || {}));
+ipcMain.handle('cloud-logout', () => cloudClient.logout());
+ipcMain.handle('cloud-session', () => cloudClient.session());
+ipcMain.handle('cloud-health', () => cloudClient.health());
+
+// 统一 REST 转发：返回 {ok,status,data|error}，避免 IPC 抛错丢失状态码
+ipcMain.handle('cloud-request', async (_e, payload) => {
+  const { method = 'GET', path: apiPath, body } = payload || {};
+  try {
+    const data = await cloudClient.request(String(method).toUpperCase(), String(apiPath || ''), body);
+    return { ok: true, status: 200, data };
+  } catch (error) {
+    return { ok: false, status: error?.status || 500, error: error?.message || '请求失败' };
+  }
+});
+
+ipcMain.handle('cloud-ws-ticket', (_e, payload) => cloudClient.wsTicket(payload?.projectId));
 
 ipcMain.handle('open-folder-location', async (_e, folderPath) => {
   try {

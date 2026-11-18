@@ -15,7 +15,7 @@ export function EditorWorkspace({ docName, mode, selectedNode, nodeDepth, nodeCo
   nodeContent?: string; previewHtml?: string; onTitleChange?: (name: string) => void; onContentChange?: (html: string, text: string) => void;
   autoSaveEnabled?: boolean; lastSavedAt?: string | null; onAutoSaveChange?: (enabled: boolean) => void;
   fontSize?: string; lineHeight?: string; theme?: string; sidebarWidth?: number;
-  collab?: { ydoc: import("yjs").Doc; provider: unknown; user: { name: string; color: string } } | null;
+  collab?: { ydoc: import("yjs").Doc; provider: unknown; user: { name: string; color: string }; readOnly?: boolean } | null;
 }) {
   const isOutlineEmpty = mode === "outline" && !selectedNode;
   const titleName = mode === "outline" && selectedNode ? selectedNode.name : (docName || "文档助手");

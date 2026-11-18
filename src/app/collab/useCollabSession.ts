@@ -4,6 +4,7 @@ import { HocuspocusProvider } from "@hocuspocus/provider";
 import type { DocStore, OutlineNode, StoredDoc } from "@/app/document/types";
 import { createStoredDoc } from "@/app/document/helpers";
 import { getElectronAPI } from "@/app/shared/electron";
+import { cloudApi } from "@/app/cloud/api";
 import { collabColorFor } from "./colors";
 import { parseCollabLink } from "./parseLink";
 import type { CollabPeer, CollabRole, CollabSessionState } from "./types";
@@ -31,6 +32,8 @@ const idleState = (name: string, color: string): CollabSessionState => ({
   localName: name,
   localColor: color,
   synced: false,
+  cloud: false,
+  readOnly: false,
 });
 
 function peersFromAwareness(provider: HocuspocusProvider, localClientId: number): CollabPeer[] {
@@ -163,9 +166,13 @@ export function useCollabSession(params: {
     room: string;
     role: Exclude<CollabRole, null>;
     seed?: StoredDoc;
+    cloud?: boolean;
+    seedOnSync?: boolean;
+    readOnly?: boolean;
   }) => {
     const doc = new Y.Doc();
-    if (opts.role === "host" && opts.seed) {
+    // 局域网模式：发起方在连接前播种；云端模式：服务端已有权威内容，改为同步后再按需播种
+    if (!opts.cloud && opts.role === "host" && opts.seed) {
       seedCollabDoc(doc, opts.seed, selectedNodeIdRef.current, "outline");
       seedCollabXmlFragments(doc, opts.seed.content || {});
     }
@@ -221,8 +228,22 @@ export function useCollabSession(params: {
         nodeId: selectedNodeIdRef.current,
         role: opts.role,
       });
+
+      // 云端：房间为空时用本地缓存初始化（首次上传/首次打开），已有内容则以服务端为准
+      if (opts.cloud && opts.seedOnSync && opts.seed) {
+        const metaMap = doc.getMap("meta");
+        const outline = metaMap.get("outline");
+        const hasOutline = Array.isArray(outline) && outline.length > 0;
+        const hasContent = doc.getMap("content").size > 0;
+        if (!hasOutline && !hasContent) {
+          seedCollabDoc(doc, opts.seed, selectedNodeIdRef.current, "outline");
+          seedCollabXmlFragments(doc, opts.seed.content || {});
+        }
+      }
+
       const seedContent = opts.role === "host" ? opts.seed?.content : readCollabContent(doc);
-      if (seedContent) seedCollabXmlFragments(doc, seedContent);
+      if (seedContent && !opts.cloud) seedCollabXmlFragments(doc, seedContent);
+      if (opts.cloud) seedCollabXmlFragments(doc, readCollabContent(doc));
       applyRemoteToStore(doc);
       if (opts.role === "guest") {
         setLevel("project");
@@ -251,6 +272,8 @@ export function useCollabSession(params: {
       error: "",
       synced: false,
       peers: [],
+      cloud: !!opts.cloud,
+      readOnly: !!opts.readOnly,
     }));
   }, [applyRemoteToStore, localColor, localName, selectedNodeIdRef, setLevel, setMode, setToast]);
 
@@ -290,6 +313,39 @@ export function useCollabSession(params: {
     }
   }, [attachProvider, busy, docStoreRef, getOutlineTree, isElectron, selectedDoc, selectedDocRef, session.active, setMode, setToast]);
 
+  /** 打开云端项目：使用账号票据接入服务器房间，无需局域网 */
+  const handleStartCloud = useCallback(async (project: { id: string; name: string }, seed?: StoredDoc | null) => {
+    if (busy) return { ok: false as const };
+    setBusy(true);
+    try {
+      if (session.active) await teardown({ stopServer: false });
+      const ticket = await cloudApi.wsTicket(project.id);
+      if (!ticket?.collabUrl || !ticket?.ticket) throw new Error("获取协同票据失败");
+      setSelectedDoc(project.name);
+      setLevel("project");
+      setMode("outline");
+      attachProvider({
+        wsUrl: ticket.collabUrl,
+        url: "",
+        token: ticket.ticket,
+        room: `project:${project.id}`,
+        role: "host",
+        seed: seed || undefined,
+        cloud: true,
+        seedOnSync: true,
+        readOnly: ticket.role === "viewer",
+      });
+      return { ok: true as const, role: ticket.role as "owner" | "editor" | "viewer" };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "连接云端协同失败";
+      setSession((prev) => ({ ...prev, status: "error", error: message }));
+      setToast({ message, type: "error" });
+      return { ok: false as const, error: message };
+    } finally {
+      setBusy(false);
+    }
+  }, [attachProvider, busy, session.active, setLevel, setMode, setSelectedDoc, setToast, teardown]);
+
   const handleJoinCollab = useCallback(async (link: string) => {
     if (busy) return;
     const parsed = parseCollabLink(link);
@@ -320,8 +376,8 @@ export function useCollabSession(params: {
     setBusy(true);
     try {
       const role = session.role;
-      await teardown({ stopServer: role === "host" });
-      setToast({ message: role === "guest" ? "已离开协同" : "协同已关闭", type: "info" });
+      await teardown({ stopServer: role === "host" && !session.cloud });
+      setToast({ message: role === "guest" ? "已离开协同" : session.cloud ? "已退出云端协同" : "协同已关闭", type: "info" });
     } finally {
       setBusy(false);
     }
@@ -357,6 +413,7 @@ export function useCollabSession(params: {
     collabProvider: provider,
     applyingRemoteRef,
     handleStartCollab,
+    handleStartCloud,
     handleJoinCollab,
     handleStopCollab,
     writeCollabNodeHtml: writeNodeHtml,

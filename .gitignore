@@ -64,3 +64,7 @@ temp/
 
 # Playwright CLI local dumps
 .playwright-cli/
+
+# 云端服务端数据
+server/data/
+server/.tmpdata/

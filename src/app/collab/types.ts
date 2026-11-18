@@ -20,4 +20,8 @@ export type CollabSessionState = {
   localName: string;
   localColor: string;
   synced: boolean;
+  /** 是否为云端项目（云端协同不停止本机局域网协同服务） */
+  cloud: boolean;
+  /** 只读成员（服务端同样会丢弃写入） */
+  readOnly: boolean;
 };

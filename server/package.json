@@ -1,0 +1,23 @@
+{
+  "name": "doc-assistant-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "文档助手云端协同服务（账户 + 项目 ACL + Yjs 协同）",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "@hocuspocus/server": "3.2.3",
+    "fastify": "^5.2.0",
+    "yjs": "^13.6.27"
+  },
+  "overrides": {
+    "@hocuspocus/common": "3.2.3"
+  }
+}

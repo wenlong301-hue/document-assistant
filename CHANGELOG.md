@@ -9,6 +9,19 @@
 
 ## [Unreleased]
 
+### 新增
+- **云端协同（账号 + 多人在线编辑）**：新增独立协同服务（`server/`，Node + Fastify + Hocuspocus + SQLite），支持邮箱注册登录、项目成员权限（所有者 / 可编辑 / 只读）、跨网络实时协同、远端光标与在线名单
+- **首页云端项目区**：登录后可新建云端项目、把当前本地项目上传到云端、管理项目成员；云端项目与本地项目并列展示
+- **只读成员服务端强制**：只读角色在 CRDT 层直接丢弃写入，不依赖前端禁用编辑器
+- **云端项目导出**：服务端会物化 `meta + content` 快照，可随时导出为 `.mdoc`
+
+### 修复
+- **协同鉴权崩溃**：`@hocuspocus/common` 被解析到 3.4.4（`readAuthMessage` 增加入参），与 3.2.3 的 provider 不兼容，会在收到鉴权成功消息时抛 `authenticatedHandler is not a function`；现通过 `overrides` 固定 3.2.3，局域网协同与云端协同同时受益
+
+### 其他
+- 支持 `DOC_ASSISTANT_DATA_DIR` 指定数据目录，便于多账号隔离与自动化测试
+- 新增 `npm run server` / `npm run test:cloud` 脚本
+
 ---
 
 ## [0.1.19] - 2026-10-30

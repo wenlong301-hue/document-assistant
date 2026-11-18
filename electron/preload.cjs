@@ -84,6 +84,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('folder-changed', handler);
     return () => ipcRenderer.removeListener('folder-changed', handler);
   },
+  // 云端账号 / 项目 / 协同
+  cloudConfig: (payload) => ipcRenderer.invoke('cloud-config', payload),
+  cloudLogin: (payload) => ipcRenderer.invoke('cloud-login', payload),
+  cloudRegister: (payload) => ipcRenderer.invoke('cloud-register', payload),
+  cloudLogout: () => ipcRenderer.invoke('cloud-logout'),
+  cloudSession: () => ipcRenderer.invoke('cloud-session'),
+  cloudHealth: () => ipcRenderer.invoke('cloud-health'),
+  cloudRequest: (payload) => ipcRenderer.invoke('cloud-request', payload),
+  cloudWsTicket: (payload) => ipcRenderer.invoke('cloud-ws-ticket', payload),
   // Project management
   getProjects: () => ipcRenderer.invoke('get-projects'),
   saveProjects: (projects) => ipcRenderer.invoke('save-projects', projects),

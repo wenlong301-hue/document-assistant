@@ -10,6 +10,9 @@ import { FolderPlusIcon } from "./icons/FolderPlusIcon";
 import { HelpIcon } from "./icons/HelpIcon";
 import { SearchIcon } from "./icons/SearchIcon";
 import { getElectronAPI } from "@/app/shared/electron";
+import type { CloudUser } from "@/app/shared/electron";
+import type { CloudProject } from "@/app/cloud/api";
+import { CloudProjectSection } from "./CloudProjectSection";
 
 const FALLBACK_VERSION = "0.1.7";
 
@@ -32,6 +35,7 @@ export function ProjectListView({
   onRenameProject,
   onViewModeChange,
   onSearchChange,
+  cloud,
 }: {
   projects: Project[];
   viewMode: "grid" | "list";
@@ -51,6 +55,22 @@ export function ProjectListView({
   onRenameProject: (project: Project, newName: string) => void;
   onViewModeChange: (mode: "grid" | "list") => void;
   onSearchChange: (query: string) => void;
+  cloud?: {
+    available: boolean;
+    ready?: boolean;
+    user: CloudUser | null;
+    projects: CloudProject[];
+    busy?: boolean;
+    activeProjectId?: string | null;
+    hasOpenDoc: boolean;
+    onOpenAuth: () => void;
+    onLogout: () => void;
+    onCreate: () => void;
+    onUploadCurrent: () => void;
+    onOpen: (project: CloudProject) => void;
+    onMembers: () => void;
+    onDelete: (project: CloudProject) => void;
+  };
 }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -175,7 +195,31 @@ export function ProjectListView({
       </div>
 
       <div className="flex-1 overflow-auto px-[20px] pt-[20px] pb-[20px]">
+        {cloud && (
+          <CloudProjectSection
+            available={cloud.available}
+            ready={cloud.ready}
+            user={cloud.user}
+            projects={cloud.projects}
+            busy={cloud.busy}
+            activeProjectId={cloud.activeProjectId}
+            hasOpenDoc={cloud.hasOpenDoc}
+            searchQuery={searchQuery}
+            onOpenAuth={cloud.onOpenAuth}
+            onLogout={cloud.onLogout}
+            onCreate={cloud.onCreate}
+            onUploadCurrent={cloud.onUploadCurrent}
+            onOpen={cloud.onOpen}
+            onMembers={cloud.onMembers}
+            onDelete={cloud.onDelete}
+          />
+        )}
         {filteredProjects.length === 0 ? (
+          cloud?.available && (cloud.projects?.length ?? 0) > 0 ? (
+            <p className="m-0 py-[10px] text-[13px] text-[#8d8e99] font-['PingFang_SC:Regular',sans-serif]">
+              本地项目为空，可继续使用上方云端项目，或点击「添加项目」导入本地文件。
+            </p>
+          ) : (
           <div className="flex flex-col items-center justify-center h-full">
             <EmptyStateIllustration />
             <p className="text-[14px] text-[#8d8e99] mb-[16px]">
@@ -183,6 +227,7 @@ export function ProjectListView({
               去选择本地文件、文件夹或新增一个项目吧
             </p>
           </div>
+          )
         ) : viewMode === "grid" ? (
           <div className="flex flex-col gap-[16px]">
             <div className="flex flex-wrap content-start gap-[16px]">

@@ -68,6 +68,24 @@ export type ElectronAPI = {
   scanFolderTree: (dir: string) => Promise<FolderTreeNode[]>;
   createFileInFolder: (folderPath: string, fileName: string) => Promise<any>;
   openFolderLocation: (folderPath: string) => Promise<unknown>;
+  // 云端账号 / 项目 / 协同
+  cloudConfig: (payload?: { serverUrl?: string }) => Promise<{ serverUrl: string; projectId: string | null }>;
+  cloudLogin: (payload: { email: string; password: string; serverUrl?: string }) => Promise<CloudSessionPayload>;
+  cloudRegister: (payload: { name: string; email: string; password: string; serverUrl?: string }) => Promise<CloudSessionPayload>;
+  cloudLogout: () => Promise<unknown>;
+  cloudSession: () => Promise<CloudSessionPayload & { projectId?: string | null }>;
+  cloudHealth: () => Promise<{ ok: boolean; version: number; collab: { documents: number; connections: number } } | null>;
+  cloudRequest: (payload: { method?: string; path: string; body?: unknown }) => Promise<{ ok: boolean; status?: number; data?: any; error?: string }>;
+  cloudWsTicket: (payload: { projectId: string }) => Promise<{ collabUrl: string; ticket: string; role: string; ttl: number }>;
+};
+
+export type CloudUser = { id: string; email: string; name: string; color: string };
+export type CloudSessionPayload = {
+  user: CloudUser | null;
+  serverUrl: string;
+  projectId?: string | null;
+  accessToken?: string;
+  refreshToken?: string;
 };
 
 declare global {
