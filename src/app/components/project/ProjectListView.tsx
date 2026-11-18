@@ -13,6 +13,7 @@ import { getElectronAPI } from "@/app/shared/electron";
 import type { CloudUser } from "@/app/shared/electron";
 import type { CloudProject } from "@/app/cloud/api";
 import { CloudProjectSection } from "./CloudProjectSection";
+import { ProjectAddTile } from "./ProjectAddTile";
 
 const FALLBACK_VERSION = "0.1.7";
 
@@ -225,18 +226,22 @@ export function ProjectListView({
           </div>
         )}
         {filteredProjects.length === 0 ? (
-          cloud?.available && (cloud.projects?.length ?? 0) > 0 ? (
-            <p className="m-0 py-[10px] text-[13px] text-[#8d8e99] font-['PingFang_SC:Regular',sans-serif]">
-              本地项目为空，可继续使用上方云端项目，或点击「添加项目」导入本地文件。
-            </p>
+          cloud?.available ? (
+            searchQuery.trim() ? (
+              <p className="m-0 py-[8px] text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
+                没有匹配的本地项目
+              </p>
+            ) : (
+              <ProjectAddTile label="添加项目" onClick={() => setShowAddModal(true)} />
+            )
           ) : (
-          <div className="flex flex-col items-center justify-center h-full">
-            <EmptyStateIllustration />
-            <p className="text-[14px] text-[#8d8e99] mb-[16px]">
-              当前没有内容，点击上方 <span className="font-semibold text-[#131212]">添加项目</span>{" "}
-              去选择本地文件、文件夹或新增一个项目吧
-            </p>
-          </div>
+            <div className="flex flex-col items-center justify-center h-full">
+              <EmptyStateIllustration />
+              <p className="text-[14px] text-[#8d8e99] mb-[16px]">
+                当前没有内容，点击上方 <span className="font-semibold text-[#131212]">添加项目</span>{" "}
+                去选择本地文件、文件夹或新增一个项目吧
+              </p>
+            </div>
           )
         ) : viewMode === "grid" ? (
           <div className="flex flex-col gap-[16px]">

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ROLE_LABEL, type CloudProject, type CloudRole } from "@/app/cloud/api";
 import type { CloudUser } from "@/app/shared/electron";
+import { ProjectAddTile } from "./ProjectAddTile";
 
 function formatTime(value?: number) {
   if (!value) return "";
@@ -82,82 +83,69 @@ export function CloudProjectSection({
 
   const query = searchQuery.trim().toLowerCase();
   const filtered = projects.filter((p) => !query || p.name.toLowerCase().includes(query));
-  const ghostBtn =
-    "h-[32px] px-[12px] rounded-[6px] border border-solid border-[#EBECF0] bg-white text-[#131212] " +
-    "text-[14px] leading-none font-['PingFang_SC:Regular',sans-serif] whitespace-nowrap " +
-    "hover:bg-[#F7F8FA] active:bg-[#EBECF0] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed";
 
-  return (
-    <section className="mb-[24px]">
-      <div className="flex flex-wrap items-center justify-between gap-x-[16px] gap-y-[8px] mb-[12px]">
-        <div className="flex items-baseline gap-[8px] min-w-0">
-          <h2 className="m-0 text-[14px] font-medium leading-[20px] text-[#131212] font-['PingFang_SC:Medium',sans-serif]">
-            云端协同
-          </h2>
-          <span
-            data-cloud-user={user ? user.name : undefined}
-            className="text-[12px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif] truncate"
-          >
-            {user ? `${user.name} · ${projects.length} 个项目` : "登录后可与同事实时协作"}
-          </span>
-        </div>
+  const sectionTitle =
+    "m-0 text-[14px] font-medium leading-[20px] text-[#131212] font-['PingFang_SC:Medium',sans-serif]";
+  const sectionMeta = "text-[12px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]";
+  const textBtn =
+    "h-[32px] px-0 border-0 bg-transparent cursor-pointer text-[13px] leading-none text-[#8D8E99] " +
+    "font-['PingFang_SC:Regular',sans-serif] whitespace-nowrap hover:text-[#131212] transition-colors " +
+    "disabled:opacity-40 disabled:cursor-not-allowed";
 
-        {user && (
-          <div className="flex items-center gap-[8px] shrink-0">
-            <button type="button" className={ghostBtn} disabled={!hasOpenDoc || busy} onClick={onUploadCurrent}>
-              上传当前项目
-            </button>
-            <button type="button" className={ghostBtn} onClick={onMembers}>
-              成员
-            </button>
-            <button
-              type="button"
-              className="h-[32px] px-[16px] rounded-[6px] border-0 bg-[#131212] text-white text-[14px] leading-none
-                font-['PingFang_SC:Regular',sans-serif] whitespace-nowrap cursor-pointer
-                hover:opacity-90 active:opacity-80 transition-opacity
-                disabled:bg-[#C0C4CC] disabled:cursor-not-allowed disabled:opacity-100"
-              disabled={busy}
-              onClick={onCreate}
-            >
-              新建云端项目
-            </button>
-            <button
-              type="button"
-              className="h-[32px] px-[8px] rounded-[6px] border-0 bg-transparent text-[13px] leading-none text-[#8D8E99] font-['PingFang_SC,Regular',sans-serif] whitespace-nowrap hover:text-[#131212] transition-colors cursor-pointer"
-              onClick={onLogout}
-            >
-              退出登录
-            </button>
-          </div>
-        )}
-      </div>
-
-      {!user ? (
-        <div className="flex items-center justify-between gap-[16px] rounded-[12px] border border-dashed border-[#EBECF0] bg-[#F7F8FA] px-[16px] py-[14px]">
-          <div className="min-w-0">
-            <p className="m-0 text-[14px] leading-[20px] text-[#131212] font-['PingFang_SC:Regular',sans-serif]">
-              登录后开启云端协同
-            </p>
-            <p className="m-0 mt-[2px] text-[12px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
-              文档保存在你的服务器上，多人同时编辑，不需要同一 Wi-Fi
-            </p>
+  if (!user) {
+    return (
+      <section className="mb-[32px]">
+        <div className="flex items-center justify-between gap-[16px] rounded-[12px] bg-[#F7F8FA] px-[16px] h-[56px]">
+          <div className="flex items-baseline gap-[8px] min-w-0">
+            <h2 className={`${sectionTitle} shrink-0`}>云端协同</h2>
+            <span className={`${sectionMeta} truncate`}>登录后可与同事同时编辑，不需要同一 Wi-Fi</span>
           </div>
           <button
             type="button"
             data-cloud-login
-            className="shrink-0 h-[32px] px-[16px] rounded-[6px] border-0 bg-[#131212] text-white text-[14px] leading-none
-              font-['PingFang_SC:Regular',sans-serif] whitespace-nowrap cursor-pointer
-              hover:opacity-90 active:opacity-80 transition-opacity"
+            className="shrink-0 h-[32px] px-[16px] rounded-[6px] border border-solid border-[#EBECF0] bg-white
+              text-[#131212] text-[14px] leading-none font-['PingFang_SC:Regular',sans-serif] whitespace-nowrap
+              hover:bg-[#FFFFFF] hover:border-[#C0C4CC] active:bg-[#EBECF0] transition-colors cursor-pointer"
             onClick={onOpenAuth}
           >
             登录 / 注册
           </button>
         </div>
-      ) : !ready ? (
-        <p className="m-0 py-[8px] text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">加载中…</p>
-      ) : filtered.length === 0 ? (
+      </section>
+    );
+  }
+
+  return (
+    <section className="mb-[32px]">
+      <div className="flex flex-wrap items-center justify-between gap-x-[16px] gap-y-[4px] mb-[12px]">
+        <div className="flex items-baseline gap-[8px] min-w-0">
+          <h2 className={`${sectionTitle} shrink-0`}>云端协同</h2>
+          <span
+            data-cloud-user={user.name}
+            className={`${sectionMeta} truncate`}
+          >
+            {user.name} · {projects.length} 个项目
+          </span>
+        </div>
+
+        <div className="flex items-center gap-[16px] shrink-0">
+          <button type="button" className={textBtn} disabled={!hasOpenDoc || busy} onClick={onUploadCurrent} title={hasOpenDoc ? "把当前打开的项目上传为云端项目" : "请先打开一个本地项目"}>
+            上传当前项目
+          </button>
+          <button type="button" className={textBtn} onClick={onMembers}>
+            成员
+          </button>
+          <button type="button" className={textBtn} onClick={onLogout}>
+            退出登录
+          </button>
+        </div>
+      </div>
+
+      {!ready ? (
+        <p className={`m-0 py-[8px] text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]`}>加载中…</p>
+      ) : query && filtered.length === 0 ? (
         <p className="m-0 py-[8px] text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
-          {query ? "没有匹配的云端项目" : "还没有云端项目：新建一个，或把当前打开的项目上传到云端"}
+          没有匹配的云端项目
         </p>
       ) : (
         <div className="flex flex-wrap content-start gap-[16px]">
@@ -211,6 +199,7 @@ export function CloudProjectSection({
               </div>
             );
           })}
+          {!query && <ProjectAddTile label="新建云端项目" onClick={onCreate} />}
         </div>
       )}
     </section>
