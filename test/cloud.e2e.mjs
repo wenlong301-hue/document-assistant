@@ -182,8 +182,7 @@ const main = async () => {
     ok('登录弹窗可填写', filled === true);
 
     await cdp.evaluate(`(() => {
-      const buttons = [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === '登录');
-      const submit = buttons[buttons.length - 1];
+      const submit = document.querySelector('[data-cloud-submit]');
       if (!submit) return false;
       submit.click();
       return true;

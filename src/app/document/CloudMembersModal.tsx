@@ -55,21 +55,33 @@ export function CloudMembersModal({
     }
   };
 
+  const inputClass =
+    "h-[36px] box-border px-[12px] rounded-[8px] border border-solid border-[#EBECF0] bg-white " +
+    "text-[14px] leading-[20px] text-[#131212] outline-none focus:border-[#131212] " +
+    "placeholder:text-[#C0C4CC] transition-colors font-['PingFang_SC:Regular',sans-serif]";
+
   return (
     <div className="fixed inset-0 z-[400] flex items-center justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/20" />
       <div
-        className="relative bg-white rounded-[16px] w-[520px] shadow-[0px_16px_32px_-8px_rgba(36,36,36,0.12)] border border-[#E0E0E0] overflow-hidden"
+        className="relative bg-white rounded-[16px] w-[520px] border border-[#E0E0E0] shadow-[0px_16px_32px_-8px_rgba(36,36,36,0.12)] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-[24px] pt-[18px]">
-          <div className="flex flex-col">
-            <p className="m-0 text-[16px] font-medium text-[#131212] leading-[24px] font-['PingFang_SC:Medium',sans-serif]">项目成员</p>
-            {projectName && <p className="m-0 mt-[2px] text-[12px] text-[#8D8E99] leading-[18px]">{projectName}</p>}
+        <div className="flex items-start justify-between px-[24px] pt-[18px] pb-0">
+          <div className="min-w-0">
+            <p className="m-0 text-[16px] font-medium leading-[24px] text-[#131212] font-['PingFang_SC:Medium',sans-serif]">
+              项目成员
+            </p>
+            {projectName && (
+              <p className="m-0 mt-[2px] text-[12px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif] truncate">
+                {projectName}
+              </p>
+            )}
           </div>
           <button
             type="button"
-            className="size-[28px] flex items-center justify-center rounded-[6px] border-0 p-0 bg-transparent text-[#131212] hover:bg-[#EBECF0] transition-colors cursor-pointer outline-none"
+            className="size-[28px] shrink-0 flex items-center justify-center rounded-[6px] border-0 p-0 bg-transparent text-[#131212]
+              hover:bg-[#EBECF0] active:bg-[#DDDEE3] transition-colors cursor-pointer outline-none appearance-none"
             onClick={onClose}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -78,33 +90,46 @@ export function CloudMembersModal({
           </button>
         </div>
 
-        <div className="px-[24px] pt-[16px] pb-[24px] flex flex-col gap-[12px]">
-          <div className="flex flex-col gap-[4px] max-h-[300px] overflow-auto">
-            {loading && members.length === 0 && <p className="m-0 py-[12px] text-[13px] text-[#8D8E99]">加载中…</p>}
-            {!loading && members.length === 0 && <p className="m-0 py-[12px] text-[13px] text-[#8D8E99]">暂无成员</p>}
+        <div className="px-[24px] pt-[20px] pb-[24px] flex flex-col gap-[12px]">
+          <div className="flex flex-col gap-[4px] max-h-[304px] overflow-auto -mx-[8px] px-[8px]">
+            {loading && members.length === 0 && (
+              <p className="m-0 py-[12px] text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">加载中…</p>
+            )}
+            {!loading && members.length === 0 && (
+              <p className="m-0 py-[12px] text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
+                还没有其他成员，邀请同事一起编辑吧
+              </p>
+            )}
             {members.map((member) => {
               const isSelf = !!user && (member.id === user.id || member.email === user.email);
               return (
-                <div key={member.id} className="flex items-center gap-[10px] px-[8px] py-[8px] rounded-[8px] hover:bg-[#F7F8FA]">
+                <div
+                  key={member.id}
+                  className="flex items-center gap-[10px] h-[44px] shrink-0 px-[8px] rounded-[8px] hover:bg-[#F5F6F8] transition-colors"
+                >
                   <span
-                    className="size-[28px] shrink-0 rounded-full flex items-center justify-center text-white text-[12px] font-medium"
+                    className="size-[24px] shrink-0 rounded-full flex items-center justify-center text-white text-[12px] font-medium"
                     style={{ background: member.color || "#134CFF" }}
                   >
                     {(member.name || "?").slice(0, 1)}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="m-0 text-[13px] text-[#131212] truncate">
+                    <p className="m-0 text-[14px] leading-[20px] text-[#131212] truncate font-['PingFang_SC:Regular',sans-serif]">
                       {member.name}{isSelf ? "（我）" : ""}
                     </p>
-                    <p className="m-0 text-[11px] text-[#8D8E99] truncate">{member.email}</p>
+                    <p className="m-0 text-[12px] leading-[16px] text-[#8D8E99] truncate font-['PingFang_SC:Regular',sans-serif]">
+                      {member.email}
+                    </p>
                   </div>
-                  <span className="shrink-0 h-[22px] px-[8px] rounded-full bg-[#F2F3F5] text-[11px] text-[#5F6368] flex items-center">
+                  <span className="shrink-0 h-[20px] px-[6px] rounded-[4px] bg-[#EBECF0] text-[12px] leading-[20px] text-[#606266] font-['PingFang_SC:Regular',sans-serif]">
                     {ROLE_LABEL[member.role] || member.role}
                   </span>
                   {canManage && member.role !== "owner" && (
                     <button
                       type="button"
-                      className="shrink-0 h-[24px] px-[8px] rounded-[6px] border-0 bg-transparent text-[12px] text-[#E53E3E] cursor-pointer hover:bg-[#FEEDED]"
+                      className="shrink-0 h-[24px] px-[6px] rounded-[4px] border-0 bg-transparent text-[12px] leading-none
+                        text-[#E53E3E] font-['PingFang_SC:Regular',sans-serif] cursor-pointer
+                        hover:bg-[#FFF1F0] transition-colors"
                       onClick={() => onRemove(member.id)}
                     >
                       移除
@@ -115,19 +140,23 @@ export function CloudMembersModal({
             })}
           </div>
 
-          {errorMessage && <p className="m-0 text-[12px] text-[#E53E3E]">{errorMessage}</p>}
+          {errorMessage && (
+            <p className="m-0 text-[13px] leading-[18px] text-[#E53E3E] font-['PingFang_SC:Regular',sans-serif]">{errorMessage}</p>
+          )}
 
           {canManage ? (
             <div className="flex items-center gap-[8px] pt-[4px]">
               <input
-                className="flex-1 h-[36px] box-border px-[12px] rounded-[6px] border border-[#EBECF0] bg-white text-[13px] text-[#131212] outline-none focus:border-[#131212] placeholder:text-[#C0C4CC]"
+                className={`${inputClass} flex-1 min-w-0`}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") void submit(); }}
                 placeholder="输入对方注册邮箱"
               />
               <select
-                className="h-[36px] px-[8px] rounded-[6px] border border-[#EBECF0] bg-white text-[12px] text-[#5F6368] outline-none"
+                className="h-[36px] shrink-0 px-[8px] rounded-[6px] border border-solid border-[#EBECF0] bg-white
+                  text-[13px] text-[#606266] outline-none focus:border-[#131212] transition-colors
+                  font-['PingFang_SC:Regular',sans-serif] cursor-pointer"
                 value={role}
                 onChange={(e) => setRole(e.target.value as CloudRole)}
               >
@@ -136,7 +165,10 @@ export function CloudMembersModal({
               </select>
               <button
                 type="button"
-                className="h-[36px] px-[14px] rounded-[6px] bg-[#131212] text-white text-[13px] border-0 cursor-pointer hover:opacity-90 disabled:opacity-60"
+                className="h-[36px] px-[16px] shrink-0 rounded-[6px] border-0 bg-[#131212] text-white text-[14px]
+                  font-['PingFang_SC:Regular',sans-serif] leading-none flex items-center justify-center cursor-pointer
+                  hover:opacity-90 active:opacity-80 transition-opacity
+                  disabled:bg-[#C0C4CC] disabled:cursor-not-allowed disabled:opacity-100"
                 disabled={!email.trim() || inviting}
                 onClick={() => { void submit(); }}
               >
@@ -144,7 +176,9 @@ export function CloudMembersModal({
               </button>
             </div>
           ) : (
-            <p className="m-0 text-[11px] text-[#8D8E99] leading-[18px]">只有项目所有者可以邀请或移除成员。</p>
+            <p className="m-0 text-[12px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
+              只有项目所有者可以邀请或移除成员
+            </p>
           )}
         </div>
       </div>

@@ -214,6 +214,16 @@ export function ProjectListView({
             onDelete={cloud.onDelete}
           />
         )}
+        {cloud?.available && (
+          <div className="flex items-baseline gap-[8px] mb-[12px]">
+            <h2 className="m-0 text-[14px] font-medium leading-[20px] text-[#131212] font-['PingFang_SC:Medium',sans-serif]">
+              本地项目
+            </h2>
+            <span className="text-[12px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
+              {filteredProjects.length} 个
+            </span>
+          </div>
+        )}
         {filteredProjects.length === 0 ? (
           cloud?.available && (cloud.projects?.length ?? 0) > 0 ? (
             <p className="m-0 py-[10px] text-[13px] text-[#8d8e99] font-['PingFang_SC:Regular',sans-serif]">

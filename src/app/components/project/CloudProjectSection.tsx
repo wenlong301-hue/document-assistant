@@ -9,6 +9,34 @@ function formatTime(value?: number) {
   return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+function CloudIcon() {
+  return (
+    <svg className="block size-[48px] text-[#8D8E99] group-hover:text-[#131212] transition-colors" viewBox="0 0 48 48" fill="none">
+      <path
+        d="M15.5 35.5h19a7 7 0 0 0 .9-13.94A10 10 0 0 0 16.4 20.1a7.8 7.8 0 0 0-.9 15.4Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M20.5 24.5h9M20.5 28.5h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg className="block size-[14px]" viewBox="0 0 16 16" fill="none">
+      <path
+        d="M2.66663 4.11765H13.3333M5.99996 2H9.99996M10.3333 14H5.66663C4.93025 14 4.33329 13.3679 4.33329 12.5882L4.02889 4.85292C4.01311 4.45189 4.3159 4.11765 4.69498 4.11765H11.3049C11.684 4.11765 11.9868 4.45189 11.971 4.85292L11.6666 12.5882C11.6666 13.3679 11.0697 14 10.3333 14Z"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function CloudProjectSection({
   available,
   ready,
@@ -54,135 +82,137 @@ export function CloudProjectSection({
 
   const query = searchQuery.trim().toLowerCase();
   const filtered = projects.filter((p) => !query || p.name.toLowerCase().includes(query));
+  const ghostBtn =
+    "h-[32px] px-[12px] rounded-[6px] border border-solid border-[#EBECF0] bg-white text-[#131212] " +
+    "text-[14px] leading-none font-['PingFang_SC:Regular',sans-serif] whitespace-nowrap " +
+    "hover:bg-[#F7F8FA] active:bg-[#EBECF0] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed";
 
   return (
-    <div className="mb-[20px]">
-      <div className="flex items-center justify-between gap-[12px] mb-[10px]">
-        <div className="flex items-center gap-[8px]">
-          <span className="size-[6px] rounded-full bg-[#2AB673]" />
-          <p className="m-0 text-[13px] font-medium text-[#131212] font-['PingFang_SC:Medium',sans-serif]">云端协同</p>
-          {user ? (
-            <span data-cloud-user={user.name} className="text-[11px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
-              已登录 · {user.name}
-            </span>
-          ) : (
-            <span className="text-[11px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
-              登录后可与同事实时协作，不需要同一 Wi-Fi
-            </span>
-          )}
+    <section className="mb-[24px]">
+      <div className="flex flex-wrap items-center justify-between gap-x-[16px] gap-y-[8px] mb-[12px]">
+        <div className="flex items-baseline gap-[8px] min-w-0">
+          <h2 className="m-0 text-[14px] font-medium leading-[20px] text-[#131212] font-['PingFang_SC:Medium',sans-serif]">
+            云端协同
+          </h2>
+          <span
+            data-cloud-user={user ? user.name : undefined}
+            className="text-[12px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif] truncate"
+          >
+            {user ? `${user.name} · ${projects.length} 个项目` : "登录后可与同事实时协作"}
+          </span>
         </div>
 
-        <div className="flex items-center gap-[8px]">
-          {user ? (
-            <>
-              <button
-                type="button"
-                className="h-[28px] px-[10px] rounded-[6px] border border-[#EBECF0] bg-white text-[12px] text-[#5F6368] cursor-pointer hover:border-[#C0C4CC] disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!hasOpenDoc || busy}
-                onClick={onUploadCurrent}
-                title={hasOpenDoc ? "把当前打开的项目上传为云端项目" : "请先打开一个本地项目"}
-              >
-                上传当前项目
-              </button>
-              <button
-                type="button"
-                className="h-[28px] px-[10px] rounded-[6px] border border-[#EBECF0] bg-white text-[12px] text-[#5F6368] cursor-pointer hover:border-[#C0C4CC] disabled:opacity-50"
-                disabled={busy}
-                onClick={onCreate}
-              >
-                新建云端项目
-              </button>
-              <button
-                type="button"
-                className="h-[28px] px-[10px] rounded-[6px] border border-[#EBECF0] bg-white text-[12px] text-[#5F6368] cursor-pointer hover:border-[#C0C4CC]"
-                onClick={onMembers}
-              >
-                成员
-              </button>
-              <button
-                type="button"
-                className="h-[28px] px-[10px] rounded-[6px] border-0 bg-transparent text-[12px] text-[#8D8E99] cursor-pointer hover:text-[#131212]"
-                onClick={onLogout}
-              >
-                退出登录
-              </button>
-            </>
-          ) : (
+        {user && (
+          <div className="flex items-center gap-[8px] shrink-0">
+            <button type="button" className={ghostBtn} disabled={!hasOpenDoc || busy} onClick={onUploadCurrent}>
+              上传当前项目
+            </button>
+            <button type="button" className={ghostBtn} onClick={onMembers}>
+              成员
+            </button>
             <button
               type="button"
-              className="h-[28px] px-[12px] rounded-[6px] bg-[#131212] text-white text-[12px] border-0 cursor-pointer hover:opacity-90"
-              data-cloud-login
-              onClick={onOpenAuth}
+              className="h-[32px] px-[16px] rounded-[6px] border-0 bg-[#131212] text-white text-[14px] leading-none
+                font-['PingFang_SC:Regular',sans-serif] whitespace-nowrap cursor-pointer
+                hover:opacity-90 active:opacity-80 transition-opacity
+                disabled:bg-[#C0C4CC] disabled:cursor-not-allowed disabled:opacity-100"
+              disabled={busy}
+              onClick={onCreate}
             >
-              登录 / 注册
+              新建云端项目
             </button>
-          )}
-        </div>
+            <button
+              type="button"
+              className="h-[32px] px-[8px] rounded-[6px] border-0 bg-transparent text-[13px] leading-none text-[#8D8E99] font-['PingFang_SC,Regular',sans-serif] whitespace-nowrap hover:text-[#131212] transition-colors cursor-pointer"
+              onClick={onLogout}
+            >
+              退出登录
+            </button>
+          </div>
+        )}
       </div>
 
       {!user ? (
-        <div className="rounded-[10px] border border-dashed border-[#E0E0E0] bg-[#FAFBFC] px-[14px] py-[12px] text-[12px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
-          云端项目会保存在你的服务器上，登录后即可多人同时编辑、断线重连自动合并。
+        <div className="flex items-center justify-between gap-[16px] rounded-[12px] border border-dashed border-[#EBECF0] bg-[#F7F8FA] px-[16px] py-[14px]">
+          <div className="min-w-0">
+            <p className="m-0 text-[14px] leading-[20px] text-[#131212] font-['PingFang_SC:Regular',sans-serif]">
+              登录后开启云端协同
+            </p>
+            <p className="m-0 mt-[2px] text-[12px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
+              文档保存在你的服务器上，多人同时编辑，不需要同一 Wi-Fi
+            </p>
+          </div>
+          <button
+            type="button"
+            data-cloud-login
+            className="shrink-0 h-[32px] px-[16px] rounded-[6px] border-0 bg-[#131212] text-white text-[14px] leading-none
+              font-['PingFang_SC:Regular',sans-serif] whitespace-nowrap cursor-pointer
+              hover:opacity-90 active:opacity-80 transition-opacity"
+            onClick={onOpenAuth}
+          >
+            登录 / 注册
+          </button>
         </div>
       ) : !ready ? (
-        <div className="text-[12px] text-[#8D8E99]">加载中…</div>
+        <p className="m-0 py-[8px] text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">加载中…</p>
       ) : filtered.length === 0 ? (
-        <div className="rounded-[10px] border border-dashed border-[#E0E0E0] bg-[#FAFBFC] px-[14px] py-[12px] text-[12px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
-          {query ? "没有匹配的云端项目" : "还没有云端项目：新建一个，或把当前打开的项目上传到云端。"}
-        </div>
+        <p className="m-0 py-[8px] text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
+          {query ? "没有匹配的云端项目" : "还没有云端项目：新建一个，或把当前打开的项目上传到云端"}
+        </p>
       ) : (
-        <div className="flex flex-wrap gap-[12px]">
+        <div className="flex flex-wrap content-start gap-[16px]">
           {filtered.map((project) => {
             const isActive = activeProjectId === project.id;
+            const confirming = confirmId === project.id;
             return (
               <div
                 key={project.id}
                 data-cloud-project={project.id}
-                className={`group relative w-[238px] shrink-0 rounded-[10px] border bg-white px-[14px] py-[12px] cursor-pointer transition-colors ${
-                  isActive ? "border-[#2AB673]" : "border-[#EBECF0] hover:border-[#C0C4CC]"
-                }`}
+                title={project.name}
+                className={`group relative shrink-0 w-[142px] h-[138px] box-border overflow-hidden rounded-[6px]
+                  cursor-pointer transition-colors duration-150 ${isActive ? "bg-[#F7F8FA]" : "hover:bg-[#F7F8FA]"}`}
                 onClick={() => onOpen(project)}
               >
-                <div className="flex items-center gap-[8px] min-w-0">
-                  <span className="size-[8px] shrink-0 rounded-full bg-[#2AB673]" />
-                  <p className="m-0 flex-1 min-w-0 truncate text-[14px] text-[#131212] font-['PingFang_SC:Medium',sans-serif]">
-                    {project.name}
-                  </p>
-                  <span className="shrink-0 h-[20px] px-[7px] rounded-full bg-[#F2F3F5] text-[10px] text-[#5F6368] flex items-center">
-                    {ROLE_LABEL[project.role as CloudRole] || project.role}
-                  </span>
+                {project.role === "owner" && (
+                  <button
+                    type="button"
+                    aria-label="删除云端项目"
+                    className={`absolute top-[8px] right-[8px] size-[16px] z-10 flex items-center justify-center rounded-[4px]
+                      border-0 p-0 bg-transparent cursor-pointer transition-colors
+                      ${confirming ? "text-[#E53E3E] opacity-100" : "text-[#8D8E99] opacity-0 group-hover:opacity-100 hover:text-[#E53E3E]"}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirming) {
+                        setConfirmId(null);
+                        onDelete(project);
+                      } else {
+                        setConfirmId(project.id);
+                      }
+                    }}
+                  >
+                    <TrashIcon />
+                  </button>
+                )}
+
+                <div className="absolute left-1/2 -translate-x-1/2 top-[22px] size-[48px] flex items-center justify-center">
+                  <CloudIcon />
                 </div>
-                <div className="mt-[8px] flex items-center justify-between gap-[8px]">
-                  <span className="text-[11px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
-                    {formatTime(project.updatedAt)}
-                  </span>
-                  <div className="flex items-center gap-[4px] opacity-0 group-hover:opacity-100 transition-opacity">
-                    {project.role === "owner" && (
-                      <button
-                        type="button"
-                        className={`h-[22px] px-[7px] rounded-[4px] border-0 bg-transparent text-[11px] cursor-pointer hover:bg-[#F2F3F5] ${
-                          confirmId === project.id ? "text-[#E53E3E] font-medium" : "text-[#8D8E99] hover:text-[#E53E3E]"
-                        }`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirmId === project.id) {
-                            setConfirmId(null);
-                            onDelete(project);
-                          } else {
-                            setConfirmId(project.id);
-                          }
-                        }}
-                      >
-                        {confirmId === project.id ? "确认删除" : "删除"}
-                      </button>
-                    )}
-                  </div>
-                </div>
+
+                <p className="absolute left-[8px] top-[90px] w-[126px] h-[20px] m-0 text-center text-[14px] leading-[20px] font-normal text-[#131212] truncate">
+                  {project.name}
+                </p>
+                <p
+                  className={`absolute left-[8px] top-[112px] w-[126px] h-[14px] m-0 text-center text-[10px] leading-[14px] truncate ${
+                    confirming ? "text-[#E53E3E]" : "text-[#8D8E99]"
+                  }`}
+                >
+                  {confirming ? "再次点击删除" : `${ROLE_LABEL[project.role as CloudRole] || project.role} · ${formatTime(project.updatedAt)}`}
+                </p>
               </div>
             );
           })}
         </div>
       )}
-    </div>
+    </section>
   );
 }
