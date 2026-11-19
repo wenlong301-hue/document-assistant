@@ -93,7 +93,7 @@ export function CloudProjectSection({
 
   if (!isLoggedIn) {
     return (
-      <div className="flex items-center gap-[8px] rounded-[12px] bg-[#F7F8FA] px-[16px] h-[52px] min-w-0">
+      <div className="flex items-center gap-[8px] rounded-[12px] border border-solid border-[#EBECF0] bg-white px-[16px] h-[52px] min-w-0">
         <h2 className={sectionTitle}>云端协同</h2>
         <span className={`${sectionMeta} truncate`}>登录后可与同事同时编辑，文档保存在你的服务器上，不需要同一 Wi-Fi</span>
       </div>

@@ -7,7 +7,6 @@ import { AddProjectModal } from "./AddProjectModal";
 import { EmptyStateIllustration } from "./icons/EmptyStateIllustration";
 import { LogoIcon } from "./icons/LogoIcon";
 import { FolderPlusIcon } from "./icons/FolderPlusIcon";
-import { HelpIcon } from "./icons/HelpIcon";
 import { SearchIcon } from "./icons/SearchIcon";
 import { getElectronAPI } from "@/app/shared/electron";
 import type { CloudUser } from "@/app/shared/electron";
@@ -175,18 +174,34 @@ export function ProjectListView({
           </div>
           <button
             type="button"
-            className={`h-[32px] px-0 border-0 bg-transparent flex items-center justify-center text-[14px] leading-none hover:opacity-70 transition-opacity cursor-pointer outline-none appearance-none whitespace-nowrap ${collabActive ? "text-[#15803D]" : "text-[#131212]"}`}
+            aria-label="协同编辑"
+            title={collabActive ? "协同进行中" : "协同编辑"}
+            className="relative size-[32px] shrink-0 rounded-[8px] border-0 bg-transparent flex items-center justify-center
+              text-[#131212] hover:bg-[#EBECF0] active:bg-[#DDDEE3] transition-colors cursor-pointer outline-none"
             onClick={onOpenCollab}
           >
-            协同
+            <svg className="size-[16px]" viewBox="0 0 16 16" fill="none">
+              <circle cx="6" cy="5.4" r="2.2" stroke="currentColor" strokeWidth="1.2" />
+              <path d="M2.2 12.8c.3-1.9 1.8-3 3.8-3s3.5 1.1 3.8 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              <path d="M10.7 3.6a2 2 0 0 1 0 3.8M11.4 9.8c1.3.3 2.2 1.3 2.5 2.6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+            </svg>
+            {collabActive && (
+              <span className="absolute right-[6px] bottom-[6px] size-[6px] rounded-full bg-[#15803D] border border-white" />
+            )}
           </button>
           <button
             type="button"
-            className="h-[32px] px-0 border-0 bg-transparent text-[#131212] flex items-center justify-center gap-[8px] text-[14px] leading-none hover:opacity-70 transition-opacity cursor-pointer outline-none appearance-none whitespace-nowrap"
+            aria-label="帮助"
+            title="帮助"
+            className="size-[32px] shrink-0 rounded-[8px] border-0 bg-transparent flex items-center justify-center
+              text-[#131212] hover:bg-[#EBECF0] active:bg-[#DDDEE3] transition-colors cursor-pointer outline-none"
             onClick={onOpenHelp}
           >
-            <HelpIcon />
-            <span>帮助</span>
+            <svg className="size-[16px]" viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.2" />
+              <path d="M6.35 6.25a1.75 1.75 0 1 1 2.5 1.7c-.55.28-.85.65-.85 1.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              <circle cx="8" cy="11.3" r="0.7" fill="currentColor" />
+            </svg>
           </button>
           <button
             type="button"
