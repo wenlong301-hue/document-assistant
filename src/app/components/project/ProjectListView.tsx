@@ -136,7 +136,7 @@ export function ProjectListView({
 
   return (
     <div className="absolute inset-0 bg-white flex flex-col">
-      <div className="h-[66px] flex items-center justify-between gap-[16px] px-[20px] py-[16px] shrink-0 bg-[#F7F8FA]">
+      <div className="h-[66px] flex items-center justify-between gap-[16px] px-[20px] py-[16px] shrink-0 bg-[#F7F8FA] border-b border-solid border-[#EBECF0]">
         <div className="flex items-center gap-[6px] shrink-0">
           <LogoIcon />
           <span
@@ -206,20 +206,31 @@ export function ProjectListView({
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto">
-        <div className="mx-auto w-full max-w-[1200px] px-[20px] pt-[24px] pb-[24px]">
-          <div className="flex items-center justify-between gap-[16px] mb-[12px]">
-            <div className="flex items-baseline gap-[8px] min-w-0">
-              <h2 className="m-0 text-[14px] font-medium leading-[20px] text-[#131212] font-['PingFang_SC:Medium',sans-serif] shrink-0">
-                本地项目
-              </h2>
-              <span className="text-[12px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
-                {filteredProjects.length} 个
-              </span>
-            </div>
-            {viewToggle}
+      <div className="flex-1 overflow-auto bg-[#F7F8FA]">
+        <div className="mx-auto w-full max-w-[1040px] px-[20px] pt-[28px] pb-[32px]">
+          <div className="mb-[20px]">
+            <h1 className="m-0 text-[20px] font-medium leading-[28px] text-[#131212] font-['PingFang_SC:Medium',sans-serif]">
+              项目
+            </h1>
+            <p className="m-0 mt-[4px] text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
+              本地与云端文档统一管理
+            </p>
           </div>
 
+          <section className="rounded-[12px] border border-solid border-[#EBECF0] bg-white overflow-hidden">
+            <div className="flex items-center justify-between gap-[16px] h-[52px] px-[16px] border-b border-solid border-[#EBECF0]">
+              <div className="flex items-baseline gap-[8px] min-w-0">
+                <h2 className="m-0 text-[14px] font-medium leading-[20px] text-[#131212] font-['PingFang_SC:Medium',sans-serif] shrink-0">
+                  本地项目
+                </h2>
+                <span className="text-[12px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
+                  {filteredProjects.length} 个
+                </span>
+              </div>
+              {viewToggle}
+            </div>
+
+            <div className="p-[16px]">
           {filteredProjects.length === 0 ? (
             cloud?.available ? (
               searchQuery.trim() ? (
@@ -277,9 +288,11 @@ export function ProjectListView({
               ))}
             </div>
           )}
+            </div>
+          </section>
 
           {cloud?.available && (
-            <div className="mt-[32px]">
+            <div className="mt-[24px]">
               <CloudProjectSection
                 available={cloud.available}
                 ready={cloud.ready}

@@ -93,18 +93,16 @@ export function CloudProjectSection({
 
   if (!isLoggedIn) {
     return (
-      <section>
-        <div className="flex items-center gap-[8px] rounded-[12px] bg-[#F7F8FA] px-[16px] h-[52px] min-w-0">
-          <h2 className={sectionTitle}>云端协同</h2>
-          <span className={`${sectionMeta} truncate`}>登录后可与同事同时编辑，文档保存在你的服务器上，不需要同一 Wi-Fi</span>
-        </div>
-      </section>
+      <div className="flex items-center gap-[8px] rounded-[12px] bg-[#F7F8FA] px-[16px] h-[52px] min-w-0">
+        <h2 className={sectionTitle}>云端协同</h2>
+        <span className={`${sectionMeta} truncate`}>登录后可与同事同时编辑，文档保存在你的服务器上，不需要同一 Wi-Fi</span>
+      </div>
     );
   }
 
   return (
-    <section>
-      <div className="flex items-center justify-between gap-[16px] mb-[12px]">
+    <section className="rounded-[12px] border border-solid border-[#EBECF0] bg-white overflow-hidden">
+      <div className="flex items-center justify-between gap-[16px] h-[52px] px-[16px] border-b border-solid border-[#EBECF0]">
         <div className="flex items-baseline gap-[8px] min-w-0">
           <h2 className={sectionTitle}>云端协同</h2>
           <span className={`${sectionMeta} truncate`}>{projects.length} 个项目</span>
@@ -112,7 +110,7 @@ export function CloudProjectSection({
         <button
           type="button"
           className="h-[32px] px-0 shrink-0 border-0 bg-transparent cursor-pointer text-[13px] leading-none
-            text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif] whitespace-nowrap
+            text-[#8D8E99] font-['PingFang_SC/Regular',sans-serif] whitespace-nowrap
             hover:text-[#131212] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           disabled={busy}
           onClick={onUploadCurrent}
@@ -122,6 +120,7 @@ export function CloudProjectSection({
         </button>
       </div>
 
+      <div className="p-[16px]">
       {!ready ? (
         <p className="m-0 py-[8px] text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">加载中…</p>
       ) : query && filtered.length === 0 ? (
@@ -198,6 +197,7 @@ export function CloudProjectSection({
           {!query && <ProjectAddTile label="新建云端项目" onClick={onCreate} />}
         </div>
       )}
+      </div>
     </section>
   );
 }
