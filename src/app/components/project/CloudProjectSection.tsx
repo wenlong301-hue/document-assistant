@@ -1,6 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ROLE_LABEL, type CloudProject, type CloudRole } from "@/app/cloud/api";
 import type { CloudUser } from "@/app/shared/electron";
+import { ContextMenuDivider, ContextMenuItem, ContextMenuPanel } from "@/app/components/shared/ContextMenu";
+import { getDropdownPosition } from "./getDropdownPosition";
+import { MoreIcon } from "./icons/MoreIcon";
 import { ProjectAddTile } from "./ProjectAddTile";
 
 function formatTime(value?: number) {
@@ -38,6 +41,34 @@ function TrashIcon() {
   );
 }
 
+function UploadIcon() {
+  return (
+    <svg className="size-[16px]" viewBox="0 0 16 16" fill="none">
+      <path d="M13.2 10.4v2.4a1.2 1.2 0 0 1-1.2 1.2H4a1.2 1.2 0 0 1-1.2-1.2v-2.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 10V2.4M5.2 5.2 8 2.4l2.8 2.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function MembersIcon() {
+  return (
+    <svg className="size-[16px]" viewBox="0 0 16 16" fill="none">
+      <circle cx="6" cy="5.2" r="2.2" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M2.2 13c.3-2 1.8-3.2 3.8-3.2s3.5 1.2 3.8 3.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M10.6 3.4a2 2 0 0 1 0 3.8M11.4 9.9c1.3.3 2.2 1.3 2.5 2.6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function LogoutIcon() {
+  return (
+    <svg className="size-[16px]" viewBox="0 0 16 16" fill="none">
+      <path d="M6.4 2.4H3.6A1.2 1.2 0 0 0 2.4 3.6v8.8a1.2 1.2 0 0 0 1.2 1.2h2.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M10.4 4.8 13.2 8l-2.8 3.2M13.2 8H6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function CloudProjectSection({
   available,
   ready,
@@ -45,7 +76,6 @@ export function CloudProjectSection({
   projects,
   busy,
   activeProjectId,
-  hasOpenDoc,
   searchQuery,
   onOpenAuth,
   onLogout,
@@ -61,7 +91,6 @@ export function CloudProjectSection({
   projects: CloudProject[];
   busy?: boolean;
   activeProjectId?: string | null;
-  hasOpenDoc: boolean;
   searchQuery: string;
   onOpenAuth: () => void;
   onLogout: () => void;
@@ -72,12 +101,34 @@ export function CloudProjectSection({
   onDelete: (project: CloudProject) => void;
 }) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState({ left: 0, top: 0 });
+  const menuRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!confirmId) return;
     const timer = window.setTimeout(() => setConfirmId(null), 3000);
     return () => window.clearTimeout(timer);
   }, [confirmId]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (menuRef.current?.contains(target) || moreRef.current?.contains(target)) return;
+      setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
 
   if (!available) return null;
 
@@ -87,14 +138,10 @@ export function CloudProjectSection({
   const sectionTitle =
     "m-0 text-[14px] font-medium leading-[20px] text-[#131212] font-['PingFang_SC:Medium',sans-serif]";
   const sectionMeta = "text-[12px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]";
-  const textBtn =
-    "h-[32px] px-0 border-0 bg-transparent cursor-pointer text-[13px] leading-none text-[#8D8E99] " +
-    "font-['PingFang_SC:Regular',sans-serif] whitespace-nowrap hover:text-[#131212] transition-colors " +
-    "disabled:opacity-40 disabled:cursor-not-allowed";
 
   if (!user) {
     return (
-      <section className="mb-[32px]">
+      <section>
         <div className="flex items-center justify-between gap-[16px] rounded-[12px] bg-[#F7F8FA] px-[16px] h-[56px]">
           <div className="flex items-baseline gap-[8px] min-w-0">
             <h2 className={`${sectionTitle} shrink-0`}>云端协同</h2>
@@ -105,7 +152,7 @@ export function CloudProjectSection({
             data-cloud-login
             className="shrink-0 h-[32px] px-[16px] rounded-[6px] border border-solid border-[#EBECF0] bg-white
               text-[#131212] text-[14px] leading-none font-['PingFang_SC:Regular',sans-serif] whitespace-nowrap
-              hover:bg-[#FFFFFF] hover:border-[#C0C4CC] active:bg-[#EBECF0] transition-colors cursor-pointer"
+              hover:border-[#C0C4CC] active:bg-[#F7F8FA] transition-colors cursor-pointer"
             onClick={onOpenAuth}
           >
             登录 / 注册
@@ -116,33 +163,67 @@ export function CloudProjectSection({
   }
 
   return (
-    <section className="mb-[32px]">
-      <div className="flex flex-wrap items-center justify-between gap-x-[16px] gap-y-[4px] mb-[12px]">
+    <section>
+      <div className="relative flex items-center justify-between gap-[16px] mb-[12px]">
         <div className="flex items-baseline gap-[8px] min-w-0">
           <h2 className={`${sectionTitle} shrink-0`}>云端协同</h2>
-          <span
-            data-cloud-user={user.name}
-            className={`${sectionMeta} truncate`}
-          >
+          <span data-cloud-user={user.name} className={`${sectionMeta} truncate`}>
             {user.name} · {projects.length} 个项目
           </span>
         </div>
 
-        <div className="flex items-center gap-[16px] shrink-0">
-          <button type="button" className={textBtn} disabled={!hasOpenDoc || busy} onClick={onUploadCurrent} title={hasOpenDoc ? "把当前打开的项目上传为云端项目" : "请先打开一个本地项目"}>
-            上传当前项目
-          </button>
-          <button type="button" className={textBtn} onClick={onMembers}>
-            成员
-          </button>
-          <button type="button" className={textBtn} onClick={onLogout}>
-            退出登录
-          </button>
-        </div>
+        <button
+          ref={moreRef}
+          type="button"
+          aria-label="更多云端操作"
+          className={`size-[28px] shrink-0 flex items-center justify-center rounded-[6px] border-0 p-0 bg-transparent
+            cursor-pointer transition-colors outline-none ${menuOpen ? "bg-[#EBECF0]" : "hover:bg-[#F7F8FA]"}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            const rect = moreRef.current?.getBoundingClientRect();
+            if (rect) setMenuPos(getDropdownPosition(rect, 158, 150));
+            setMenuOpen((v) => !v);
+          }}
+        >
+          <MoreIcon />
+        </button>
+
+        {menuOpen && (
+          <ContextMenuPanel menuRef={menuRef} style={menuPos}>
+            <ContextMenuItem
+              icon={<UploadIcon />}
+              label={busy ? "上传中…" : "上传当前项目"}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(false);
+                onUploadCurrent();
+              }}
+            />
+            <ContextMenuItem
+              icon={<MembersIcon />}
+              label="成员管理"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(false);
+                onMembers();
+              }}
+            />
+            <ContextMenuDivider />
+            <ContextMenuItem
+              icon={<LogoutIcon />}
+              label="退出登录"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(false);
+                onLogout();
+              }}
+            />
+          </ContextMenuPanel>
+        )}
       </div>
 
       {!ready ? (
-        <p className={`m-0 py-[8px] text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]`}>加载中…</p>
+        <p className="m-0 py-[8px] text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">加载中…</p>
       ) : query && filtered.length === 0 ? (
         <p className="m-0 py-[8px] text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
           没有匹配的云端项目
@@ -157,7 +238,7 @@ export function CloudProjectSection({
                 key={project.id}
                 data-cloud-project={project.id}
                 title={project.name}
-                className={`group relative shrink-0 w-[142px] h-[138px] box-border overflow-hidden rounded-[6px]
+                className={`group relative shrink-0 w-[160px] h-[150px] box-border overflow-hidden rounded-[6px]
                   cursor-pointer transition-colors duration-150 ${isActive ? "bg-[#F7F8FA]" : "hover:bg-[#F7F8FA]"}`}
                 onClick={() => onOpen(project)}
               >
@@ -182,15 +263,15 @@ export function CloudProjectSection({
                   </button>
                 )}
 
-                <div className="absolute left-1/2 -translate-x-1/2 top-[22px] size-[48px] flex items-center justify-center">
+                <div className="absolute left-1/2 -translate-x-1/2 top-[26px] size-[48px] flex items-center justify-center">
                   <CloudIcon />
                 </div>
 
-                <p className="absolute left-[8px] top-[90px] w-[126px] h-[20px] m-0 text-center text-[14px] leading-[20px] font-normal text-[#131212] truncate">
+                <p className="absolute left-[8px] top-[96px] w-[144px] h-[20px] m-0 text-center text-[14px] leading-[20px] font-normal text-[#131212] truncate">
                   {project.name}
                 </p>
                 <p
-                  className={`absolute left-[8px] top-[112px] w-[126px] h-[14px] m-0 text-center text-[10px] leading-[14px] truncate ${
+                  className={`absolute left-[8px] top-[118px] w-[144px] h-[14px] m-0 text-center text-[10px] leading-[14px] truncate ${
                     confirming ? "text-[#E53E3E]" : "text-[#8D8E99]"
                   }`}
                 >

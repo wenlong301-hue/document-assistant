@@ -63,7 +63,6 @@ export function ProjectListView({
     projects: CloudProject[];
     busy?: boolean;
     activeProjectId?: string | null;
-    hasOpenDoc: boolean;
     onOpenAuth: () => void;
     onLogout: () => void;
     onCreate: () => void;
@@ -196,24 +195,25 @@ export function ProjectListView({
       </div>
 
       <div className="flex-1 overflow-auto px-[20px] pt-[20px] pb-[20px]">
-        {cloud && (
-          <CloudProjectSection
-            available={cloud.available}
-            ready={cloud.ready}
-            user={cloud.user}
-            projects={cloud.projects}
-            busy={cloud.busy}
-            activeProjectId={cloud.activeProjectId}
-            hasOpenDoc={cloud.hasOpenDoc}
-            searchQuery={searchQuery}
-            onOpenAuth={cloud.onOpenAuth}
-            onLogout={cloud.onLogout}
-            onCreate={cloud.onCreate}
-            onUploadCurrent={cloud.onUploadCurrent}
-            onOpen={cloud.onOpen}
-            onMembers={cloud.onMembers}
-            onDelete={cloud.onDelete}
-          />
+        {cloud && !cloud.user && (
+          <div className="mb-[32px]">
+            <CloudProjectSection
+              available={cloud.available}
+              ready={cloud.ready}
+              user={cloud.user}
+              projects={cloud.projects}
+              busy={cloud.busy}
+              activeProjectId={cloud.activeProjectId}
+              searchQuery={searchQuery}
+              onOpenAuth={cloud.onOpenAuth}
+              onLogout={cloud.onLogout}
+              onCreate={cloud.onCreate}
+              onUploadCurrent={cloud.onUploadCurrent}
+              onOpen={cloud.onOpen}
+              onMembers={cloud.onMembers}
+              onDelete={cloud.onDelete}
+            />
+          </div>
         )}
         {cloud?.available && (
           <div className="flex items-baseline gap-[8px] mb-[12px]">
@@ -282,6 +282,26 @@ export function ProjectListView({
                 onRemove={() => onDeleteProject(project)}
               />
             ))}
+          </div>
+        )}
+        {cloud && cloud.user && (
+          <div className="mt-[32px]">
+            <CloudProjectSection
+              available={cloud.available}
+              ready={cloud.ready}
+              user={cloud.user}
+              projects={cloud.projects}
+              busy={cloud.busy}
+              activeProjectId={cloud.activeProjectId}
+              searchQuery={searchQuery}
+              onOpenAuth={cloud.onOpenAuth}
+              onLogout={cloud.onLogout}
+              onCreate={cloud.onCreate}
+              onUploadCurrent={cloud.onUploadCurrent}
+              onOpen={cloud.onOpen}
+              onMembers={cloud.onMembers}
+              onDelete={cloud.onDelete}
+            />
           </div>
         )}
       </div>

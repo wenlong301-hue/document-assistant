@@ -11,7 +11,7 @@ export function ProjectAddTile({
   return (
     <button
       type="button"
-      className={`group shrink-0 w-[142px] h-[138px] box-border rounded-[6px] border border-dashed border-[#E0E0E0] bg-transparent
+      className={`group shrink-0 w-[160px] h-[150px] box-border rounded-[6px] border border-dashed border-[#E0E0E0] bg-transparent
         flex flex-col items-center justify-center gap-[8px] cursor-pointer transition-colors
         hover:border-[#C0C4CC] hover:bg-[#F7F8FA] ${className}`}
       onClick={onClick}

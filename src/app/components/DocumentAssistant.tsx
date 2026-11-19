@@ -488,7 +488,6 @@ export default function DocumentAssistant() {
               projects: cloud.projects,
               busy: cloud.busy,
               activeProjectId: cloud.activeProject?.id ?? null,
-              hasOpenDoc: !!selectedDoc,
               onOpenAuth: () => cloud.openAuth("login"),
               onLogout: () => { void cloud.logout(); },
               onCreate: () => setModal({ type: "new-cloud" }),

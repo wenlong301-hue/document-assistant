@@ -64,13 +64,14 @@ export function ProjectGridCard({
   // 激活态（悬浮/选中）：背景 #F7F8FA + 显示更多
   const isActive = isHovered || isSelected || showMenu;
   const pathText = project.filePath || project.folderPath || "本地项目";
+  const extMatch = project.filePath ? project.filePath.match(/\.([^./\\]+)$/) : null;
+  const typeText = extMatch ? `${extMatch[1].toLowerCase()} 文件` : project.folderPath ? "文件夹" : "本地项目";
 
   // 布局（全部在卡片内）:
-  // 图标 top:22 h:48 → 底 70；标题 top:90 (图标下 20px) h:20；
-  // 路径 top:112 (标题下 2px) h:14；路径底 126 + 底边距 12 = 卡片高 138
+  // 图标 top:26 h:48 → 底 74；标题 top:96 h:20；类型 top:118 h:14；底部留白 18 = 卡片高 150
   return (
     <div
-      className={`relative shrink-0 w-[142px] h-[138px] box-border overflow-hidden rounded-[6px] cursor-pointer transition-colors duration-150 ${
+      className={`relative shrink-0 w-[160px] h-[150px] box-border overflow-hidden rounded-[6px] cursor-pointer transition-colors duration-150 ${
         isActive ? "bg-[#F7F8FA]" : "bg-transparent"
       }`}
       onClick={onClick}
@@ -99,7 +100,7 @@ export function ProjectGridCard({
         </button>
       )}
 
-      <div className="absolute left-1/2 -translate-x-1/2 top-[22px] w-[52px] h-[48px] flex items-center justify-center">
+      <div className="absolute left-1/2 -translate-x-1/2 top-[26px] w-[52px] h-[48px] flex items-center justify-center">
         {project.filePath ? (
           <FileProjectIcon className="w-[52px] h-[48px] block" />
         ) : isActive ? (
@@ -110,17 +111,17 @@ export function ProjectGridCard({
       </div>
 
       <p
-        className="absolute left-[8px] top-[90px] w-[126px] h-[20px] m-0 text-center text-[14px] leading-[20px] font-normal text-[#131212] truncate"
+        className="absolute left-[8px] top-[96px] w-[144px] h-[20px] m-0 text-center text-[14px] leading-[20px] font-normal text-[#131212] truncate"
         title={project.name}
       >
         {project.name}
       </p>
       <p
-        className="absolute left-[8px] top-[112px] w-[126px] h-[14px] m-0 text-center text-[10px] leading-[14px] text-[#8D8E99] truncate"
+        className="absolute left-[8px] top-[118px] w-[144px] h-[14px] m-0 text-center text-[10px] leading-[14px] text-[#8D8E99] truncate"
         style={{ fontWeight: 300 }}
         title={pathText}
       >
-        {pathText}
+        {typeText}
       </p>
 
       {showMenu && (
