@@ -237,10 +237,10 @@ const main = async () => {
     console.log('\n== 在线名单 ==');
     await sleep(800);
     await cdp.evaluate(`(() => {
-      // 顶栏「协同」是 div+p 结构，点击文字即可冒泡到可点击容器
-      const label = [...document.querySelectorAll('p')].find(p => p.textContent.trim() === '协同');
-      label?.click();
-      return !!label;
+      // 首页是 button，编辑器顶栏是 div+p，两种都兼容
+      const el = [...document.querySelectorAll('button, p')].find(n => n.textContent.trim() === '协同');
+      el?.click();
+      return !!el;
     })()`);
     const peerShown = await waitFor(async () => cdp.evaluate(`document.body.innerText.includes('同事B')`), { timeout: 8000 });
     ok('协同弹窗显示在线同事', !!peerShown);

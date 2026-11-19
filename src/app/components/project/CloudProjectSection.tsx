@@ -1,11 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ROLE_LABEL, type CloudProject, type CloudRole } from "@/app/cloud/api";
-import type { CloudUser } from "@/app/shared/electron";
-import { ContextMenuDivider, ContextMenuItem, ContextMenuPanel } from "@/app/components/shared/ContextMenu";
-import { getDropdownPosition } from "./getDropdownPosition";
-import { MoreIcon } from "./icons/MoreIcon";
 import { ProjectAddTile } from "./ProjectAddTile";
-import { UserAvatar } from "@/app/components/shared/UserAvatar";
 
 function formatTime(value?: number) {
   if (!value) return "";
@@ -42,15 +37,6 @@ function TrashIcon() {
   );
 }
 
-function UploadIcon() {
-  return (
-    <svg className="size-[16px]" viewBox="0 0 16 16" fill="none">
-      <path d="M13.2 10.4v2.4a1.2 1.2 0 0 1-1.2 1.2H4a1.2 1.2 0 0 1-1.2-1.2v-2.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M8 10V2.4M5.2 5.2 8 2.4l2.8 2.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 function MembersIcon() {
   return (
     <svg className="size-[16px]" viewBox="0 0 16 16" fill="none">
@@ -61,51 +47,34 @@ function MembersIcon() {
   );
 }
 
-function LogoutIcon() {
-  return (
-    <svg className="size-[16px]" viewBox="0 0 16 16" fill="none">
-      <path d="M6.4 2.4H3.6A1.2 1.2 0 0 0 2.4 3.6v8.8a1.2 1.2 0 0 0 1.2 1.2h2.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-      <path d="M10.4 4.8 13.2 8l-2.8 3.2M13.2 8H6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 export function CloudProjectSection({
   available,
   ready,
-  user,
+  isLoggedIn,
   projects,
   busy,
   activeProjectId,
   searchQuery,
-  onOpenAuth,
-  onLogout,
-  onCreate,
   onUploadCurrent,
+  onCreate,
   onOpen,
   onMembers,
   onDelete,
 }: {
   available: boolean;
   ready?: boolean;
-  user: CloudUser | null;
+  isLoggedIn: boolean;
   projects: CloudProject[];
   busy?: boolean;
   activeProjectId?: string | null;
   searchQuery: string;
-  onOpenAuth: () => void;
-  onLogout: () => void;
-  onCreate: () => void;
   onUploadCurrent: () => void;
+  onCreate: () => void;
   onOpen: (project: CloudProject) => void;
   onMembers: (project: CloudProject) => void;
   onDelete: (project: CloudProject) => void;
 }) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [menuPos, setMenuPos] = useState({ left: 0, top: 0 });
-  const menuRef = useRef<HTMLDivElement>(null);
-  const moreRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!confirmId) return;
@@ -113,51 +82,21 @@ export function CloudProjectSection({
     return () => window.clearTimeout(timer);
   }, [confirmId]);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (menuRef.current?.contains(target) || moreRef.current?.contains(target)) return;
-      setMenuOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [menuOpen]);
-
   if (!available) return null;
 
   const query = searchQuery.trim().toLowerCase();
   const filtered = projects.filter((p) => !query || p.name.toLowerCase().includes(query));
 
   const sectionTitle =
-    "m-0 text-[14px] font-medium leading-[20px] text-[#131212] font-['PingFang_SC:Medium',sans-serif]";
+    "m-0 text-[14px] font-medium leading-[20px] text-[#131212] font-['PingFang_SC:Medium',sans-serif] shrink-0";
   const sectionMeta = "text-[12px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]";
 
-  if (!user) {
+  if (!isLoggedIn) {
     return (
       <section>
-        <div className="flex items-center justify-between gap-[16px] rounded-[12px] bg-[#F7F8FA] px-[16px] h-[56px]">
-          <div className="flex items-baseline gap-[8px] min-w-0">
-            <h2 className={`${sectionTitle} shrink-0`}>云端协同</h2>
-            <span className={`${sectionMeta} truncate`}>登录后可与同事同时编辑，不需要同一 Wi-Fi</span>
-          </div>
-          <button
-            type="button"
-            data-cloud-login
-            className="shrink-0 h-[32px] px-[16px] rounded-[6px] border border-solid border-[#EBECF0] bg-white
-              text-[#131212] text-[14px] leading-none font-['PingFang_SC:Regular',sans-serif] whitespace-nowrap
-              hover:border-[#C0C4CC] active:bg-[#F7F8FA] transition-colors cursor-pointer"
-            onClick={onOpenAuth}
-          >
-            登录 / 注册
-          </button>
+        <div className="flex items-center gap-[8px] rounded-[12px] bg-[#F7F8FA] px-[16px] h-[52px] min-w-0">
+          <h2 className={sectionTitle}>云端协同</h2>
+          <span className={`${sectionMeta} truncate`}>登录后可与同事同时编辑，文档保存在你的服务器上，不需要同一 Wi-Fi</span>
         </div>
       </section>
     );
@@ -165,57 +104,22 @@ export function CloudProjectSection({
 
   return (
     <section>
-      <div className="relative flex items-center justify-between gap-[16px] mb-[12px]">
+      <div className="flex items-center justify-between gap-[16px] mb-[12px]">
         <div className="flex items-baseline gap-[8px] min-w-0">
-          <h2 className={`${sectionTitle} shrink-0`}>云端协同</h2>
+          <h2 className={sectionTitle}>云端协同</h2>
           <span className={`${sectionMeta} truncate`}>{projects.length} 个项目</span>
         </div>
-
-        <div className="flex items-center gap-[12px] shrink-0">
-          <span data-cloud-user={user.name} className="flex items-center gap-[6px] min-w-0">
-            <UserAvatar name={user.name} color={user.color} size={20} />
-            <span className={`${sectionMeta} truncate max-w-[120px]`}>{user.name}</span>
-          </span>
-          <button
-            ref={moreRef}
-            type="button"
-            aria-label="更多云端操作"
-            className={`size-[28px] shrink-0 flex items-center justify-center rounded-[6px] border-0 p-0 bg-transparent
-              cursor-pointer transition-colors outline-none ${menuOpen ? "bg-[#EBECF0]" : "hover:bg-[#F7F8FA]"}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              const rect = moreRef.current?.getBoundingClientRect();
-              if (rect) setMenuPos(getDropdownPosition(rect, 158, 150));
-              setMenuOpen((v) => !v);
-            }}
-          >
-            <MoreIcon />
-          </button>
-        </div>
-
-        {menuOpen && (
-          <ContextMenuPanel menuRef={menuRef} style={menuPos}>
-            <ContextMenuItem
-              icon={<UploadIcon />}
-              label={busy ? "上传中…" : "上传当前项目"}
-              onClick={(e) => {
-                e.stopPropagation();
-                setMenuOpen(false);
-                onUploadCurrent();
-              }}
-            />
-            <ContextMenuDivider />
-            <ContextMenuItem
-              icon={<LogoutIcon />}
-              label="退出登录"
-              onClick={(e) => {
-                e.stopPropagation();
-                setMenuOpen(false);
-                onLogout();
-              }}
-            />
-          </ContextMenuPanel>
-        )}
+        <button
+          type="button"
+          className="h-[32px] px-0 shrink-0 border-0 bg-transparent cursor-pointer text-[13px] leading-none
+            text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif] whitespace-nowrap
+            hover:text-[#131212] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          disabled={busy}
+          onClick={onUploadCurrent}
+          title="把当前打开的本地项目上传为云端项目"
+        >
+          上传当前项目
+        </button>
       </div>
 
       {!ready ? (
