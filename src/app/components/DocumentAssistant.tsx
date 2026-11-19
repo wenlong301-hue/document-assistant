@@ -493,7 +493,7 @@ export default function DocumentAssistant() {
               onCreate: () => setModal({ type: "new-cloud" }),
               onUploadCurrent: () => { void handleUploadCurrentProject(); },
               onOpen: (project) => { void handleOpenCloudProject(project); },
-              onMembers: () => { void cloud.openMembers(null); },
+              onMembers: (project) => { void cloud.openMembers(project); },
               onDelete: (project) => { void cloud.deleteProject(project); },
             }}
           />
@@ -519,9 +519,9 @@ export default function DocumentAssistant() {
               open={cloud.membersOpen}
               members={cloud.members}
               loading={cloud.membersBusy}
-              canManage={cloud.activeProject?.role === "owner"}
+              canManage={cloud.membersProject?.role === "owner"}
               user={cloud.user}
-              projectName={cloud.activeProject?.name || selectedProject?.name}
+              projectName={cloud.membersProject?.name || cloud.activeProject?.name || selectedProject?.name}
               onInvite={cloud.inviteMember}
               onRemove={(userId) => { void cloud.removeMember(userId); }}
               onClose={cloud.closeMembers}
@@ -657,9 +657,9 @@ export default function DocumentAssistant() {
           open={cloud.membersOpen}
           members={cloud.members}
           loading={cloud.membersBusy}
-          canManage={cloud.activeProject?.role === "owner"}
+          canManage={cloud.membersProject?.role === "owner"}
           user={cloud.user}
-          projectName={cloud.activeProject?.name || selectedProject?.name}
+          projectName={cloud.membersProject?.name || cloud.activeProject?.name || selectedProject?.name}
           onInvite={cloud.inviteMember}
           onRemove={(userId) => { void cloud.removeMember(userId); }}
           onClose={cloud.closeMembers}

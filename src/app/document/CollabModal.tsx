@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import type { CollabSessionState } from "@/app/collab/types";
+import { UserAvatar } from "@/app/components/shared/UserAvatar";
 
 export function CollabModal({
   collab,
@@ -153,18 +154,16 @@ export function CollabModal({
             <div className="rounded-[12px] px-[16px] pt-[12px] pb-[16px] flex flex-col gap-[8px] mt-[12px]" style={{ background: "rgba(245,245,244,0.5)" }}>
               <p className="m-0 font-['PingFang_SC:Medium',sans-serif] text-[#131212] text-[14px] leading-[20px]">在线</p>
               <div className="flex items-center gap-[8px] flex-wrap">
-                <span
-                  className="inline-flex items-center gap-[6px] h-[28px] px-[10px] rounded-[8px] bg-white border border-[#EBECF0] text-[12px] text-[#131212] font-['PingFang_SC:Regular',sans-serif]"
-                >
-                  <span className="size-[8px] rounded-full" style={{ background: collab.localColor }} />
+                <span className="inline-flex items-center gap-[6px] h-[28px] pl-[4px] pr-[10px] rounded-[8px] bg-white border border-[#EBECF0] text-[12px] text-[#131212] font-['PingFang_SC:Regular',sans-serif]">
+                  <UserAvatar name={collab.localName} color={collab.localColor} size={20} />
                   {collab.localName}（我）
                 </span>
                 {collab.peers.map((peer) => (
                   <span
                     key={peer.clientId}
-                    className="inline-flex items-center gap-[6px] h-[28px] px-[10px] rounded-[8px] bg-white border border-[#EBECF0] text-[12px] text-[#131212] font-['PingFang_SC:Regular',sans-serif]"
+                    className="inline-flex items-center gap-[6px] h-[28px] pl-[4px] pr-[10px] rounded-[8px] bg-white border border-[#EBECF0] text-[12px] text-[#131212] font-['PingFang_SC:Regular',sans-serif]"
                   >
-                    <span className="size-[8px] rounded-full" style={{ background: peer.color }} />
+                    <UserAvatar name={peer.name} color={peer.color} size={20} />
                     {peer.name}
                   </span>
                 ))}

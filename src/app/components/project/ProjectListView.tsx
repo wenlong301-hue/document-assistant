@@ -68,7 +68,7 @@ export function ProjectListView({
     onCreate: () => void;
     onUploadCurrent: () => void;
     onOpen: (project: CloudProject) => void;
-    onMembers: () => void;
+    onMembers: (project: CloudProject) => void;
     onDelete: (project: CloudProject) => void;
   };
 }) {

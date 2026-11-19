@@ -5,6 +5,7 @@ import { ContextMenuDivider, ContextMenuItem, ContextMenuPanel } from "@/app/com
 import { getDropdownPosition } from "./getDropdownPosition";
 import { MoreIcon } from "./icons/MoreIcon";
 import { ProjectAddTile } from "./ProjectAddTile";
+import { UserAvatar } from "@/app/components/shared/UserAvatar";
 
 function formatTime(value?: number) {
   if (!value) return "";
@@ -97,7 +98,7 @@ export function CloudProjectSection({
   onCreate: () => void;
   onUploadCurrent: () => void;
   onOpen: (project: CloudProject) => void;
-  onMembers: () => void;
+  onMembers: (project: CloudProject) => void;
   onDelete: (project: CloudProject) => void;
 }) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -167,26 +168,30 @@ export function CloudProjectSection({
       <div className="relative flex items-center justify-between gap-[16px] mb-[12px]">
         <div className="flex items-baseline gap-[8px] min-w-0">
           <h2 className={`${sectionTitle} shrink-0`}>云端协同</h2>
-          <span data-cloud-user={user.name} className={`${sectionMeta} truncate`}>
-            {user.name} · {projects.length} 个项目
-          </span>
+          <span className={`${sectionMeta} truncate`}>{projects.length} 个项目</span>
         </div>
 
-        <button
-          ref={moreRef}
-          type="button"
-          aria-label="更多云端操作"
-          className={`size-[28px] shrink-0 flex items-center justify-center rounded-[6px] border-0 p-0 bg-transparent
-            cursor-pointer transition-colors outline-none ${menuOpen ? "bg-[#EBECF0]" : "hover:bg-[#F7F8FA]"}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            const rect = moreRef.current?.getBoundingClientRect();
-            if (rect) setMenuPos(getDropdownPosition(rect, 158, 150));
-            setMenuOpen((v) => !v);
-          }}
-        >
-          <MoreIcon />
-        </button>
+        <div className="flex items-center gap-[12px] shrink-0">
+          <span data-cloud-user={user.name} className="flex items-center gap-[6px] min-w-0">
+            <UserAvatar name={user.name} color={user.color} size={20} />
+            <span className={`${sectionMeta} truncate max-w-[120px]`}>{user.name}</span>
+          </span>
+          <button
+            ref={moreRef}
+            type="button"
+            aria-label="更多云端操作"
+            className={`size-[28px] shrink-0 flex items-center justify-center rounded-[6px] border-0 p-0 bg-transparent
+              cursor-pointer transition-colors outline-none ${menuOpen ? "bg-[#EBECF0]" : "hover:bg-[#F7F8FA]"}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = moreRef.current?.getBoundingClientRect();
+              if (rect) setMenuPos(getDropdownPosition(rect, 158, 150));
+              setMenuOpen((v) => !v);
+            }}
+          >
+            <MoreIcon />
+          </button>
+        </div>
 
         {menuOpen && (
           <ContextMenuPanel menuRef={menuRef} style={menuPos}>
@@ -197,15 +202,6 @@ export function CloudProjectSection({
                 e.stopPropagation();
                 setMenuOpen(false);
                 onUploadCurrent();
-              }}
-            />
-            <ContextMenuItem
-              icon={<MembersIcon />}
-              label="成员管理"
-              onClick={(e) => {
-                e.stopPropagation();
-                setMenuOpen(false);
-                onMembers();
               }}
             />
             <ContextMenuDivider />
@@ -242,6 +238,21 @@ export function CloudProjectSection({
                   cursor-pointer transition-colors duration-150 ${isActive ? "bg-[#F7F8FA]" : "hover:bg-[#F7F8FA]"}`}
                 onClick={() => onOpen(project)}
               >
+                <button
+                  type="button"
+                  aria-label="成员管理"
+                  title="成员管理"
+                  className="absolute top-[8px] right-[26px] size-[16px] z-10 flex items-center justify-center rounded-[4px]
+                    border-0 p-0 bg-transparent cursor-pointer text-[#8D8E99] opacity-0 group-hover:opacity-100
+                    hover:bg-[#EBECF0] hover:text-[#131212] transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMembers(project);
+                  }}
+                >
+                  <MembersIcon />
+                </button>
+
                 {project.role === "owner" && (
                   <button
                     type="button"

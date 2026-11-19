@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { ROLE_LABEL, type CloudMember, type CloudRole } from "@/app/cloud/api";
+import { UserAvatar } from "@/app/components/shared/UserAvatar";
 
 export function CloudMembersModal({
   open,
@@ -107,12 +108,7 @@ export function CloudMembersModal({
                   key={member.id}
                   className="flex items-center gap-[10px] h-[44px] shrink-0 px-[8px] rounded-[8px] hover:bg-[#F5F6F8] transition-colors"
                 >
-                  <span
-                    className="size-[24px] shrink-0 rounded-full flex items-center justify-center text-white text-[12px] font-medium"
-                    style={{ background: member.color || "#134CFF" }}
-                  >
-                    {(member.name || "?").slice(0, 1)}
-                  </span>
+                  <UserAvatar name={member.name} color={member.color} size={24} />
                   <div className="flex-1 min-w-0">
                     <p className="m-0 text-[14px] leading-[20px] text-[#131212] truncate font-['PingFang_SC:Regular',sans-serif]">
                       {member.name}{isSelf ? "（我）" : ""}

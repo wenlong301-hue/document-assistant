@@ -15,6 +15,7 @@ export function useCloudSession(params: { isElectron: boolean; setToast: ToastSe
   const [serverUrl, setServerUrl] = useState("");
   const [activeProject, setActiveProject] = useState<CloudProject | null>(null);
   const [membersOpen, setMembersOpen] = useState(false);
+  const [membersProject, setMembersProject] = useState<CloudProject | null>(null);
   const [members, setMembers] = useState<CloudMember[]>([]);
   const [membersBusy, setMembersBusy] = useState(false);
   const sessionRef = useRef<CloudSession | null>(null);
@@ -172,6 +173,7 @@ export function useCloudSession(params: { isElectron: boolean; setToast: ToastSe
       return;
     }
     setMembersOpen(true);
+    setMembersProject(target);
     setMembersBusy(true);
     try {
       setMembers(await cloudApi.members(target.id));
@@ -236,6 +238,7 @@ export function useCloudSession(params: { isElectron: boolean; setToast: ToastSe
     setActiveProject,
     membersOpen,
     closeMembers: () => setMembersOpen(false),
+    membersProject,
     members,
     membersBusy,
     openMembers,
