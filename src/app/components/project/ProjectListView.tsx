@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { Project } from "@/app/document/types";
 import { assetUrl } from "@/app/shared/utils/assetUrl";
 import { ProjectGridCard } from "./ProjectGridCard";
@@ -11,11 +11,13 @@ import { SearchIcon } from "./icons/SearchIcon";
 import { getElectronAPI } from "@/app/shared/electron";
 import type { CloudUser } from "@/app/shared/electron";
 import type { CloudProject } from "@/app/cloud/api";
-import { CloudProjectSection } from "./CloudProjectSection";
 import { ProjectAddTile } from "./ProjectAddTile";
 import { AccountMenu } from "./AccountMenu";
+import { CloudProjectCard } from "./cloud/CloudProjectCard";
+import { CloudProjectRow } from "./cloud/CloudProjectRow";
 
 const FALLBACK_VERSION = "0.1.7";
+type ProjectFilter = "all" | "local" | "cloud";
 
 export function ProjectListView({
   projects,
@@ -33,7 +35,6 @@ export function ProjectListView({
   onOpenUpdate,
   updateVersion,
   onDeleteProject,
-  onRenameProject,
   onViewModeChange,
   onSearchChange,
   cloud,
@@ -75,6 +76,7 @@ export function ProjectListView({
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState(FALLBACK_VERSION);
+  const [filter, setFilter] = useState<ProjectFilter>("all");
 
   useEffect(() => {
     const api = getElectronAPI();
@@ -83,9 +85,28 @@ export function ProjectListView({
     }
   }, []);
 
-  const filteredProjects = projects.filter((p) =>
-    p.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const query = searchQuery.trim().toLowerCase();
+  const cloudAvailable = !!cloud?.available;
+  const cloudUser = cloud?.user ?? null;
+
+  const localProjects = useMemo(
+    () => projects.filter((p) => !query || p.name.toLowerCase().includes(query)),
+    [projects, query]
   );
+  const cloudProjects = useMemo(
+    () => (cloud?.projects ?? []).filter((p) => !query || p.name.toLowerCase().includes(query)),
+    [cloud?.projects, query]
+  );
+
+  const showLocal = filter !== "cloud";
+  const showCloud = filter !== "local" && cloudAvailable;
+  const itemCount = (showLocal ? localProjects.length : 0) + (showCloud ? cloudProjects.length : 0);
+
+  const tabs: { key: ProjectFilter; label: string; count: number }[] = [
+    { key: "all", label: "全部", count: projects.length + (cloud?.projects.length ?? 0) },
+    { key: "local", label: "本机", count: projects.length },
+    { key: "cloud", label: "云端", count: cloud?.projects.length ?? 0 },
+  ];
 
   const handleNewFile = useCallback((project: Project) => {
     if (!project.filePath && project.folderPath && isElectron) {
@@ -129,6 +150,31 @@ export function ProjectListView({
           alt=""
           className={`size-[16px] block ${viewMode === "grid" ? "brightness-0 invert" : ""}`}
         />
+      </button>
+    </div>
+  );
+
+  const addTiles = (
+    <div className="flex flex-wrap gap-[16px]">
+      {showLocal && <ProjectAddTile label="添加项目" onClick={() => setShowAddModal(true)} />}
+      {showCloud && cloudUser && <ProjectAddTile label="新建云端项目" onClick={() => cloud?.onCreate()} />}
+    </div>
+  );
+
+  const loginPrompt = (
+    <div className="flex flex-col items-center justify-center gap-[8px] py-[44px]">
+      <p className="m-0 text-[14px] leading-[20px] text-[#131212] font-['PingFang_SC:Medium',sans-serif]">登录后使用云端协同</p>
+      <p className="m-0 text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
+        文档保存在你的服务器上，多人可同时编辑，不需要同一 Wi-Fi
+      </p>
+      <button
+        type="button"
+        data-cloud-login
+        className="mt-[8px] h-[32px] px-[16px] rounded-[6px] border-0 bg-[#131212] text-white text-[14px] leading-none
+          font-['PingFang_SC:Regular',sans-serif] cursor-pointer hover:opacity-90 active:opacity-80 transition-opacity"
+        onClick={cloud?.onOpenAuth}
+      >
+        登录 / 注册
       </button>
     </div>
   );
@@ -211,12 +257,8 @@ export function ProjectListView({
             <FolderPlusIcon />
             <span>添加项目</span>
           </button>
-          {cloud?.available && (
-            <AccountMenu
-              user={cloud.user}
-              onLogin={cloud.onOpenAuth}
-              onLogout={cloud.onLogout}
-            />
+          {cloudAvailable && (
+            <AccountMenu user={cloudUser} onLogin={cloud?.onOpenAuth ?? (() => {})} onLogout={cloud?.onLogout ?? (() => {})} />
           )}
         </div>
       </div>
@@ -224,110 +266,144 @@ export function ProjectListView({
       <div className="flex-1 overflow-auto bg-[#F7F8FA]">
         <div className="mx-auto w-full max-w-[1040px] px-[20px] pt-[28px] pb-[32px]">
           <div className="mb-[20px]">
-            <h1 className="m-0 text-[20px] font-medium leading-[28px] text-[#131212] font-['PingFang_SC:Medium',sans-serif]">
-              项目
-            </h1>
+            <h1 className="m-0 text-[20px] font-medium leading-[28px] text-[#131212] font-['PingFang_SC:Medium',sans-serif]">项目</h1>
             <p className="m-0 mt-[4px] text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
-              本地与云端文档统一管理
+              {cloudAvailable ? "本地与云端文档统一管理" : "本地文档"}
             </p>
           </div>
 
           <section className="rounded-[12px] border border-solid border-[#EBECF0] bg-white overflow-hidden">
             <div className="flex items-center justify-between gap-[16px] h-[52px] px-[16px] border-b border-solid border-[#EBECF0]">
-              <div className="flex items-baseline gap-[8px] min-w-0">
-                <h2 className="m-0 text-[14px] font-medium leading-[20px] text-[#131212] font-['PingFang_SC:Medium',sans-serif] shrink-0">
-                  本地项目
-                </h2>
-                <span className="text-[12px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
-                  {filteredProjects.length} 个
-                </span>
+              {cloudAvailable ? (
+                <div className="flex items-stretch h-full gap-[20px]">
+                  {tabs.map((tab) => {
+                    const active = filter === tab.key;
+                    return (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        className={`relative h-full flex items-center gap-[6px] border-0 bg-transparent px-0 cursor-pointer text-[14px] leading-none
+                          font-['PingFang_SC:Regular',sans-serif] transition-colors ${active ? "text-[#131212]" : "text-[#8D8E99] hover:text-[#131212]"}`}
+                        onClick={() => setFilter(tab.key)}
+                      >
+                        <span className={active ? "font-medium" : ""}>{tab.label}</span>
+                        <span className={`text-[12px] ${active ? "text-[#8D8E99]" : "text-[#C0C4CC]"}`}>{tab.count}</span>
+                        {active && <span className="absolute left-0 right-0 bottom-0 h-[2px] rounded-full bg-[#131212]" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex items-baseline gap-[8px]">
+                  <h2 className="m-0 text-[14px] font-medium leading-[20px] text-[#131212] font-['PingFang_SC:Medium',sans-serif]">本地项目</h2>
+                  <span className="text-[12px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">{localProjects.length} 个</span>
+                </div>
+              )}
+
+              <div className="flex items-center gap-[12px] shrink-0">
+                {cloudAvailable && cloudUser && filter !== "local" && (
+                  <button
+                    type="button"
+                    className="h-[32px] px-0 border-0 bg-transparent cursor-pointer text-[13px] leading-none text-[#8D8E99]
+                      font-['PingFang_SC,Regular',sans-serif] whitespace-nowrap hover:text-[#131212] transition-colors
+                      disabled:opacity-40 disabled:cursor-not-allowed"
+                    disabled={cloud?.busy}
+                    onClick={() => cloud?.onUploadCurrent()}
+                    title="把当前打开的本地项目上传为云端项目"
+                  >
+                    上传当前项目
+                  </button>
+                )}
+                {viewToggle}
               </div>
-              {viewToggle}
             </div>
 
             <div className="p-[16px]">
-          {filteredProjects.length === 0 ? (
-            cloud?.available ? (
-              searchQuery.trim() ? (
-                <p className="m-0 py-[8px] text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
-                  没有匹配的本地项目
-                </p>
+              {itemCount === 0 ? (
+                query ? (
+                  <p className="m-0 py-[8px] text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">
+                    没有匹配的项目
+                  </p>
+                ) : filter === "cloud" && !cloudUser ? (
+                  loginPrompt
+                ) : filter === "cloud" && !cloud?.ready ? (
+                  <p className="m-0 py-[8px] text-[13px] leading-[18px] text-[#8D8E99] font-['PingFang_SC:Regular',sans-serif]">加载中…</p>
+                ) : cloudAvailable ? (
+                  addTiles
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-[32px]">
+                    <EmptyStateIllustration />
+                    <p className="text-[14px] text-[#8d8e99] mb-[16px]">
+                      当前没有内容，点击上方 <span className="font-semibold text-[#131212]">添加项目</span>{" "}
+                      去选择本地文件、文件夹或新增一个项目吧
+                    </p>
+                  </div>
+                )
+              ) : viewMode === "grid" ? (
+                <div className="flex flex-wrap content-start gap-[16px]">
+                  {showLocal && localProjects.map((project) => (
+                    <ProjectGridCard
+                      key={`local-${project.id}`}
+                      project={project}
+                      isSelected={selectedId === `local-${project.id}`}
+                      onClick={() => {
+                        setSelectedId(`local-${project.id}`);
+                        onSelectProject(project);
+                      }}
+                      onNewFile={() => handleNewFile(project)}
+                      onOpenLocation={() => handleOpenLocation(project)}
+                      onRemove={() => onDeleteProject(project)}
+                    />
+                  ))}
+                  {showCloud && cloudProjects.map((project) => (
+                    <CloudProjectCard
+                      key={`cloud-${project.id}`}
+                      project={project}
+                      isSelected={selectedId === `cloud-${project.id}`}
+                      onClick={() => {
+                        setSelectedId(`cloud-${project.id}`);
+                        cloud?.onOpen(project);
+                      }}
+                      onMembers={() => cloud?.onMembers(project)}
+                      onDelete={() => cloud?.onDelete(project)}
+                    />
+                  ))}
+                </div>
               ) : (
-                <ProjectAddTile label="添加项目" onClick={() => setShowAddModal(true)} />
-              )
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full">
-                <EmptyStateIllustration />
-                <p className="text-[14px] text-[#8d8e99] mb-[16px]">
-                  当前没有内容，点击上方 <span className="font-semibold text-[#131212]">添加项目</span>{" "}
-                  去选择本地文件、文件夹或新增一个项目吧
-                </p>
-              </div>
-            )
-          ) : viewMode === "grid" ? (
-            <div className="flex flex-wrap content-start gap-[16px]">
-              {filteredProjects.map((project) => (
-                <ProjectGridCard
-                  key={project.id}
-                  project={project}
-                  isSelected={selectedId === project.id}
-                  onClick={() => {
-                    setSelectedId(project.id);
-                    onSelectProject(project);
-                  }}
-                  onNewFile={() => handleNewFile(project)}
-                  onOpenLocation={() => handleOpenLocation(project)}
-                  onRemove={() => onDeleteProject(project)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col bg-white">
-              {/* Table Header */}
-              <div className="flex items-center px-[12px] py-[11.5px] border-b border-[#EBECF0]">
-                <div className="flex-[3] text-[12px] font-medium text-[#8D8E99] whitespace-nowrap">文件/文件夹名称</div>
-                <div className="flex-[2] text-[12px] font-medium text-[#8D8E99] whitespace-nowrap">文件位置</div>
-                <div className="w-[16px] shrink-0" />
-              </div>
-              {/* List Rows */}
-              {filteredProjects.map((project) => (
-                <ProjectListRow
-                  key={project.id}
-                  project={project}
-                  isSelected={selectedId === project.id}
-                  onClick={() => { setSelectedId(project.id); onSelectProject(project); }}
-                  onNewFile={() => handleNewFile(project)}
-                  onOpenLocation={() => handleOpenLocation(project)}
-                  onRemove={() => onDeleteProject(project)}
-                />
-              ))}
-            </div>
-          )}
+                <div className="flex flex-col">
+                  <div className="flex items-center px-[12px] py-[11.5px] border-b border-[#EBECF0]">
+                    <div className="flex-[3] text-[12px] font-medium text-[#8D8E99] whitespace-nowrap pl-[36px]">名称</div>
+                    <div className="flex-[2] text-[12px] font-medium text-[#8D8E99] whitespace-nowrap">位置</div>
+                    <div className="w-[16px] shrink-0" />
+                  </div>
+                  {showLocal && localProjects.map((project) => (
+                    <ProjectListRow
+                      key={`local-${project.id}`}
+                      project={project}
+                      isSelected={selectedId === `local-${project.id}`}
+                      onClick={() => { setSelectedId(`local-${project.id}`); onSelectProject(project); }}
+                      onNewFile={() => handleNewFile(project)}
+                      onOpenLocation={() => handleOpenLocation(project)}
+                      onRemove={() => onDeleteProject(project)}
+                    />
+                  ))}
+                  {showCloud && cloudProjects.map((project) => (
+                    <CloudProjectRow
+                      key={`cloud-${project.id}`}
+                      project={project}
+                      isSelected={selectedId === `cloud-${project.id}`}
+                      onClick={() => { setSelectedId(`cloud-${project.id}`); cloud?.onOpen(project); }}
+                      onMembers={() => cloud?.onMembers(project)}
+                      onDelete={() => cloud?.onDelete(project)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           </section>
-
-          {cloud?.available && (
-            <div className="mt-[24px]">
-              <CloudProjectSection
-                available={cloud.available}
-                ready={cloud.ready}
-                isLoggedIn={!!cloud.user}
-                projects={cloud.projects}
-                busy={cloud.busy}
-                activeProjectId={cloud.activeProjectId}
-                searchQuery={searchQuery}
-                onUploadCurrent={cloud.onUploadCurrent}
-                onCreate={cloud.onCreate}
-                onOpen={cloud.onOpen}
-                onMembers={cloud.onMembers}
-                onDelete={cloud.onDelete}
-              />
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Add Project Modal */}
       <AddProjectModal
         open={showAddModal}
         onClose={() => setShowAddModal(false)}
